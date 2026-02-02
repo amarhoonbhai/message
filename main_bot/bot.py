@@ -51,8 +51,6 @@ def create_application() -> Application:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("redeem", redeem_command))
     application.add_handler(CommandHandler("admin", admin_command))
-    application.add_handler(CommandHandler("stats", stats_command))
-    application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("generate", generate_command))
     
     # ============== Conversation Handlers ==============
