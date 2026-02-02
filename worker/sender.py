@@ -39,6 +39,7 @@ class UserSender:
         self.user_id = user_id
         self.client: Optional[TelegramClient] = None
         self.running = False
+        self.wake_up_event = asyncio.Event()
     
     async def start(self):
         """Start the sender loop."""
@@ -102,23 +103,9 @@ class UserSender:
                     # We check if the chat is 'me' (Saved Messages)
                     chat = await event.get_chat()
                     if getattr(chat, 'is_self', False) or event.chat_id == (await self.client.get_me()).id:
-                        logger.info(f"[User {self.user_id}] New ad detected in Saved Messages! Triggering instant forward...")
-                        # We don't call run_loop directly as it's already running.
-                        # Instead, we just let the loop handle it OR trigger a one-off.
-                        # Actually, better to just trigger the forwarding logic for THIS message.
-                        groups = await get_user_groups(self.user_id, enabled_only=True)
-                        if groups:
-                            if await is_plan_active(self.user_id):
-                                if not is_night_mode():
-                                    await self.forward_message_to_groups(event.message, groups)
-                                    # Update last_saved_id
-                                    await update_last_saved_id(self.user_id, event.message.id)
-                                else:
-                                    logger.info(f"[User {self.user_id}] Night mode active, skipping instant forward.")
-                            else:
-                                logger.info(f"[User {self.user_id}] Plan inactive, skipping instant forward.")
-                        else:
-                            logger.info(f"[User {self.user_id}] No enabled groups found for instant forward.")
+                        logger.info(f"[User {self.user_id}] New ad detected! Waking up worker...")
+                        self.wake_up_event.set()
+                        return
 
                 except Exception as e:
                     logger.error(f"[User {self.user_id}] Event handler error: {e}")
@@ -199,9 +186,20 @@ class UserSender:
                         logger.debug(f"[User {self.user_id}] Waiting {MESSAGE_GAP_SECONDS}s before next message")
                         await asyncio.sleep(MESSAGE_GAP_SECONDS)
                 
-                # 7. Sleep for interval
-                logger.info(f"[User {self.user_id}] Cycle complete, sleeping for {interval_min} minutes")
-                await asyncio.sleep(interval_min * 60)
+                # 7. Sleep for interval or until woken up
+                logger.info(f"[User {self.user_id}] Cycle complete, waiting {interval_min}m for next check...")
+                
+                try:
+                    # Clear event before waiting
+                    self.wake_up_event.clear()
+                    await asyncio.wait_for(
+                        self.wake_up_event.wait(),
+                        timeout=interval_min * 60
+                    )
+                    logger.info(f"[User {self.user_id}] Worker woken up by new message activity!")
+                except asyncio.TimeoutError:
+                    # Normal interval timeout
+                    pass
                 
             except asyncio.CancelledError:
                 break
