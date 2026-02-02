@@ -30,6 +30,19 @@ def get_phone_input_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def get_api_input_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard shown during API ID/Hash input."""
+    keyboard = [
+        [
+            InlineKeyboardButton("❓ How to get API?", url="https://my.telegram.org"),
+        ],
+        [
+            InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
 def get_confirm_phone_keyboard() -> InlineKeyboardMarkup:
     """Keyboard for phone confirmation."""
     keyboard = [

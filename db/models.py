@@ -77,14 +77,22 @@ async def check_referral_bonus(referral_code: str):
 
 # ==================== SESSIONS ====================
 
-async def create_session(user_id: int, phone: str, session_string: str) -> Dict[str, Any]:
-    """Create or update user session."""
+async def create_session(
+    user_id: int, 
+    phone: str, 
+    session_string: str,
+    api_id: int = None,
+    api_hash: str = None
+) -> Dict[str, Any]:
+    """Create or update user session with per-user API credentials."""
     db = get_database()
     
     session_doc = {
         "user_id": user_id,
         "phone": phone,
         "session_string": session_string,
+        "api_id": api_id,
+        "api_hash": api_hash,
         "connected": True,
         "connected_at": datetime.utcnow(),
     }

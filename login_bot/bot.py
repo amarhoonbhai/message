@@ -19,7 +19,8 @@ from db.database import init_indexes
 from login_bot.handlers.start import start_handler, help_callback
 from login_bot.handlers.phone import (
     add_account_callback, receive_phone_number,
-    edit_phone_callback, cancel_callback
+    edit_phone_callback, cancel_callback,
+    receive_api_id, receive_api_hash
 )
 from login_bot.handlers.otp import (
     send_otp_callback, resend_otp_callback, otp_keypad_callback
@@ -62,12 +63,16 @@ def create_application() -> Application:
     
     # ============== Message Handlers ==============
     
-    # Phone number and 2FA input
+    # Phone number, API credentials, and 2FA input
     async def handle_text_message(update, context):
         """Route text messages based on state."""
         state = context.user_data.get("state")
         
-        if state == "waiting_phone":
+        if state == "waiting_api_id":
+            await receive_api_id(update, context)
+        elif state == "waiting_api_hash":
+            await receive_api_hash(update, context)
+        elif state == "waiting_phone":
             await receive_phone_number(update, context)
         elif state == "waiting_2fa":
             await receive_2fa_password(update, context)

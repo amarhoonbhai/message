@@ -34,6 +34,8 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
     
     client = login_data["client"]
     phone = login_data["phone"]
+    api_id = login_data.get("api_id")
+    api_hash = login_data.get("api_hash")
     
     try:
         # Sign in with password
@@ -57,7 +59,7 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
         
         fake_update = type('obj', (object,), {'callback_query': FakeQuery()})()
         
-        await save_session_and_complete(fake_update, context, client, phone)
+        await save_session_and_complete(fake_update, context, client, phone, api_id, api_hash)
         
     except PasswordHashInvalidError:
         await update.message.reply_text(

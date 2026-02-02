@@ -1,5 +1,6 @@
 """
 Per-user sender logic for the Worker service.
+Uses per-user API credentials stored in session.
 """
 
 import logging
@@ -20,10 +21,7 @@ from telethon.errors import (
 )
 from telethon.tl.types import InputPeerSelf
 
-from config import (
-    API_ID, API_HASH,
-    GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, MIN_INTERVAL_MINUTES
-)
+from config import GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, MIN_INTERVAL_MINUTES
 from db.models import (
     get_session, get_plan, get_user_config, get_user_groups,
     update_last_saved_id, remove_group, log_send, is_plan_active
@@ -34,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class UserSender:
-    """Handles message sending for a single user."""
+    """Handles message sending for a single user using their own API credentials."""
     
     def __init__(self, user_id: int):
         self.user_id = user_id
@@ -47,7 +45,7 @@ class UserSender:
         
         logger.info(f"[User {self.user_id}] Starting sender...")
         
-        # Load session
+        # Load session with per-user API credentials
         session_data = await get_session(self.user_id)
         
         if not session_data or not session_data.get("connected"):
@@ -55,16 +53,22 @@ class UserSender:
             return
         
         session_string = session_data.get("session_string")
+        api_id = session_data.get("api_id")
+        api_hash = session_data.get("api_hash")
         
         if not session_string:
             logger.warning(f"[User {self.user_id}] No session string found")
             return
         
-        # Create client
+        if not api_id or not api_hash:
+            logger.warning(f"[User {self.user_id}] No API credentials found in session")
+            return
+        
+        # Create client with USER'S API credentials
         self.client = TelegramClient(
             StringSession(session_string),
-            API_ID,
-            API_HASH,
+            api_id,
+            api_hash,
             device_model="Group Message Scheduler Worker",
             system_version="1.0",
             app_version="1.0"
