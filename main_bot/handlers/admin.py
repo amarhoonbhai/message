@@ -64,6 +64,61 @@ Welcome, Owner! Use the options below to manage the bot.
     )
 
 
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /stats command."""
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        await update.message.reply_text("⛔ Access denied")
+        return
+    
+    stats = await get_admin_stats()
+    
+    text = f"""
+📊 *Bot Statistics*
+
+👥 *Users:*
+├ Total: {stats['total_users']}
+├ Connected: {stats['connected_sessions']}
+├ Trial Active: {stats['trial_active']}
+├ Paid Active: {stats['paid_active']}
+└ Expired: {stats['expired']}
+
+📨 *Sends (24h):*
+├ Total: {stats['sends_24h']}
+├ Success: {stats['success_24h']}
+├ Failed: {stats['failed_24h']}
+└ Groups Removed: {stats['groups_removed_24h']}
+"""
+    
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_admin_keyboard(),
+    )
+
+
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /broadcast command."""
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        await update.message.reply_text("⛔ Access denied")
+        return
+    
+    text = """
+📢 *Broadcast Message*
+
+Select the target audience for your broadcast:
+"""
+    
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_broadcast_keyboard(),
+    )
+
+
 async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show bot statistics."""
     query = update.callback_query

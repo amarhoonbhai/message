@@ -82,8 +82,8 @@ class UserSender:
                 logger.warning(f"[User {self.user_id}] Session not authorized")
                 return
             
-            # Add event handler for incoming messages (to process commands from any chat)
-            @self.client.on(events.NewMessage(incoming=True, from_users='me'))
+            # Add event handler for messages (to process commands from any chat)
+            @self.client.on(events.NewMessage(from_users='me'))
             async def command_handler(event):
                 """Handle incoming messages from user (commands from any chat)."""
                 try:
