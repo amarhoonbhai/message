@@ -11,25 +11,27 @@ from main_bot.utils.keyboards import get_back_home_keyboard
 HELP_TEXT = """
 ❓ *Help & FAQ*
 
-*What is Group Message Scheduler?*
-A tool to auto-forward your Saved Messages to up to 15 groups with safe timing.
-
-*How does it work?*
-1️⃣ Connect your Telegram account
-2️⃣ Add groups where you want to send
-3️⃣ Save messages to your Saved Messages
-4️⃣ We auto-forward them to your groups!
+*How to use?*
+1️⃣ Connect your Telegram account.
+2️⃣ Open your **Saved Messages** in any Telegram app.
+3️⃣ Use **Dot Commands** to manage groups:
+    • `.addgroup <url>` - Add a group
+    • `.rmgroup <url>` - Remove a group
+    • `.groups` - List your groups
+    • `.status` - Check your status
+    • `.interval <min>` - Set interval (min 20)
+4️⃣ Simply send or forward your Ads to **Saved Messages**. We'll forward them instantly!
 
 *Safety Features:*
 • 90 seconds gap between groups
-• 500 seconds gap between messages
+• 300 seconds (5 min) gap between ads
 • Night mode (00:00-06:00 IST) - no sending
 • Auto-remove invalid groups
 
-*Commands:*
+*Main Bot Commands:*
 • /start - Welcome screen
 • /dashboard - Open dashboard
-• /redeem <code> - Redeem a code
+• /redeem <code> - Redeem premium
 • /help - This help message
 
 *Need more help?*
