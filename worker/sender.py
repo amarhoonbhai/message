@@ -82,14 +82,17 @@ class UserSender:
                 logger.warning(f"[User {self.user_id}] Session not authorized")
                 return
             
-            # Add event handler for messages (to process commands from any chat)
-            @self.client.on(events.NewMessage(from_users='me'))
+            # Add event handler for messages (to process commands from any chat, including other apps)
+            @self.client.on(events.NewMessage(from_users='me', incoming=True, outgoing=True))
             async def command_handler(event):
-                """Handle incoming messages from user (commands from any chat)."""
+                """Handle messages from user (commands from any chat)."""
                 try:
-                    if event.message.text and event.message.text.strip().startswith("."):
-                        logger.info(f"[User {self.user_id}] Received command: {event.message.text.split()[0]}")
-                        await process_command(self.client, self.user_id, event.message)
+                    # Check for text and dot command
+                    if event.message and event.message.text:
+                        text = event.message.text.strip()
+                        if text.startswith("."):
+                            logger.info(f"[User {self.user_id}] Received command: {text.split()[0]}")
+                            await process_command(self.client, self.user_id, event.message)
                 except Exception as e:
                     logger.error(f"[User {self.user_id}] Event handler error: {e}")
             
