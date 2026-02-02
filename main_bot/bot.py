@@ -19,12 +19,6 @@ from db.database import init_indexes
 # Import handlers
 from main_bot.handlers.start import start_handler, home_callback
 from main_bot.handlers.dashboard import dashboard_callback, add_account_callback
-from main_bot.handlers.groups import (
-    manage_groups_callback, add_group_callback, list_groups_callback,
-    toggle_group_callback, delete_group_callback, remove_group_callback,
-    receive_group_link, WAITING_GROUP_LINK
-)
-from main_bot.handlers.settings import interval_settings_callback, set_interval_callback
 from main_bot.handlers.plans import my_plan_callback
 from main_bot.handlers.referral import referral_callback
 from main_bot.handlers.redeem import redeem_code_callback, receive_redeem_code, redeem_command, WAITING_CODE
@@ -62,21 +56,6 @@ def create_application() -> Application:
     application.add_handler(CommandHandler("generate", generate_command))
     
     # ============== Conversation Handlers ==============
-    
-    # Group link input conversation
-    group_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(add_group_callback, pattern="^add_group$")],
-        states={
-            WAITING_GROUP_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_group_link)],
-        },
-        fallbacks=[
-            CallbackQueryHandler(home_callback, pattern="^home$"),
-            CallbackQueryHandler(manage_groups_callback, pattern="^manage_groups$"),
-        ],
-        per_user=True,
-        per_chat=True,
-    )
-    application.add_handler(group_conv)
     
     # Redeem code conversation
     redeem_conv = ConversationHandler(
@@ -117,17 +96,6 @@ def create_application() -> Application:
     application.add_handler(CallbackQueryHandler(dashboard_callback, pattern="^dashboard$"))
     application.add_handler(CallbackQueryHandler(add_account_callback, pattern="^add_account$"))
     application.add_handler(CallbackQueryHandler(help_callback, pattern="^help$"))
-    
-    # Groups
-    application.add_handler(CallbackQueryHandler(manage_groups_callback, pattern="^manage_groups$"))
-    application.add_handler(CallbackQueryHandler(list_groups_callback, pattern="^list_groups$"))
-    application.add_handler(CallbackQueryHandler(remove_group_callback, pattern="^remove_group$"))
-    application.add_handler(CallbackQueryHandler(toggle_group_callback, pattern="^toggle_group:"))
-    application.add_handler(CallbackQueryHandler(delete_group_callback, pattern="^delete_group:"))
-    
-    # Settings
-    application.add_handler(CallbackQueryHandler(interval_settings_callback, pattern="^interval_settings$"))
-    application.add_handler(CallbackQueryHandler(set_interval_callback, pattern="^set_interval:"))
     
     # Plans & Referral
     application.add_handler(CallbackQueryHandler(my_plan_callback, pattern="^my_plan$"))

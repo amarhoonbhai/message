@@ -44,8 +44,6 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 👤 *Account:* {account_status}
 🎁 *Plan:* {plan_status}
-👥 *Groups:* {group_count} / 15
-⏱ *Interval:* {interval} min (min 20)
 🌙 *Night Mode:* 00:00–06:00 IST (Fixed)
 📩 *Mode:* Auto-forward NEW Saved Messages ✅
 """
