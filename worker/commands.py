@@ -72,41 +72,37 @@ async def reply_to_command(client: TelegramClient, message, text: str):
 
 
 async def handle_help(client: TelegramClient, user_id: int, message):
-    """Handle .help command."""
-    text = """📚 Available Commands
+    """Handle .help command with professional styling."""
+    text = """AVAILABLE COMMANDS
+━━━━━━━━━━━━━━━━━━━━
+GROUP MANAGEMENT
+▢ .addgroup <url> — Add group
+▢ .rmgroup <url> — Remove group
+▢ .groups — List groups
 
-━━━━━━━━━━━━━━━━━━━
+SETTINGS
+▢ .interval <minutes> — Set interval (min {min_interval})
+▢ .status — Account status
 
-👥 Group Management
-.addgroup <url> — Add a group to post
-.rmgroup <url> — Remove a group
-.groups — List all your groups
+HELP
+▢ .help — Show help
+━━━━━━━━━━━━━━━━━━━━
+EXAMPLES
+▢ .addgroup https://t.me/mygroup
+▢ .addgroup @mygroup
+▢ .interval 30
 
-⚙️ Settings
-.interval <minutes> — Set posting interval (min: {min_interval})
-.status — View your account status
-
-❓ Help
-.help — Show this help message
-
-━━━━━━━━━━━━━━━━━━━
-
-📌 Examples:
-• .addgroup https://t.me/mygroup
-• .addgroup @mygroup
-• .interval 30
-
-💡 Notes:
-• You must be a member of the group to add it
-• Maximum {max_groups} groups allowed
-• Minimum interval is {min_interval} minutes
+NOTES
+▢ Must be a group member
+▢ Max {max_groups} groups allowed
+▢ Minimum interval {min_interval} minutes
 """.format(min_interval=MIN_INTERVAL_MINUTES, max_groups=MAX_GROUPS_PER_USER)
     
     await reply_to_command(client, message, text)
 
 
 async def handle_status(client: TelegramClient, user_id: int, message):
-    """Handle .status command."""
+    """Handle .status command with detailed group info."""
     # Get session
     session = await get_session(user_id)
     
@@ -116,8 +112,10 @@ async def handle_status(client: TelegramClient, user_id: int, message):
     # Get config
     config = await get_user_config(user_id)
     
-    # Get groups
-    group_count = await get_group_count(user_id)
+    # Get groups for diagonal count
+    groups = await get_user_groups(user_id)
+    total_groups = len(groups)
+    enabled_groups = len([g for g in groups if g.get("enabled", True)])
     
     # Format plan info
     if plan:
@@ -135,12 +133,12 @@ async def handle_status(client: TelegramClient, user_id: int, message):
         plan_type = "None"
     
     phone = session.get("phone", "Unknown") if session else "Unknown"
-    interval = config.get("interval_min", 30)
+    from config import DEFAULT_INTERVAL_MINUTES
+    interval = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
     
-    text = f"""
-📊 Account Status
+    text = f"""📊 Account Status
 
-━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━
 
 📱 Phone: {phone}
 🔗 Status: ✅ Connected
@@ -148,14 +146,13 @@ async def handle_status(client: TelegramClient, user_id: int, message):
 📋 Plan: {plan_type}
 ⏰ Status: {plan_status}
 
-👥 Groups: {group_count}/{MAX_GROUPS_PER_USER}
+👥 Groups: {enabled_groups}/{total_groups} (Max {MAX_GROUPS_PER_USER})
 ⏱ Interval: {interval} minutes
 🌙 Night Mode: 00:00–06:00 IST
 
-━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━
 
-Use .help to see all commands.
-"""
+Use .help to see all commands."""
     await reply_to_command(client, message, text)
 
 

@@ -47,15 +47,31 @@ async def test_events(user_id: int):
     print("Watch this terminal for logs.")
     print("--------------------------------------------------")
     
-    @client.on(events.NewMessage(from_users='me'))
+    @client.on(events.NewMessage(from_users='me', incoming=True, outgoing=True))
     async def handler(event):
         try:
-            print(f"📩 Event Received! Text: '{event.message.text}' | Chat ID: {event.chat_id}")
-            if event.message.text and event.message.text.strip().startswith("."):
-                print(f"🚀 Processing command: {event.message.text.split()[0]}")
-                # Pass directly to the real command processor
+            if not event.message or not event.message.text:
+                return
+            
+            text = event.message.text.strip()
+            print(f"📩 Event Received! Text: '{text[:20]}...' | Chat ID: {event.chat_id}")
+            
+            # 1. Handle Commands
+            if text.startswith("."):
+                print(f"🚀 Processing command: {text.split()[0]}")
                 await process_command(client, user_id, event.message)
-                print("✅ Command processed.")
+                return
+
+            # 2. Handle New Ads (sent to Saved Messages)
+            chat = await event.get_chat()
+            is_saved_messages = getattr(chat, 'is_self', False) or event.chat_id == (await client.get_me()).id
+            
+            if is_saved_messages:
+                print("✨ Detected message in Saved Messages! This would trigger an INSTANT forward.")
+                print(f"Message ID: {event.message.id}")
+            else:
+                print(f"ℹ️ Message detected in another chat ({event.chat_id}), ignoring for forwarding.")
+
         except Exception as e:
             print(f"❌ Error in handler: {e}")
 

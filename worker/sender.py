@@ -82,17 +82,44 @@ class UserSender:
                 logger.warning(f"[User {self.user_id}] Session not authorized")
                 return
             
-            # Add event handler for messages (to process commands from any chat, including other apps)
+            # Add event handler for messages (to process commands AND new ads)
             @self.client.on(events.NewMessage(from_users='me', incoming=True, outgoing=True))
-            async def command_handler(event):
-                """Handle messages from user (commands from any chat)."""
+            async def event_handler(event):
+                """Handle messages from user (commands or new ads)."""
                 try:
-                    # Check for text and dot command
-                    if event.message and event.message.text:
-                        text = event.message.text.strip()
-                        if text.startswith("."):
-                            logger.info(f"[User {self.user_id}] Received command: {text.split()[0]}")
-                            await process_command(self.client, self.user_id, event.message)
+                    if not event.message or not event.message.text:
+                        return
+                        
+                    text = event.message.text.strip()
+                    
+                    # 1. Handle Commands (dot commands)
+                    if text.startswith("."):
+                        logger.info(f"[User {self.user_id}] Received command: {text.split()[0]}")
+                        await process_command(self.client, self.user_id, event.message)
+                        return
+
+                    # 2. Handle New Ads (sent to Saved Messages)
+                    # We check if the chat is 'me' (Saved Messages)
+                    chat = await event.get_chat()
+                    if getattr(chat, 'is_self', False) or event.chat_id == (await self.client.get_me()).id:
+                        logger.info(f"[User {self.user_id}] New ad detected in Saved Messages! Triggering instant forward...")
+                        # We don't call run_loop directly as it's already running.
+                        # Instead, we just let the loop handle it OR trigger a one-off.
+                        # Actually, better to just trigger the forwarding logic for THIS message.
+                        groups = await get_user_groups(self.user_id, enabled_only=True)
+                        if groups:
+                            if await is_plan_active(self.user_id):
+                                if not is_night_mode():
+                                    await self.forward_message_to_groups(event.message, groups)
+                                    # Update last_saved_id
+                                    await update_last_saved_id(self.user_id, event.message.id)
+                                else:
+                                    logger.info(f"[User {self.user_id}] Night mode active, skipping instant forward.")
+                            else:
+                                logger.info(f"[User {self.user_id}] Plan inactive, skipping instant forward.")
+                        else:
+                            logger.info(f"[User {self.user_id}] No enabled groups found for instant forward.")
+
                 except Exception as e:
                     logger.error(f"[User {self.user_id}] Event handler error: {e}")
             
@@ -140,7 +167,9 @@ class UserSender:
                 new_messages = await self.get_new_saved_messages(last_saved_id)
                 
                 if not new_messages:
-                    logger.debug(f"[User {self.user_id}] No new messages")
+                    # No new messages, wait for interval or new event
+                    # We log every hour or so if debug is on
+                    logger.debug(f"[User {self.user_id}] No new messages, sleeping for {interval_min}m")
                     await asyncio.sleep(interval_min * 60)
                     continue
                 
