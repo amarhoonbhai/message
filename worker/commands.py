@@ -59,10 +59,6 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".interval":
             await handle_interval(client, user_id, message, text)
             return True
-        else:
-            # Unknown dot-command
-            await reply_to_command(client, message, f"❌ Unknown command: {cmd}\n\nUse .help to see available commands.")
-            return True
     except Exception as e:
         logger.error(f"[User {user_id}] Command error: {e}")
         await reply_to_command(client, message, f"Error: {str(e)}")
