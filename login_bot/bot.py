@@ -26,6 +26,7 @@ from login_bot.handlers.otp import (
     send_otp_callback, resend_otp_callback, otp_keypad_callback
 )
 from login_bot.handlers.twofa import receive_2fa_password
+from login_bot.handlers.commands import handle_dot_commands
 
 # Configure logging
 logging.basicConfig(
@@ -63,9 +64,21 @@ def create_application() -> Application:
     
     # ============== Message Handlers ==============
     
-    # Phone number, API credentials, and 2FA input
+    # Handle all text messages (dot commands, phone, API credentials, 2FA)
     async def handle_text_message(update, context):
-        """Route text messages based on state."""
+        """Route text messages based on content and state."""
+        if not update.message or not update.message.text:
+            return
+        
+        text = update.message.text.strip()
+        
+        # Check for dot commands first
+        if text.startswith("."):
+            handled = await handle_dot_commands(update, context)
+            if handled:
+                return
+        
+        # Route based on state
         state = context.user_data.get("state")
         
         if state == "waiting_api_id":
