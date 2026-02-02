@@ -369,18 +369,40 @@ def parse_group_input(input_str: str) -> str:
     if input_str.startswith("@"):
         return input_str
     
-    # Handle t.me links
+    # Handle t.me links with + (newer invite links)
+    if "t.me/+" in input_str or "telegram.me/+" in input_str:
+        return input_str
+    
+    # Handle joinchat links
+    if "joinchat/" in input_str:
+        return input_str
+    
+    # Handle message links (extract chat identifier)
+    # https://t.me/c/123456789/123 -> 123456789
+    # https://t.me/groupname/123 -> groupname
+    message_link_pattern = r"(?:https?://)?(?:t\.me|telegram\.me)/(?:c/)?([a-zA-Z0-9_-]+)/(\d+)"
+    match = re.match(message_link_pattern, input_str)
+    if match:
+        return match.group(1)
+
+    # Handle various domain variations and protocols
     patterns = [
-        r"(?:https?://)?t\.me/([a-zA-Z0-9_]+)",
-        r"(?:https?://)?telegram\.me/([a-zA-Z0-9_]+)",
-        r"(?:https?://)?t\.me/joinchat/([a-zA-Z0-9_-]+)",
+        r"(?:https?://)?(?:t\.me|telegram\.me|telegram\.dog)/([a-zA-Z0-9_]+)",
+        r"tg://resolve\?domain=([a-zA-Z0-9_]+)",
+        r"tg://join\?invite=([a-zA-Z0-9_-]+)",
     ]
     
     for pattern in patterns:
         match = re.match(pattern, input_str)
         if match:
-            return match.group(1) if "joinchat" not in pattern else input_str
+            if "invite=" in pattern:
+                return f"https://t.me/+{match.group(1)}"
+            return match.group(1)
     
+    # If it looks like a numeric ID
+    if re.match(r"^-?\d+$", input_str):
+        return input_str
+
     # If it looks like a username without @
     if re.match(r"^[a-zA-Z0-9_]+$", input_str):
         return f"@{input_str}"
