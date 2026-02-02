@@ -214,7 +214,7 @@ class UserSender:
             messages = []
             
             async for msg in self.client.iter_messages(
-                InputPeerSelf(),
+                'me',
                 limit=50,
                 min_id=last_saved_id
             ):
