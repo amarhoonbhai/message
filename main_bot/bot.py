@@ -23,7 +23,7 @@ from main_bot.handlers.plans import my_plan_callback
 from main_bot.handlers.referral import referral_callback
 from main_bot.handlers.redeem import redeem_code_callback, receive_redeem_code, redeem_command, WAITING_CODE
 from main_bot.handlers.admin import (
-    admin_callback, admin_command, stats_command, broadcast_command,
+    admin_callback, admin_command,
     admin_stats_callback, admin_broadcast_callback,
     broadcast_target_callback, receive_broadcast_message, gen_code_callback,
     generate_command, admin_users_callback, WAITING_BROADCAST_MESSAGE
