@@ -61,20 +61,19 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
             return True
     except Exception as e:
         logger.error(f"[User {user_id}] Command error: {e}")
-        await reply_to_saved(client, f"Error: {str(e)}")
+        await reply_to_command(client, message.chat_id, f"Error: {str(e)}")
     
     return False
 
 
-async def reply_to_saved(client: TelegramClient, text: str):
-    """Send a reply to Saved Messages (to self)."""
-    await client.send_message(InputPeerSelf(), text)
+async def reply_to_command(client: TelegramClient, chat_id, text: str):
+    """Send a reply to the chat where command was sent."""
+    await client.send_message(chat_id, text)
 
 
 async def handle_help(client: TelegramClient, user_id: int, message):
     """Handle .help command."""
-    text = f"""
-📚 Available Commands
+    text = """📚 Available Commands
 
 ━━━━━━━━━━━━━━━━━━━
 
@@ -84,7 +83,7 @@ async def handle_help(client: TelegramClient, user_id: int, message):
 .groups — List all your groups
 
 ⚙️ Settings
-.interval <minutes> — Set posting interval (min: {MIN_INTERVAL_MINUTES})
+.interval <minutes> — Set posting interval (min: {min_interval})
 .status — View your account status
 
 ❓ Help
@@ -99,10 +98,11 @@ async def handle_help(client: TelegramClient, user_id: int, message):
 
 💡 Notes:
 • You must be a member of the group to add it
-• Maximum {MAX_GROUPS_PER_USER} groups allowed
-• Minimum interval is {MIN_INTERVAL_MINUTES} minutes
-"""
-    await reply_to_saved(client, text)
+• Maximum {max_groups} groups allowed
+• Minimum interval is {min_interval} minutes
+""".format(min_interval=MIN_INTERVAL_MINUTES, max_groups=MAX_GROUPS_PER_USER)
+    
+    await reply_to_command(client, message.chat_id, text)
 
 
 async def handle_status(client: TelegramClient, user_id: int, message):
@@ -156,7 +156,7 @@ async def handle_status(client: TelegramClient, user_id: int, message):
 
 Use .help to see all commands.
 """
-    await reply_to_saved(client, text)
+    await reply_to_command(client, message.chat_id, text)
 
 
 async def handle_groups(client: TelegramClient, user_id: int, message):
@@ -164,7 +164,7 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
     groups = await get_user_groups(user_id)
     
     if not groups:
-        await reply_to_saved(client, "📭 No groups added yet\n\nUse .addgroup <url> to add a group.")
+        await reply_to_command(client, message.chat_id, "📭 No groups added yet\n\nUse .addgroup <url> to add a group.")
         return
     
     text = f"👥 Your Groups ({len(groups)}/{MAX_GROUPS_PER_USER})\n\n"
@@ -177,7 +177,7 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
     text += "\n━━━━━━━━━━━━━━━━━━━\n"
     text += "Use .rmgroup <url> to remove a group."
     
-    await reply_to_saved(client, text)
+    await reply_to_command(client, message.chat_id, text)
 
 
 async def handle_addgroup(client: TelegramClient, user_id: int, message, text: str):
@@ -185,7 +185,7 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     # Parse the URL/username
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        await reply_to_saved(client, 
+        await reply_to_command(client, message.chat_id, 
             "❌ Usage: .addgroup <url or @username>\n\n"
             "Examples:\n"
             "• .addgroup https://t.me/mygroup\n"
@@ -198,7 +198,7 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     # Check group limit
     count = await get_group_count(user_id)
     if count >= MAX_GROUPS_PER_USER:
-        await reply_to_saved(client,
+        await reply_to_command(client, message.chat_id,
             f"❌ Maximum groups reached!\n\n"
             f"You can only add up to {MAX_GROUPS_PER_USER} groups.\n"
             f"Remove a group with .rmgroup <url> first."
@@ -209,7 +209,7 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     group_identifier = parse_group_input(group_input)
     
     if not group_identifier:
-        await reply_to_saved(client,
+        await reply_to_command(client, message.chat_id,
             "❌ Invalid group URL or username\n\n"
             "Use format like:\n"
             "• https://t.me/groupname\n"
@@ -217,20 +217,20 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
         )
         return
     
-    await reply_to_saved(client, "🔄 Checking group...")
+    await reply_to_command(client, message.chat_id, "🔄 Checking group...")
     
     try:
         # Get the entity (group/channel)
         try:
             entity = await client.get_entity(group_identifier)
         except (UsernameNotOccupiedError, UsernameInvalidError):
-            await reply_to_saved(client, "❌ Group not found\n\nMake sure the username/link is correct.")
+            await reply_to_command(client, message.chat_id, "❌ Group not found\n\nMake sure the username/link is correct.")
             return
         except (ChannelPrivateError, ChannelInvalidError):
-            await reply_to_saved(client, "❌ Cannot access group\n\nMake sure you are a member of this group.")
+            await reply_to_command(client, message.chat_id, "❌ Cannot access group\n\nMake sure you are a member of this group.")
             return
         except (InviteHashInvalidError, InviteHashExpiredError):
-            await reply_to_saved(client, "❌ Invalid or expired invite link")
+            await reply_to_command(client, message.chat_id, "❌ Invalid or expired invite link")
             return
         
         # Get chat ID and title
@@ -241,21 +241,21 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
         success = await add_group(user_id, chat_id, chat_title)
         
         if success:
-            await reply_to_saved(client,
+            await reply_to_command(client, message.chat_id,
                 f"✅ Group added successfully!\n\n"
                 f"📌 {chat_title}\n"
                 f"🆔 {chat_id}\n\n"
                 f"Messages will be forwarded to this group."
             )
         else:
-            await reply_to_saved(client,
+            await reply_to_command(client, message.chat_id,
                 f"❌ Could not add group\n\n"
                 f"You may have reached the maximum limit of {MAX_GROUPS_PER_USER} groups."
             )
         
     except Exception as e:
         logger.error(f"Error adding group: {e}")
-        await reply_to_saved(client, f"❌ Error: {str(e)}")
+        await reply_to_command(client, message.chat_id, f"❌ Error: {str(e)}")
 
 
 async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: str):
@@ -263,7 +263,7 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
     # Parse the URL/username
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        await reply_to_saved(client,
+        await reply_to_command(client, message.chat_id,
             "❌ Usage: .rmgroup <url or @username>\n\n"
             "Use .groups to see your groups first."
         )
@@ -275,7 +275,7 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
     group_identifier = parse_group_input(group_input)
     
     if not group_identifier:
-        await reply_to_saved(client, "❌ Invalid group URL or username")
+        await reply_to_command(client, message.chat_id, "❌ Invalid group URL or username")
         return
     
     try:
@@ -298,7 +298,7 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
                 chat_id = matched["chat_id"]
                 chat_title = matched["chat_title"]
             else:
-                await reply_to_saved(client,
+                await reply_to_command(client, message.chat_id,
                     "❌ Group not found in your list\n\n"
                     "Use .groups to see your groups."
                 )
@@ -307,11 +307,11 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
         # Remove from database
         await remove_group(user_id, chat_id)
         
-        await reply_to_saved(client, f"✅ Group removed!\n\n📌 {chat_title}")
+        await reply_to_command(client, message.chat_id, f"✅ Group removed!\n\n📌 {chat_title}")
         
     except Exception as e:
         logger.error(f"Error removing group: {e}")
-        await reply_to_saved(client, f"❌ Error: {str(e)}")
+        await reply_to_command(client, message.chat_id, f"❌ Error: {str(e)}")
 
 
 async def handle_interval(client: TelegramClient, user_id: int, message, text: str):
@@ -321,7 +321,7 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
     if len(parts) < 2:
         config = await get_user_config(user_id)
         current = config.get("interval_min", 30)
-        await reply_to_saved(client,
+        await reply_to_command(client, message.chat_id,
             f"⏱ Current Interval: {current} minutes\n\n"
             f"Usage: .interval <minutes>\n"
             f"Minimum: {MIN_INTERVAL_MINUTES} minutes\n\n"
@@ -332,7 +332,7 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
     try:
         interval = int(parts[1].strip())
     except ValueError:
-        await reply_to_saved(client,
+        await reply_to_command(client, message.chat_id,
             f"❌ Invalid number\n\n"
             f"Please enter a valid number of minutes.\n"
             f"Example: .interval 30"
@@ -341,14 +341,14 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
     
     # Validate interval
     if interval < MIN_INTERVAL_MINUTES:
-        await reply_to_saved(client,
+        await reply_to_command(client, message.chat_id,
             f"❌ Interval too low\n\n"
             f"Minimum interval is {MIN_INTERVAL_MINUTES} minutes."
         )
         return
     
     if interval > 1440:  # 24 hours max
-        await reply_to_saved(client,
+        await reply_to_command(client, message.chat_id,
             "❌ Interval too high\n\n"
             "Maximum interval is 1440 minutes (24 hours)."
         )
@@ -357,7 +357,7 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
     # Update config
     await update_user_config(user_id, interval_min=interval)
     
-    await reply_to_saved(client,
+    await reply_to_command(client, message.chat_id,
         f"✅ Interval updated!\n\n"
         f"⏱ New interval: {interval} minutes\n\n"
         f"Messages will be forwarded every {interval} minutes."
