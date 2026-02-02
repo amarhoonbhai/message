@@ -27,6 +27,7 @@ from db.models import (
     update_last_saved_id, remove_group, log_send, is_plan_active
 )
 from worker.utils import is_night_mode, seconds_until_morning, format_time_remaining
+from worker.commands import process_command
 
 logger = logging.getLogger(__name__)
 
@@ -118,13 +119,8 @@ class UserSender:
                 interval_min = max(config.get("interval_min", MIN_INTERVAL_MINUTES), MIN_INTERVAL_MINUTES)
                 last_saved_id = config.get("last_saved_id", 0)
                 
-                # 4. Get user's groups
+                # 4. Get user's groups (may be empty, but we still process commands)
                 groups = await get_user_groups(self.user_id, enabled_only=True)
-                
-                if not groups:
-                    logger.info(f"[User {self.user_id}] No enabled groups, skipping...")
-                    await asyncio.sleep(interval_min * 60)
-                    continue
                 
                 # 5. Fetch NEW Saved Messages
                 new_messages = await self.get_new_saved_messages(last_saved_id)
@@ -136,9 +132,25 @@ class UserSender:
                 
                 logger.info(f"[User {self.user_id}] Found {len(new_messages)} new message(s) to forward")
                 
-                # 6. Forward messages to groups
+                # 6. Process messages - check for commands first, then forward
                 for msg in new_messages:
-                    await self.forward_message_to_groups(msg, groups)
+                    # Check if message is a dot command
+                    if msg.text and msg.text.strip().startswith("."):
+                        try:
+                            is_command = await process_command(self.client, self.user_id, msg)
+                            if is_command:
+                                logger.info(f"[User {self.user_id}] Processed command: {msg.text.split()[0]}")
+                                # Update last_saved_id to skip this command message
+                                if msg.id > last_saved_id:
+                                    last_saved_id = msg.id
+                                    await update_last_saved_id(self.user_id, last_saved_id)
+                                continue  # Don't forward commands to groups
+                        except Exception as e:
+                            logger.error(f"[User {self.user_id}] Command processing error: {e}")
+                    
+                    # Forward regular message to groups (only if we have groups)
+                    if groups:
+                        await self.forward_message_to_groups(msg, groups)
                     
                     # Update last_saved_id after each message
                     if msg.id > last_saved_id:
