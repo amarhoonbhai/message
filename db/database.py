@@ -2,6 +2,8 @@
 MongoDB database connection using motor (async driver).
 """
 
+import ssl
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from config import MONGODB_URI
 
@@ -15,7 +17,14 @@ def get_database() -> AsyncIOMotorDatabase:
     global _client, _db
     
     if _db is None:
-        _client = AsyncIOMotorClient(MONGODB_URI)
+        # Configure SSL/TLS for MongoDB Atlas
+        # Use certifi's certificate bundle for proper SSL verification
+        _client = AsyncIOMotorClient(
+            MONGODB_URI,
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=30000,
+            connectTimeoutMS=30000,
+        )
         _db = _client.spinify
     
     return _db
