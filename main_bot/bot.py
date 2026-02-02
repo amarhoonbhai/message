@@ -29,7 +29,8 @@ from main_bot.handlers.plans import my_plan_callback
 from main_bot.handlers.referral import referral_callback
 from main_bot.handlers.redeem import redeem_code_callback, receive_redeem_code, redeem_command, WAITING_CODE
 from main_bot.handlers.admin import (
-    admin_callback, admin_command, admin_stats_callback, admin_broadcast_callback,
+    admin_callback, admin_command, stats_command, broadcast_command,
+    admin_stats_callback, admin_broadcast_callback,
     broadcast_target_callback, receive_broadcast_message, gen_code_callback,
     generate_command, admin_users_callback, WAITING_BROADCAST_MESSAGE
 )
@@ -56,6 +57,8 @@ def create_application() -> Application:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("redeem", redeem_command))
     application.add_handler(CommandHandler("admin", admin_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("generate", generate_command))
     
     # ============== Conversation Handlers ==============
