@@ -7,8 +7,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telethon.errors import PasswordHashInvalidError, FloodWaitError
 
-from login_bot.handlers.otp import _login_clients, save_session_and_complete
-from login_bot.utils.keyboards import get_2fa_keyboard, get_cancel_keyboard
+from login_bot.handlers.otp import _login_clients
+from login_bot.utils.keyboards import get_2fa_keyboard, get_cancel_keyboard, get_success_keyboard
+from db.models import create_session, create_user
+from config import MAIN_BOT_USERNAME
 
 logger = logging.getLogger(__name__)
 
@@ -37,32 +39,54 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
     api_id = login_data.get("api_id")
     api_hash = login_data.get("api_hash")
     
+    # Delete the password message for security
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+    
+    # Send verifying message
+    verifying_msg = await update.effective_chat.send_message("🔄 Verifying password...")
+    
     try:
         # Sign in with password
         await client.sign_in(password=password)
         
-        # Delete the password message for security
-        try:
-            await update.message.delete()
-        except Exception:
-            pass
+        # Success! Get session string
+        session_string = client.session.save()
         
-        # Success! Save session
-        await update.message.reply_text("🔄 Verifying password...")
+        # Save to database WITH API credentials
+        await create_user(user_id)
+        await create_session(user_id, phone, session_string, api_id, api_hash)
         
-        # Create a fake query object for compatibility
-        class FakeQuery:
-            async def answer(self, *args, **kwargs):
-                pass
-            async def edit_message_text(self, text, **kwargs):
-                await update.message.reply_text(text, **kwargs)
+        # Disconnect client
+        await client.disconnect()
         
-        fake_update = type('obj', (object,), {'callback_query': FakeQuery()})()
+        # Clean up
+        if user_id in _login_clients:
+            del _login_clients[user_id]
         
-        await save_session_and_complete(fake_update, context, client, phone, api_id, api_hash)
+        context.user_data.clear()
+        
+        # Edit the verifying message to show success
+        success_text = """
+✅ *Connected Successfully!*
+
+Your account is linked with your own API credentials.
+Open the main dashboard to manage groups, interval and plans.
+
+🎁 You have a *7-day free trial*.
+Invite 3 friends to get +7 days more!
+"""
+        
+        await verifying_msg.edit_text(
+            success_text,
+            parse_mode="Markdown",
+            reply_markup=get_success_keyboard(),
+        )
         
     except PasswordHashInvalidError:
-        await update.message.reply_text(
+        await verifying_msg.edit_text(
             "❌ *Invalid Password*\n\n"
             "The 2FA password is incorrect. Please try again.",
             parse_mode="Markdown",
@@ -70,7 +94,7 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         
     except FloodWaitError as e:
-        await update.message.reply_text(
+        await verifying_msg.edit_text(
             f"⏳ *Too Many Attempts*\n\n"
             f"Please wait {e.seconds} seconds before trying again.",
             parse_mode="Markdown",
@@ -79,7 +103,7 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
         
     except Exception as e:
         logger.error(f"2FA error: {e}")
-        await update.message.reply_text(
+        await verifying_msg.edit_text(
             f"❌ *Error*\n\n{str(e)}",
             parse_mode="Markdown",
             reply_markup=get_cancel_keyboard(),

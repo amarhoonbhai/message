@@ -42,6 +42,9 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
     """Build dashboard keyboard."""
     keyboard = [
         [
+            InlineKeyboardButton("⚙️ Manage Account", callback_data="manage_account"),
+        ],
+        [
             InlineKeyboardButton("🎁 My Plan", callback_data="my_plan"),
             InlineKeyboardButton("🤝 Refer & Earn", callback_data="referral"),
         ],
@@ -67,6 +70,9 @@ def get_plan_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton("🧾 Redeem Code", callback_data="redeem_code"),
+        ],
+        [
+            InlineKeyboardButton("👨‍💻 Contact @spinify", url="https://t.me/spinify"),
         ],
         [
             InlineKeyboardButton("🔙 Back", callback_data="dashboard"),
@@ -146,6 +152,31 @@ def get_broadcast_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("🔙 Back", callback_data="admin"),
             InlineKeyboardButton("🏠 Home", callback_data="home"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_manage_account_keyboard() -> InlineKeyboardMarkup:
+    """Build manage account keyboard."""
+    keyboard = [
+        [
+            InlineKeyboardButton("🔌 Disconnect Account", callback_data="disconnect_account"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back", callback_data="dashboard"),
+            InlineKeyboardButton("🏠 Home", callback_data="home"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_confirm_disconnect_keyboard() -> InlineKeyboardMarkup:
+    """Build disconnect confirmation keyboard."""
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Yes, Disconnect", callback_data="confirm_disconnect"),
+            InlineKeyboardButton("❌ Cancel", callback_data="manage_account"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)

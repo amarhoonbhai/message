@@ -29,6 +29,9 @@ from main_bot.handlers.admin import (
     generate_command, admin_users_callback, WAITING_BROADCAST_MESSAGE
 )
 from main_bot.handlers.help import help_callback, help_command
+from main_bot.handlers.account import (
+    manage_account_callback, disconnect_account_callback, confirm_disconnect_callback
+)
 
 # Configure logging
 logging.basicConfig(
@@ -107,6 +110,11 @@ def create_application() -> Application:
     application.add_handler(CallbackQueryHandler(admin_broadcast_callback, pattern="^admin_broadcast$"))
     application.add_handler(CallbackQueryHandler(gen_code_callback, pattern="^gen_code:"))
     application.add_handler(CallbackQueryHandler(admin_users_callback, pattern="^admin_users$"))
+    
+    # Account Management
+    application.add_handler(CallbackQueryHandler(manage_account_callback, pattern="^manage_account$"))
+    application.add_handler(CallbackQueryHandler(disconnect_account_callback, pattern="^disconnect_account$"))
+    application.add_handler(CallbackQueryHandler(confirm_disconnect_callback, pattern="^confirm_disconnect$"))
     
     return application
 
