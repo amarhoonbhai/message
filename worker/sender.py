@@ -209,7 +209,26 @@ class UserSender:
                 # 6. CRITICAL: Reset index if out of bounds (ensures infinite loop)
                 # This handles: single message, message deletion, first run, etc.
                 if current_msg_index >= len(all_messages) or current_msg_index < 0:
-                    logger.info(f"[User {self.user_id}] 🔄 Loop cycle complete! Restarting from message 1...")
+                    logger.info(f"[User {self.user_id}] 🔄 Loop cycle complete! Waiting {MIN_INTERVAL_MINUTES} minutes before restarting...")
+                    
+                    # Wait for the full cycle interval before restarting
+                    # Sleep in chunks to respect Auto-Night pauses
+                    cycle_wait_seconds = MIN_INTERVAL_MINUTES * 60
+                    elapsed = 0
+                    while elapsed < cycle_wait_seconds and self.running:
+                        # Check for night mode during wait
+                        if is_night_mode():
+                            wait_seconds = seconds_until_morning()
+                            logger.info(f"[User {self.user_id}] Auto-Night mode during cycle wait, sleeping {format_time_remaining(wait_seconds)}...")
+                            await asyncio.sleep(min(wait_seconds, 3600))
+                            continue  # Don't count night pause toward elapsed time
+                        
+                        # Sleep in 60s chunks for responsiveness
+                        sleep_chunk = min(60, cycle_wait_seconds - elapsed)
+                        await asyncio.sleep(sleep_chunk)
+                        elapsed += sleep_chunk
+                    
+                    logger.info(f"[User {self.user_id}] ▶️ Cycle interval complete! Restarting from message 1...")
                     current_msg_index = 0
                     await update_current_msg_index(self.user_id, 0)
                 
