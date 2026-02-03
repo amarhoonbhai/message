@@ -168,68 +168,76 @@ class UserSender:
                 logger.error(f"[User {self.user_id}] Bio monitor error: {e}")
     
     async def run_loop(self):
-        """Main sender loop - continuously forwards ALL saved messages in a loop."""
+        """Main sender loop - INFINITE LOOP that continuously forwards ALL saved messages."""
+        logger.info(f"[User {self.user_id}] Starting infinite forwarding loop...")
+        
         while self.running:
             try:
                 # 1. Check plan validity
                 if not await is_plan_active(self.user_id):
-                    logger.info(f"[User {self.user_id}] Plan expired or inactive, skipping...")
-                    await asyncio.sleep(300)  # Check again in 5 minutes
-                    continue
+                    logger.info(f"[User {self.user_id}] Plan expired or inactive, sleeping 5 min...")
+                    await asyncio.sleep(300)
+                    continue  # Never exit, just continue checking
                 
                 # 2. Check night mode - pause during night hours
                 if is_night_mode():
                     wait_seconds = seconds_until_morning()
-                    logger.info(f"[User {self.user_id}] Auto-Night mode active, sleeping for {format_time_remaining(wait_seconds)}")
-                    await asyncio.sleep(min(wait_seconds, 3600))  # Max 1 hour, then recheck
-                    continue
+                    logger.info(f"[User {self.user_id}] Auto-Night mode, sleeping {format_time_remaining(wait_seconds)}...")
+                    await asyncio.sleep(min(wait_seconds, 3600))
+                    continue  # Never exit, resume after night
                 
                 # 3. Get user's groups
                 groups = await get_user_groups(self.user_id, enabled_only=True)
                 
                 if not groups:
-                    logger.debug(f"[User {self.user_id}] No groups configured, sleeping...")
+                    logger.debug(f"[User {self.user_id}] No groups yet, waiting...")
                     await asyncio.sleep(300)
-                    continue
+                    continue  # Never exit, keep waiting for groups
                 
                 # 4. Fetch ALL Saved Messages (non-command messages only)
                 all_messages = await self.get_all_saved_messages()
                 
                 if not all_messages:
-                    logger.debug(f"[User {self.user_id}] No messages in Saved Messages, sleeping...")
+                    logger.debug(f"[User {self.user_id}] No messages yet, waiting...")
                     await asyncio.sleep(300)
-                    continue
+                    continue  # Never exit, keep waiting for messages
                 
                 # 5. Get current position in the message loop
                 config = await get_user_config(self.user_id)
                 current_msg_index = config.get("current_msg_index", 0)
                 
-                # 6. Loop: if we've reached the end, reset to oldest (index 0)
-                if current_msg_index >= len(all_messages):
-                    logger.info(f"[User {self.user_id}] Completed full loop! Restarting from oldest message...")
+                # 6. CRITICAL: Reset index if out of bounds (ensures infinite loop)
+                # This handles: single message, message deletion, first run, etc.
+                if current_msg_index >= len(all_messages) or current_msg_index < 0:
+                    logger.info(f"[User {self.user_id}] 🔄 Loop cycle complete! Restarting from message 1...")
                     current_msg_index = 0
                     await update_current_msg_index(self.user_id, 0)
                 
                 # 7. Get current message to forward
                 msg = all_messages[current_msg_index]
-                logger.info(f"[User {self.user_id}] Forwarding message {current_msg_index + 1}/{len(all_messages)} (ID: {msg.id})")
+                total_msgs = len(all_messages)
+                logger.info(f"[User {self.user_id}] 📤 Forwarding message {current_msg_index + 1}/{total_msgs} to {len(groups)} group(s)...")
                 
-                # 8. Forward message to all groups (with GROUP_GAP between each)
+                # 8. Forward message to ALL groups (with GROUP_GAP between each)
                 await self.forward_message_to_groups(msg, groups)
                 
-                # 9. Increment position for next cycle
+                # 9. Increment position for next iteration
                 current_msg_index += 1
                 await update_current_msg_index(self.user_id, current_msg_index)
                 
-                # 10. Wait MESSAGE_GAP_SECONDS (250s) before processing next message
-                logger.info(f"[User {self.user_id}] Waiting {MESSAGE_GAP_SECONDS}s before next message...")
+                # 10. Wait MESSAGE_GAP before next message (this is NOT an exit point)
+                logger.info(f"[User {self.user_id}] ⏳ Waiting {MESSAGE_GAP_SECONDS}s before next message...")
                 await asyncio.sleep(MESSAGE_GAP_SECONDS)
                 
+                # Loop continues automatically - NEVER exits here
+                
             except asyncio.CancelledError:
-                break
+                logger.info(f"[User {self.user_id}] Loop cancelled (shutdown)")
+                break  # Only exit on explicit cancellation
             except Exception as e:
-                logger.error(f"[User {self.user_id}] Loop error: {e}")
-                await asyncio.sleep(60)  # Wait before retrying
+                logger.error(f"[User {self.user_id}] Loop error: {e} - retrying in 60s...")
+                await asyncio.sleep(60)
+                # Continue the loop, never exit on errors
     
     async def get_all_saved_messages(self) -> list:
         """Fetch ALL Saved Messages (excluding command messages)."""
