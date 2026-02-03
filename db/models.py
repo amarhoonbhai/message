@@ -176,6 +176,16 @@ async def update_last_saved_id(user_id: int, last_saved_id: int):
     )
 
 
+async def update_current_msg_index(user_id: int, index: int):
+    """Update current message index for continuous loop forwarding."""
+    db = get_database()
+    await db.config.update_one(
+        {"user_id": user_id},
+        {"$set": {"current_msg_index": index, "updated_at": datetime.utcnow()}},
+        upsert=True
+    )
+
+
 # ==================== GROUPS ====================
 
 async def add_group(user_id: int, chat_id: int, chat_title: str) -> bool:
@@ -279,6 +289,18 @@ async def is_plan_active(user_id: int) -> bool:
     """Check if user has active plan."""
     plan = await get_plan(user_id)
     return plan is not None and plan.get("status") == "active" and plan["expires_at"] > datetime.utcnow()
+
+
+async def is_trial_user(user_id: int) -> bool:
+    """Check if user is on trial plan (not paid)."""
+    plan = await get_plan(user_id)
+    if not plan:
+        return False
+    return (
+        plan.get("plan_type") == "trial" and 
+        plan.get("status") == "active" and 
+        plan["expires_at"] > datetime.utcnow()
+    )
 
 
 async def extend_plan(user_id: int, days: int):

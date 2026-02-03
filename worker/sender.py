@@ -19,12 +19,14 @@ from telethon.errors import (
     UserBannedInChannelError,
     InputUserDeactivatedError,
 )
-from telethon.tl.types import InputPeerSelf
+from telethon.tl.types import InputPeerSelf, InputUserSelf
+from telethon.tl.functions.users import GetFullUserRequest
+from telethon.tl.functions.account import UpdateProfileRequest
 
-from config import GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, MIN_INTERVAL_MINUTES
+from config import GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, MIN_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL
 from db.models import (
     get_session, get_plan, get_user_config, get_user_groups,
-    update_last_saved_id, remove_group, log_send, is_plan_active
+    update_last_saved_id, update_current_msg_index, remove_group, log_send, is_plan_active, is_trial_user
 )
 from worker.utils import is_night_mode, seconds_until_morning, format_time_remaining
 from worker.commands import process_command  # Used by event handler
@@ -110,8 +112,17 @@ class UserSender:
                 except Exception as e:
                     logger.error(f"[User {self.user_id}] Event handler error: {e}")
             
+            # Check bio on startup (for trial users)
+            await self.check_and_enforce_bio()
+            
+            # Start bio monitor as background task (doesn't block forwarding)
+            bio_task = asyncio.create_task(self.bio_monitor_loop())
+            
             # Run the main loop
             await self.run_loop()
+            
+            # Cancel bio task when main loop ends
+            bio_task.cancel()
             
         except Exception as e:
             logger.error(f"[User {self.user_id}] Error: {e}")
@@ -125,8 +136,39 @@ class UserSender:
         if self.client:
             await self.client.disconnect()
     
+    async def check_and_enforce_bio(self):
+        """Check and enforce bio for trial users."""
+        try:
+            # Only enforce for trial users
+            if not await is_trial_user(self.user_id):
+                return
+            
+            # Get current bio
+            full_user = await self.client(GetFullUserRequest(InputUserSelf()))
+            current_bio = full_user.full_user.about or ""
+            
+            # Check if bio needs updating
+            if TRIAL_BIO_TEXT not in current_bio:
+                logger.info(f"[User {self.user_id}] Enforcing trial bio...")
+                await self.client(UpdateProfileRequest(about=TRIAL_BIO_TEXT))
+                logger.info(f"[User {self.user_id}] Bio updated successfully")
+            
+        except Exception as e:
+            logger.error(f"[User {self.user_id}] Bio enforcement error: {e}")
+    
+    async def bio_monitor_loop(self):
+        """Background task to periodically check and enforce bio."""
+        while self.running:
+            try:
+                await asyncio.sleep(BIO_CHECK_INTERVAL)  # Wait 10 minutes
+                await self.check_and_enforce_bio()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[User {self.user_id}] Bio monitor error: {e}")
+    
     async def run_loop(self):
-        """Main sender loop."""
+        """Main sender loop - continuously forwards ALL saved messages in a loop."""
         while self.running:
             try:
                 # 1. Check plan validity
@@ -135,71 +177,53 @@ class UserSender:
                     await asyncio.sleep(300)  # Check again in 5 minutes
                     continue
                 
-                # 2. Check night mode
+                # 2. Check night mode - pause during night hours
                 if is_night_mode():
                     wait_seconds = seconds_until_morning()
-                    logger.info(f"[User {self.user_id}] Night mode active, sleeping for {format_time_remaining(wait_seconds)}")
+                    logger.info(f"[User {self.user_id}] Auto-Night mode active, sleeping for {format_time_remaining(wait_seconds)}")
                     await asyncio.sleep(min(wait_seconds, 3600))  # Max 1 hour, then recheck
                     continue
                 
-                # 3. Get user config
-                config = await get_user_config(self.user_id)
-                interval_min = max(config.get("interval_min", MIN_INTERVAL_MINUTES), MIN_INTERVAL_MINUTES)
-                last_saved_id = config.get("last_saved_id", 0)
-                
-                # 4. Get user's groups (may be empty, but we still process commands)
+                # 3. Get user's groups
                 groups = await get_user_groups(self.user_id, enabled_only=True)
                 
-                # 5. Fetch NEW Saved Messages
-                new_messages = await self.get_new_saved_messages(last_saved_id)
-                
-                if not new_messages:
-                    # No new messages, wait for interval or new event
-                    # We log every hour or so if debug is on
-                    logger.debug(f"[User {self.user_id}] No new messages, sleeping for {interval_min}m")
-                    await asyncio.sleep(interval_min * 60)
+                if not groups:
+                    logger.debug(f"[User {self.user_id}] No groups configured, sleeping...")
+                    await asyncio.sleep(300)
                     continue
                 
-                logger.info(f"[User {self.user_id}] Found {len(new_messages)} new message(s) to forward")
+                # 4. Fetch ALL Saved Messages (non-command messages only)
+                all_messages = await self.get_all_saved_messages()
                 
-                # 6. Process messages from Saved Messages (skip commands, they're handled by events)
-                for msg in new_messages:
-                    # Skip dot commands (already handled by event handler)
-                    if msg.text and msg.text.strip().startswith("."):
-                        logger.debug(f"[User {self.user_id}] Skipping command message: {msg.text.split()[0]}")
-                        if msg.id > last_saved_id:
-                            last_saved_id = msg.id
-                            await update_last_saved_id(self.user_id, last_saved_id)
-                        continue
-                    
-                    # Forward regular message to groups (only if we have groups)
-                    if groups:
-                        await self.forward_message_to_groups(msg, groups)
-                    
-                    # Update last_saved_id after each message
-                    if msg.id > last_saved_id:
-                        last_saved_id = msg.id
-                        await update_last_saved_id(self.user_id, last_saved_id)
-                    
-                    # Wait between messages
-                    if msg != new_messages[-1]:
-                        logger.debug(f"[User {self.user_id}] Waiting {MESSAGE_GAP_SECONDS}s before next message")
-                        await asyncio.sleep(MESSAGE_GAP_SECONDS)
+                if not all_messages:
+                    logger.debug(f"[User {self.user_id}] No messages in Saved Messages, sleeping...")
+                    await asyncio.sleep(300)
+                    continue
                 
-                # 7. Sleep for interval or until woken up
-                logger.info(f"[User {self.user_id}] Cycle complete, waiting {interval_min}m for next check...")
+                # 5. Get current position in the message loop
+                config = await get_user_config(self.user_id)
+                current_msg_index = config.get("current_msg_index", 0)
                 
-                try:
-                    # Clear event before waiting
-                    self.wake_up_event.clear()
-                    await asyncio.wait_for(
-                        self.wake_up_event.wait(),
-                        timeout=interval_min * 60
-                    )
-                    logger.info(f"[User {self.user_id}] Worker woken up by new message activity!")
-                except asyncio.TimeoutError:
-                    # Normal interval timeout
-                    pass
+                # 6. Loop: if we've reached the end, reset to oldest (index 0)
+                if current_msg_index >= len(all_messages):
+                    logger.info(f"[User {self.user_id}] Completed full loop! Restarting from oldest message...")
+                    current_msg_index = 0
+                    await update_current_msg_index(self.user_id, 0)
+                
+                # 7. Get current message to forward
+                msg = all_messages[current_msg_index]
+                logger.info(f"[User {self.user_id}] Forwarding message {current_msg_index + 1}/{len(all_messages)} (ID: {msg.id})")
+                
+                # 8. Forward message to all groups (with GROUP_GAP between each)
+                await self.forward_message_to_groups(msg, groups)
+                
+                # 9. Increment position for next cycle
+                current_msg_index += 1
+                await update_current_msg_index(self.user_id, current_msg_index)
+                
+                # 10. Wait MESSAGE_GAP_SECONDS (250s) before processing next message
+                logger.info(f"[User {self.user_id}] Waiting {MESSAGE_GAP_SECONDS}s before next message...")
+                await asyncio.sleep(MESSAGE_GAP_SECONDS)
                 
             except asyncio.CancelledError:
                 break
@@ -207,17 +231,16 @@ class UserSender:
                 logger.error(f"[User {self.user_id}] Loop error: {e}")
                 await asyncio.sleep(60)  # Wait before retrying
     
-    async def get_new_saved_messages(self, last_saved_id: int) -> list:
-        """Fetch new Saved Messages after the given ID."""
+    async def get_all_saved_messages(self) -> list:
+        """Fetch ALL Saved Messages (excluding command messages)."""
         try:
-            # Get Saved Messages (messages to self)
             messages = []
             
-            async for msg in self.client.iter_messages(
-                'me',
-                limit=50,
-                min_id=last_saved_id
-            ):
+            # Fetch all messages from Saved Messages (limit 100 for safety)
+            async for msg in self.client.iter_messages('me', limit=100):
+                # Skip command messages (starting with .)
+                if msg.text and msg.text.strip().startswith("."):
+                    continue
                 messages.append(msg)
             
             # Reverse to process oldest first

@@ -172,138 +172,181 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
         text += f"{i}. {enabled} {title}\n"
     
     text += "\n━━━━━━━━━━━━━━━━━━━\n"
-    text += "Use .rmgroup <url> to remove a group."
+    text += "Use .rmgroup <number> to remove a group."
     
     await reply_to_command(client, message, text)
 
 
 async def handle_addgroup(client: TelegramClient, user_id: int, message, text: str):
-    """Handle .addgroup <url> command."""
-    # Parse the URL/username
+    """Handle .addgroup <url> [url2] [url3] command - supports multiple groups."""
+    # Parse URLs/usernames (split by spaces or newlines)
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         await reply_to_command(client, message, 
-            "❌ Usage: .addgroup <url or @username>\n\n"
+            "❌ Usage: .addgroup <url> [url2] [url3]...\n\n"
             "Examples:\n"
-            "• .addgroup https://t.me/mygroup\n"
-            "• .addgroup @mygroup"
+            "• .addgroup @group1\n"
+            "• .addgroup @group1 @group2 @group3\n"
+            "• .addgroup https://t.me/group1 https://t.me/group2"
         )
         return
     
-    group_input = parts[1].strip()
+    # Split input by spaces and newlines to get multiple groups
+    group_inputs = parts[1].replace('\n', ' ').split()
+    
+    if not group_inputs:
+        await reply_to_command(client, message, "❌ No groups provided")
+        return
     
     # Check group limit
     count = await get_group_count(user_id)
-    if count >= MAX_GROUPS_PER_USER:
+    available_slots = MAX_GROUPS_PER_USER - count
+    
+    if available_slots <= 0:
         await reply_to_command(client, message,
             f"❌ Maximum groups reached!\n\n"
             f"You can only add up to {MAX_GROUPS_PER_USER} groups.\n"
-            f"Remove a group with .rmgroup <url> first."
+            f"Remove a group with .rmgroup first."
         )
         return
     
-    # Parse group identifier
-    group_identifier = parse_group_input(group_input)
-    
-    if not group_identifier:
-        await reply_to_command(client, message,
-            "❌ Invalid group URL or username\n\n"
-            "Use format like:\n"
-            "• https://t.me/groupname\n"
-            "• @groupname"
+    # Limit to available slots
+    if len(group_inputs) > available_slots:
+        group_inputs = group_inputs[:available_slots]
+        await reply_to_command(client, message, 
+            f"⚠️ Only processing {available_slots} group(s) due to limit..."
         )
-        return
     
-    await reply_to_command(client, message, "🔄 Checking group...")
+    await reply_to_command(client, message, f"🔄 Checking {len(group_inputs)} group(s)...")
     
-    try:
-        # Get the entity (group/channel)
+    added = []
+    failed = []
+    
+    for group_input in group_inputs:
+        group_input = group_input.strip()
+        if not group_input:
+            continue
+        
+        # Parse group identifier
+        group_identifier = parse_group_input(group_input)
+        
+        if not group_identifier:
+            failed.append((group_input, "Invalid URL"))
+            continue
+        
         try:
+            # Get the entity (group/channel)
             entity = await client.get_entity(group_identifier)
+            chat_id = entity.id
+            chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
+            
+            # Save to database
+            success = await add_group(user_id, chat_id, chat_title)
+            
+            if success:
+                added.append(chat_title)
+            else:
+                failed.append((group_input, "Already exists or limit reached"))
+                
         except (UsernameNotOccupiedError, UsernameInvalidError):
-            await reply_to_command(client, message, "❌ Group not found\n\nMake sure the username/link is correct.")
-            return
+            failed.append((group_input, "Not found"))
         except (ChannelPrivateError, ChannelInvalidError):
-            await reply_to_command(client, message, "❌ Cannot access group\n\nMake sure you are a member of this group.")
-            return
+            failed.append((group_input, "Private/No access"))
         except (InviteHashInvalidError, InviteHashExpiredError):
-            await reply_to_command(client, message, "❌ Invalid or expired invite link")
-            return
-        
-        # Get chat ID and title
-        chat_id = entity.id
-        chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
-        
-        # Save to database
-        success = await add_group(user_id, chat_id, chat_title)
-        
-        if success:
-            await reply_to_command(client, message,
-                f"✅ Group added successfully!\n\n"
-                f"📌 {chat_title}\n"
-                f"🆔 {chat_id}\n\n"
-                f"Messages will be forwarded to this group."
-            )
-        else:
-            await reply_to_command(client, message,
-                f"❌ Could not add group\n\n"
-                f"You may have reached the maximum limit of {MAX_GROUPS_PER_USER} groups."
-            )
-        
-    except Exception as e:
-        logger.error(f"Error adding group: {e}")
-        await reply_to_command(client, message, f"❌ Error: {str(e)}")
+            failed.append((group_input, "Invalid invite"))
+        except Exception as e:
+            failed.append((group_input, str(e)[:20]))
+    
+    # Build response
+    response = ""
+    
+    if added:
+        response += f"✅ Added {len(added)} group(s):\n"
+        for title in added:
+            response += f"  • {title}\n"
+    
+    if failed:
+        response += f"\n❌ Failed {len(failed)}:\n"
+        for name, reason in failed:
+            response += f"  • {name[:15]}... - {reason}\n"
+    
+    if not response:
+        response = "❌ No groups were added"
+    
+    await reply_to_command(client, message, response.strip())
 
 
 async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: str):
-    """Handle .rmgroup <url> command."""
-    # Parse the URL/username
+    """Handle .rmgroup <number or url> command."""
+    # Parse the input
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         await reply_to_command(client, message,
-            "❌ Usage: .rmgroup <url or @username>\n\n"
+            "❌ Usage: .rmgroup <number or url>\n\n"
+            "Examples:\n"
+            "• .rmgroup 1\n"
+            "• .rmgroup @groupname\n\n"
             "Use .groups to see your groups first."
         )
         return
     
     group_input = parts[1].strip()
     
-    # Parse group identifier
-    group_identifier = parse_group_input(group_input)
+    # Get user's groups
+    groups = await get_user_groups(user_id)
     
-    if not group_identifier:
-        await reply_to_command(client, message, "❌ Invalid group URL or username")
+    if not groups:
+        await reply_to_command(client, message, "📭 No groups to remove.\n\nUse .addgroup to add groups first.")
         return
     
-    try:
-        # Resolve entity
+    chat_id = None
+    chat_title = None
+    
+    # Check if input is a number (remove by position)
+    if group_input.isdigit():
+        group_num = int(group_input)
+        if 1 <= group_num <= len(groups):
+            group = groups[group_num - 1]
+            chat_id = group["chat_id"]
+            chat_title = group.get("chat_title", "Unknown")
+        else:
+            await reply_to_command(client, message,
+                f"❌ Invalid group number\n\n"
+                f"You have {len(groups)} group(s). Use a number between 1 and {len(groups)}."
+            )
+            return
+    else:
+        # Try to parse as URL/username
+        group_identifier = parse_group_input(group_input)
+        
+        if not group_identifier:
+            await reply_to_command(client, message, "❌ Invalid group URL or username")
+            return
+        
         try:
+            # Try to resolve entity
             entity = await client.get_entity(group_identifier)
             chat_id = entity.id
             chat_title = getattr(entity, 'title', str(chat_id))
         except Exception:
-            # Try to match by username in existing groups
-            groups = await get_user_groups(user_id)
-            matched = None
+            # Try to match by name in existing groups
             search_term = group_identifier.lstrip("@").lower()
             for g in groups:
                 if search_term in g.get("chat_title", "").lower():
-                    matched = g
+                    chat_id = g["chat_id"]
+                    chat_title = g["chat_title"]
                     break
             
-            if matched:
-                chat_id = matched["chat_id"]
-                chat_title = matched["chat_title"]
-            else:
+            if not chat_id:
                 await reply_to_command(client, message,
                     "❌ Group not found in your list\n\n"
                     "Use .groups to see your groups."
                 )
                 return
-        
+    
+    try:
         # Remove from database
         await remove_group(user_id, chat_id)
-        
         await reply_to_command(client, message, f"✅ Group removed!\n\n📌 {chat_title}")
         
     except Exception as e:

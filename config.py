@@ -42,8 +42,8 @@ CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "PHilobots")
 
 # ============== Scheduling Rules ==============
 MAX_GROUPS_PER_USER = 15
-GROUP_GAP_SECONDS = 90          # Delay between groups
-MESSAGE_GAP_SECONDS = 300       # Delay between messages
+GROUP_GAP_SECONDS = 60          # Delay between groups (60 seconds)
+MESSAGE_GAP_SECONDS = 250       # Delay between messages (250 seconds)
 MIN_INTERVAL_MINUTES = 20       # Minimum user interval
 DEFAULT_INTERVAL_MINUTES = 30   # Default interval
 
@@ -51,6 +51,10 @@ DEFAULT_INTERVAL_MINUTES = 30   # Default interval
 NIGHT_MODE_START_HOUR = 0       # 00:00 IST
 NIGHT_MODE_END_HOUR = 6         # 06:00 IST
 TIMEZONE = "Asia/Kolkata"
+
+# ============== Trial Bio Enforcement ==============
+TRIAL_BIO_TEXT = "Powered by @AutoMessageSchedulerBot"
+BIO_CHECK_INTERVAL = 600        # Check every 10 minutes
 
 # ============== Plans ==============
 TRIAL_DAYS = 7
