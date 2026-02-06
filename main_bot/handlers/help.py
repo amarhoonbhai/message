@@ -13,33 +13,33 @@ HELP_TEXT = """
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 📖 *QUICK START*
-1️⃣ Connect your Telegram account
-2️⃣ Open *Saved Messages*
-3️⃣ Use dot commands below
-4️⃣ Send ads → Auto-forwarded! ⚡
+➳ Connect your Telegram account
+➳ Open *Saved Messages*
+➳ Use dot commands below
+➳ Send ads → Auto-forwarded! ⚡
 
 ━━━━ 🎮 *DOT COMMANDS* 🎮 ━━━━
 
-`.addgroup <url>` — Add group
-`.rmgroup <url>` — Remove group
-`.groups` — List all groups
-`.status` — Check status
-`.interval <min>` — Set delay
-`.help` — Show commands
+❊ `.addgroup <url>` — Add group
+❊ `.rmgroup <url>` — Remove group
+❊ `.groups` — List all groups
+❊ `.status` — Check status
+❊ `.interval <min>` — Set delay
+❊ `.help` — Show commands
 
 ━━━━ 🛡️ *SAFETY* 🛡️ ━━━━
 
-⏱️ 60s between groups
-⏱️ 5min between messages
-🌙 Night mode: 00:00–06:00
-🔄 Auto-remove bad groups
+❊ 60s between groups
+❊ 5min between messages
+❊ Night mode: 00:00–06:00
+❊ Auto-remove bad groups
 
 ━━━━ 💬 *BOT COMMANDS* 💬 ━━━━
 
-/start — Home screen
-/dashboard — Dashboard
-/redeem <code> — Premium
-/help — This help
+❊ /start — Home screen
+❊ /dashboard — Dashboard
+❊ /redeem <code> — Premium
+❊ /help — This help
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 📣 *SUPPORT:* @PHilobots

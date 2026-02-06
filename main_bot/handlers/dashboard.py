@@ -48,15 +48,15 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 {account_icon} *ACCOUNT*
-└ {account_status}
+   ➳ {account_status}
 
 {plan_icon} *SUBSCRIPTION*
-└ {plan_status}
+   ➳ {plan_status}
 
 ⚙️ *SETTINGS*
-├ 🌙 Night Mode: 00:00–06:00
-├ 📩 Auto-forward: ✅ Active
-└ ⏱️ Interval: {interval} min
+   ➳ 🌙 Night Mode: 00:00–06:00
+   ➳ 📩 Auto-forward: ✅ Active
+   ➳ ⏱️ Interval: {interval} min
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 💡 *TIP:* Send `.addgroup <url>` in Saved Messages!

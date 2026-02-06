@@ -66,9 +66,9 @@ async def referral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ━━━━ 📖 *HOW IT WORKS* 📖 ━━━━
 
-1️⃣ Share your link
-2️⃣ Friends join & connect
-3️⃣ Get *+{REFERRAL_BONUS_DAYS} days* after {REFERRALS_NEEDED}!
+➳ Share your link
+➳ Friends join & connect
+➳ Get *+{REFERRAL_BONUS_DAYS} days* after {REFERRALS_NEEDED}!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 🎁 *REWARD:* {REFERRAL_BONUS_DAYS} FREE days!

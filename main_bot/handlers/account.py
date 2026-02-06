@@ -31,9 +31,9 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
 
 💡 *NEXT STEPS*
 
-1️⃣ Go to Dashboard
-2️⃣ Tap "Add Account"
-3️⃣ Connect via Login Bot
+➳ Go to Dashboard
+➳ Tap "Add Account"
+➳ Connect via Login Bot
 """
         await query.edit_message_text(
             text,
@@ -66,14 +66,14 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
 
 📱 *ACCOUNT INFO*
 
-📞 Phone: `{phone}`
-📅 Since: {connected_date}
+❊ Phone: `{phone}`
+❊ Since: {connected_date}
 
 ━━━━ ⚠️ *WARNING* ⚠️ ━━━━
 
-• Stops all forwarding
-• Removes your session
-• You can reconnect later
+❊ Stops all forwarding
+❊ Removes your session
+❊ You can reconnect later
 """
     
     await query.edit_message_text(

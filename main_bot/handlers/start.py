@@ -15,17 +15,17 @@ WELCOME_TEXT = """
 
 🚀 *POWER YOUR TELEGRAM ADS*
 
-▸ Auto-forward to *15+ Groups*
-▸ Smart delays • Anti-flood
-▸ Night mode • Full automation
+➳ Auto-forward to *15+ Groups*
+➳ Smart delays • Anti-flood
+➳ Night mode • Full automation
 
 ━━━━ ✨ *FEATURES* ✨ ━━━━
 
-📤 Instant Forwarding
-⏱️ 60s Safe Delays
-🌙 Night Mode (0-6 AM)
-📊 Real-time Dashboard
-🔐 Secure Sessions
+❊ Instant Forwarding
+❊ 60s Safe Delays
+❊ Night Mode (0-6 AM)
+❊ Real-time Dashboard
+❊ Secure Sessions
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

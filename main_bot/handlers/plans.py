@@ -28,14 +28,14 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🚀 *GET STARTED*
 
-1️⃣ Connect your account
+➳ Connect your account
    → Get *7 DAYS FREE!*
-2️⃣ Or redeem a code
+➳ Or redeem a code
 
 ━━━━ 💰 *PRICING* 💰 ━━━━
 
-📅 *WEEKLY* — ₹99
-📅 *MONTHLY* — ₹299
+❊ *WEEKLY* — ₹99
+❊ *MONTHLY* — ₹299
 """
     else:
         plan_type = plan.get("plan_type", "trial").title()
