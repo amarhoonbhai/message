@@ -9,33 +9,49 @@ from main_bot.utils.keyboards import get_back_home_keyboard
 
 
 HELP_TEXT = """
-❓ *Help & FAQ*
+```
+╔══════════════════════════════╗
+║     ❓ HELP & COMMANDS ❓     ║
+╚══════════════════════════════╝
+```
 
-*How to use?*
-1️⃣ Connect your Telegram account.
-2️⃣ Open your **Saved Messages** in any Telegram app.
-3️⃣ Use **Dot Commands** to manage groups:
-    • `.addgroup <url>` - Add a group
-    • `.rmgroup <url>` - Remove a group
-    • `.groups` - List your groups
-    • `.status` - Check your status
-    • `.interval <min>` - Set interval (min 20)
-4️⃣ Simply send or forward your Ads to **Saved Messages**. We'll forward them instantly!
+〔 📖 *QUICK START GUIDE* 〕
 
-*Safety Features:*
-• 90 seconds gap between groups
-• 300 seconds (5 min) gap between ads
-• Night mode (00:00-06:00 IST) - no sending
-• Auto-remove invalid groups
+① Connect your Telegram account
+② Open *Saved Messages*
+③ Use dot commands below
+④ Send ads → Auto-forwarded! ⚡
 
-*Main Bot Commands:*
-• /start - Welcome screen
-• /dashboard - Open dashboard
-• /redeem <code> - Redeem premium
-• /help - This help message
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-*Need more help?*
-Join @PHilobots for support and updates.
+🎮 *DOT COMMANDS*
+╭─────────────────────────────╮
+│ `.addgroup <url>` ─ Add     │
+│ `.rmgroup <url>` ─ Remove   │
+│ `.groups` ─ List all        │
+│ `.status` ─ Check status    │
+│ `.interval <min>` ─ Delay   │
+│ `.help` ─ Show commands     │
+╰─────────────────────────────╯
+
+🛡️ *SAFETY SYSTEM*
+╭─────────────────────────────╮
+│  ⏱️ 60s between groups      │
+│  ⏱️ 5min between messages   │
+│  🌙 Night: 00:00–06:00 IST  │
+│  🔄 Auto-remove bad groups  │
+╰─────────────────────────────╯
+
+💬 *BOT COMMANDS*
+╭─────────────────────────────╮
+│  /start ─ Home screen       │
+│  /dashboard ─ Dashboard     │
+│  /redeem <code> ─ Premium   │
+│  /help ─ This help          │
+╰─────────────────────────────╯
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📣 *SUPPORT:* @PHilobots
 """
 
 

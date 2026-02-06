@@ -169,7 +169,9 @@ class UserSender:
     
     async def run_loop(self):
         """Main sender loop - INFINITE LOOP that continuously forwards ALL saved messages."""
+        # Log runtime config values for validation
         logger.info(f"[User {self.user_id}] Starting infinite forwarding loop...")
+        logger.info(f"[User {self.user_id}] Config: GROUP_GAP={GROUP_GAP_SECONDS}s, MESSAGE_GAP={MESSAGE_GAP_SECONDS}s, CYCLE_INTERVAL={MIN_INTERVAL_MINUTES}min")
         
         while self.running:
             try:
@@ -238,15 +240,38 @@ class UserSender:
                 logger.info(f"[User {self.user_id}] 📤 Forwarding message {current_msg_index + 1}/{total_msgs} to {len(groups)} group(s)...")
                 
                 # 8. Forward message to ALL groups (with GROUP_GAP between each)
-                await self.forward_message_to_groups(msg, groups)
+                # Returns (flood_triggered, flood_wait_seconds) - flood supersedes all logic
+                flood_triggered, flood_wait = await self.forward_message_to_groups(msg, groups)
+                
+                if flood_triggered:
+                    # Flood wait supersedes all other timing - sleep and restart loop
+                    logger.warning(f"[User {self.user_id}] ⚠️ Flood detected, sleeping {flood_wait}s (supersedes all logic)...")
+                    await asyncio.sleep(flood_wait)
+                    continue  # Restart loop without incrementing message index
                 
                 # 9. Increment position for next iteration
                 current_msg_index += 1
                 await update_current_msg_index(self.user_id, current_msg_index)
                 
-                # 10. Wait MESSAGE_GAP before next message (this is NOT an exit point)
-                logger.info(f"[User {self.user_id}] ⏳ Waiting {MESSAGE_GAP_SECONDS}s before next message...")
-                await asyncio.sleep(MESSAGE_GAP_SECONDS)
+                # 10. Wait MESSAGE_GAP only if more messages remain (state-driven)
+                if current_msg_index < len(all_messages):
+                    logger.info(f"[User {self.user_id}] ⏳ Waiting {MESSAGE_GAP_SECONDS}s before next message...")
+                    
+                    # Chunked sleep to respect night mode pauses
+                    elapsed = 0
+                    while elapsed < MESSAGE_GAP_SECONDS and self.running:
+                        if is_night_mode():
+                            wait_seconds = seconds_until_morning()
+                            logger.info(f"[User {self.user_id}] 🌙 Night mode during message gap, pausing {format_time_remaining(wait_seconds)}...")
+                            await asyncio.sleep(min(wait_seconds, 3600))
+                            continue  # Don't count night pause toward elapsed time
+                        
+                        # Sleep in 30s chunks for responsiveness
+                        sleep_chunk = min(30, MESSAGE_GAP_SECONDS - elapsed)
+                        await asyncio.sleep(sleep_chunk)
+                        elapsed += sleep_chunk
+                else:
+                    logger.info(f"[User {self.user_id}] ✅ Last message forwarded, cycle complete (no gap wait)")
                 
                 # Loop continues automatically - NEVER exits here
                 
@@ -279,8 +304,14 @@ class UserSender:
             logger.error(f"[User {self.user_id}] Error fetching saved messages: {e}")
             return []
     
-    async def forward_message_to_groups(self, message, groups: list):
-        """Forward a message to all enabled groups."""
+    async def forward_message_to_groups(self, message, groups: list) -> tuple:
+        """
+        Forward a message to all enabled groups.
+        Returns: (flood_triggered: bool, flood_wait_seconds: int)
+        """
+        flood_triggered = False
+        flood_wait_seconds = 0
+        
         for i, group in enumerate(groups):
             chat_id = group.get("chat_id")
             chat_title = group.get("chat_title", "Unknown")
@@ -304,25 +335,16 @@ class UserSender:
                 )
                 
             except FloodWaitError as e:
-                logger.warning(f"[User {self.user_id}] FloodWait: sleeping {e.seconds}s")
-                await asyncio.sleep(e.seconds + 5)
-                
-                # Retry once after waiting
-                try:
-                    await self.client.forward_messages(
-                        entity=chat_id,
-                        messages=message.id,
-                        from_peer=InputPeerSelf()
-                    )
-                    await log_send(self.user_id, chat_id, message.id, "success")
-                except Exception as retry_e:
-                    await log_send(self.user_id, chat_id, message.id, "failed", str(retry_e))
+                # Flood wait supersedes all logic - return immediately
+                logger.warning(f"[User {self.user_id}] FloodWait: {e.seconds}s (superseding all logic)")
+                await log_send(self.user_id, chat_id, message.id, "flood_wait", f"FloodWait {e.seconds}s")
+                return (True, e.seconds + 10)  # Return flood state, let caller handle sleep
                 
             except PeerFloodError:
-                logger.error(f"[User {self.user_id}] PeerFlood error - pausing for 1 hour")
-                await log_send(self.user_id, chat_id, message.id, "failed", "PeerFlood")
-                await asyncio.sleep(3600)  # Pause for 1 hour
-                return  # Exit this forwarding cycle
+                # PeerFlood is severe - return with 1 hour wait
+                logger.error(f"[User {self.user_id}] PeerFlood error - signaling 1 hour pause")
+                await log_send(self.user_id, chat_id, message.id, "peer_flood", "PeerFlood")
+                return (True, 3600)  # 1 hour pause
                 
             except (ChatWriteForbiddenError, ChannelPrivateError, 
                     ChatAdminRequiredError, UserBannedInChannelError) as e:
@@ -341,7 +363,10 @@ class UserSender:
                 logger.error(f"[User {self.user_id}] Error forwarding to {chat_title}: {e}")
                 await log_send(self.user_id, chat_id, message.id, "failed", str(e))
             
-            # Wait between groups (except for last one)
+            # Wait between groups (except for last one) - group gap is ONLY inside group loop
             if i < len(groups) - 1:
                 logger.debug(f"[User {self.user_id}] Waiting {GROUP_GAP_SECONDS}s before next group")
                 await asyncio.sleep(GROUP_GAP_SECONDS)
+        
+        # No flood occurred, return success state
+        return (False, 0)

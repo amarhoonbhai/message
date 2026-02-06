@@ -21,17 +21,27 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not plan:
         text = """
-🎁 *Your Plan*
+```
+╔══════════════════════════════╗
+║       🎁 YOUR PLAN 🎁        ║
+╚══════════════════════════════╝
+```
 
-You don't have an active plan yet.
+🔴 *STATUS:* No active plan
 
-*How to get started:*
-1️⃣ Connect your account to get a *7-day free trial*
-2️⃣ Or redeem a code if you have one
+〔 🚀 *GET STARTED* 〕
 
-*Pricing:*
-• Weekly: ₹99
-• Monthly: ₹299
+╭─────────────────────────────╮
+│  ① Connect your account     │
+│     ↳ Get *7 DAYS FREE!*    │
+│  ② Or redeem a code         │
+╰─────────────────────────────╯
+
+💰 *PRICING*
+╭─────────────────────────────╮
+│  📅 *WEEKLY*  ──── ₹99      │
+│  📅 *MONTHLY* ──── ₹299     │
+╰─────────────────────────────╯
 """
     else:
         plan_type = plan.get("plan_type", "trial").title()
@@ -49,27 +59,52 @@ You don't have an active plan yet.
                 else:
                     time_left = f"{hours_left} hours"
                 
-                status_emoji = "✅"
-                status_text = f"Active ({time_left} left)"
+                status_icon = "🟢"
+                status_text = "ACTIVE"
+                time_display = f"⏳ *Expires in:* {time_left}"
+                
+                # Create visual progress bar
+                max_days = 30 if plan_type.lower() == "month" else 7
+                progress = min(days_left / max_days, 1.0)
+                filled = int(progress * 10)
+                bar = "█" * filled + "░" * (10 - filled)
             else:
-                status_emoji = "❌"
-                status_text = "Expired"
+                status_icon = "🔴"
+                status_text = "EXPIRED"
+                time_display = "⚠️ Plan has expired!"
+                bar = "░" * 10
         else:
-            status_emoji = "❓"
+            status_icon = "⚪"
             status_text = "Unknown"
+            time_display = ""
+            bar = "░" * 10
         
         text = f"""
-🎁 *Your Plan*
+```
+╔══════════════════════════════╗
+║       🎁 YOUR PLAN 🎁        ║
+╚══════════════════════════════╝
+```
 
-📋 *Type:* {plan_type}
-{status_emoji} *Status:* {status_text}
+{status_icon} *STATUS:* {status_text}
 
-*Extend your plan:*
-• Weekly: ₹99 (+7 days)
-• Monthly: ₹299 (+30 days)
+〔 📋 *CURRENT PLAN* 〕
 
-Use 🧾 Redeem Code if you have a code.
-Or invite 3 friends to earn +7 free days! 🤝
+╭─────────────────────────────╮
+│  🏷️ *Type:* {plan_type}
+│  {time_display}
+│  
+│  [{bar}]
+╰─────────────────────────────╯
+
+💰 *EXTEND PLAN*
+╭─────────────────────────────╮
+│  📅 *WEEKLY*  ──── ₹99 (+7d)│
+│  📅 *MONTHLY* ──── ₹299(+30d)│
+╰─────────────────────────────╯
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 Invite 3 friends → *+7 days FREE!*
 """
     
     await query.edit_message_text(

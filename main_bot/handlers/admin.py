@@ -234,7 +234,12 @@ async def receive_broadcast_message(update: Update, context: ContextTypes.DEFAUL
     for uid in user_ids:
         try:
             if message.text:
-                await context.bot.send_message(uid, message.text, parse_mode="Markdown")
+                await context.bot.send_message(
+                    uid, 
+                    message.text, 
+                    parse_mode="Markdown",
+                    disable_web_page_preview=False  # Enable link previews
+                )
             elif message.photo:
                 await context.bot.send_photo(
                     uid,
@@ -242,12 +247,51 @@ async def receive_broadcast_message(update: Update, context: ContextTypes.DEFAUL
                     caption=message.caption,
                     parse_mode="Markdown"
                 )
+            elif message.video:
+                await context.bot.send_video(
+                    uid,
+                    message.video.file_id,
+                    caption=message.caption,
+                    parse_mode="Markdown"
+                )
+            elif message.animation:
+                await context.bot.send_animation(
+                    uid,
+                    message.animation.file_id,
+                    caption=message.caption,
+                    parse_mode="Markdown"
+                )
+            elif message.sticker:
+                await context.bot.send_sticker(uid, message.sticker.file_id)
+            elif message.voice:
+                await context.bot.send_voice(
+                    uid,
+                    message.voice.file_id,
+                    caption=message.caption,
+                    parse_mode="Markdown"
+                )
+            elif message.audio:
+                await context.bot.send_audio(
+                    uid,
+                    message.audio.file_id,
+                    caption=message.caption,
+                    parse_mode="Markdown"
+                )
+            elif message.video_note:
+                await context.bot.send_video_note(uid, message.video_note.file_id)
             elif message.document:
                 await context.bot.send_document(
                     uid,
                     message.document.file_id,
                     caption=message.caption,
                     parse_mode="Markdown"
+                )
+            else:
+                # Fallback: copy the message directly for any other type
+                await context.bot.copy_message(
+                    chat_id=uid,
+                    from_chat_id=message.chat_id,
+                    message_id=message.message_id
                 )
             success += 1
         except Exception:

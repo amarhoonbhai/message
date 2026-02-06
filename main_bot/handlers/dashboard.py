@@ -39,13 +39,37 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     interval = config.get("interval_min", MIN_INTERVAL_MINUTES)
     
+    # Dynamic status icons
+    account_icon = "🟢" if session and session.get("connected") else "🔴"
+    plan_icon = "💎" if plan and plan.get("status") == "active" else "⚠️"
+    
     dashboard_text = f"""
-📊 *Group Message Scheduler — Dashboard*
+```
+╔══════════════════════════════╗
+║       📊 DASHBOARD 📊        ║
+╚══════════════════════════════╝
+```
 
-👤 *Account:* {account_status}
-🎁 *Plan:* {plan_status}
-🌙 *Night Mode:* 00:00–06:00 IST (Fixed)
-📩 *Mode:* Auto-forward NEW Saved Messages ✅
+{account_icon} *ACCOUNT STATUS*
+╭─────────────────────────────╮
+│  {account_status}
+╰─────────────────────────────╯
+
+{plan_icon} *SUBSCRIPTION*
+╭─────────────────────────────╮
+│  {plan_status}
+╰─────────────────────────────╯
+
+⚙️ *CONFIGURATION*
+╭─────────────────────────────╮
+│  🌙 Night Mode ─ 00:00–06:00
+│  📩 Auto-forward ─ ✅ Active
+│  ⏱️ Interval ─ {interval} min
+╰─────────────────────────────╯
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 *TIP:* Send `.addgroup <url>` in
+    Saved Messages to add groups!
 """
     
     # Determine how to respond

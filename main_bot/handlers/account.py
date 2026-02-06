@@ -24,12 +24,21 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
     
     if not session:
         text = """
-⚙️ *Manage Account*
+```
+╔══════════════════════════════╗
+║    ⚙️ MANAGE ACCOUNT ⚙️    ║
+╚══════════════════════════════╝
+```
 
-❌ *No account connected*
+🔴 *STATUS:* No account connected
 
-You haven't linked a Telegram account yet.
-Go to Dashboard → Add Account to connect.
+〔 💡 *NEXT STEPS* 〕
+
+╭─────────────────────────────╮
+│  ① Go to Dashboard          │
+│  ② Tap "Add Account"        │
+│  ③ Connect via Login Bot    │
+╰─────────────────────────────╯
 """
         await query.edit_message_text(
             text,
@@ -51,19 +60,31 @@ Go to Dashboard → Add Account to connect.
     else:
         connected_date = "Unknown"
     
+    # Dynamic status
+    status_icon = "🟢" if connected else "🔴"
+    
     text = f"""
-⚙️ *Manage Account*
+```
+╔══════════════════════════════╗
+║    ⚙️ MANAGE ACCOUNT ⚙️    ║
+╚══════════════════════════════╝
+```
 
-📱 *Phone:* `{phone}`
-{status_emoji} *Status:* {status_text}
-📅 *Connected:* {connected_date}
+{status_icon} *STATUS:* {status_text}
 
-━━━━━━━━━━━━━━━━
-⚠️ *Disconnecting will:*
-• Stop all message forwarding
-• Remove your session
+〔 📱 *ACCOUNT INFO* 〕
 
-You can reconnect anytime via Login Bot.
+╭─────────────────────────────╮
+│  📞 *Phone:* `{phone}`
+│  📅 *Since:* {connected_date}
+╰─────────────────────────────╯
+
+⚠️ *DISCONNECT WARNING*
+╭─────────────────────────────╮
+│  • Stops all forwarding      │
+│  • Removes your session      │
+│  • You can reconnect later   │
+╰─────────────────────────────╯
 """
     
     await query.edit_message_text(
@@ -79,15 +100,23 @@ async def disconnect_account_callback(update: Update, context: ContextTypes.DEFA
     await query.answer()
     
     text = """
-⚠️ *Confirm Disconnect*
+```
+╔══════════════════════════════╗
+║   ⚠️ CONFIRM DISCONNECT ⚠️   ║
+╚══════════════════════════════╝
+```
 
-Are you sure you want to disconnect your Telegram account?
+❓ *ARE YOU SURE?*
 
-This will:
-• Stop all message forwarding immediately
-• Remove your saved session
-
-You can reconnect anytime through the Login Bot.
+╭─────────────────────────────╮
+│                               │
+│  This action will:            │
+│  ❌ Stop forwarding NOW        │
+│  🗑️ Remove saved session       │
+│                               │
+│  ✅ You can reconnect later    │
+│                               │
+╰─────────────────────────────╯
 """
     
     await query.edit_message_text(
@@ -108,12 +137,21 @@ async def confirm_disconnect_callback(update: Update, context: ContextTypes.DEFA
     await disconnect_session(user_id)
     
     text = """
-✅ *Account Disconnected*
+```
+╔══════════════════════════════╗
+║    ✅ DISCONNECTED ✅         ║
+╚══════════════════════════════╝
+```
 
-Your Telegram account has been disconnected.
-Message forwarding has stopped.
+〔 📋 *STATUS UPDATE* 〕
 
-You can reconnect anytime via the Login Bot.
+╭─────────────────────────────╮
+│  ✅ Session removed           │
+│  ✅ Forwarding stopped        │
+│                               │
+│  You can reconnect anytime    │
+│  via the Login Bot.           │
+╰─────────────────────────────╯
 """
     
     await query.edit_message_text(

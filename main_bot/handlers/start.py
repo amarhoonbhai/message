@@ -10,12 +10,29 @@ from main_bot.utils.keyboards import get_welcome_keyboard
 
 
 WELCOME_TEXT = """
-✨ *Welcome to Group Message Scheduler* ✨
+```
+╔═══════════════════════════════╗
+║  ⚡ GROUP MESSAGE SCHEDULER ⚡ ║
+╚═══════════════════════════════╝
+```
 
-Auto-forward your Saved Messages to up to 15 groups —
-with safe timing, fixed night mode, and full control from one dashboard.
+〔 🚀 *POWER YOUR TELEGRAM ADS* 🚀 〕
 
-Tap below to get started 👇
+▸ Auto-forward to *15+ Groups*
+▸ Smart delays • Anti-flood
+▸ Night mode • Full automation
+
+╭━━━━━━━━ *FEATURES* ━━━━━━━━╮
+┃                              ┃
+┃  📤 *Instant Forwarding*     ┃
+┃  ⏱️ *60s Safe Delays*        ┃
+┃  🌙 *Night Mode (0-6 AM)*    ┃
+┃  📊 *Real-time Dashboard*    ┃
+┃  🔐 *Secure Sessions*        ┃
+┃                              ┃
+╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯
+
+⬇️ *SELECT AN OPTION BELOW* ⬇️
 """
 
 
