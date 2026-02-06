@@ -45,7 +45,7 @@ MAX_GROUPS_PER_USER = 15
 GROUP_GAP_SECONDS = 60          # Delay between groups (60 seconds)
 MESSAGE_GAP_SECONDS = 250       # Delay between messages (250 seconds)
 MIN_INTERVAL_MINUTES = 20       # Minimum user interval
-DEFAULT_INTERVAL_MINUTES = 25# Default interval
+DEFAULT_INTERVAL_MINUTES = 25   # Default interval
 
 # ============== Night Mode (IST) ==============
 NIGHT_MODE_START_HOUR = 0       # 00:00 IST
