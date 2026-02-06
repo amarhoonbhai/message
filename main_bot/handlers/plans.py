@@ -21,27 +21,21 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not plan:
         text = """
-```
-╔══════════════════════════════╗
-║       🎁 YOUR PLAN 🎁        ║
-╚══════════════════════════════╝
-```
+🎁 *YOUR PLAN*
+━━━━━━━━━━━━━━━━━━━━━━━━
 
 🔴 *STATUS:* No active plan
 
-〔 🚀 *GET STARTED* 〕
+🚀 *GET STARTED*
 
-╭─────────────────────────────╮
-│  ① Connect your account     │
-│     ↳ Get *7 DAYS FREE!*    │
-│  ② Or redeem a code         │
-╰─────────────────────────────╯
+1️⃣ Connect your account
+   → Get *7 DAYS FREE!*
+2️⃣ Or redeem a code
 
-💰 *PRICING*
-╭─────────────────────────────╮
-│  📅 *WEEKLY*  ──── ₹99      │
-│  📅 *MONTHLY* ──── ₹299     │
-╰─────────────────────────────╯
+━━━━ 💰 *PRICING* 💰 ━━━━
+
+📅 *WEEKLY* — ₹99
+📅 *MONTHLY* — ₹299
 """
     else:
         plan_type = plan.get("plan_type", "trial").title()
@@ -61,13 +55,13 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 status_icon = "🟢"
                 status_text = "ACTIVE"
-                time_display = f"⏳ *Expires in:* {time_left}"
+                time_display = f"⏳ Expires in: {time_left}"
                 
                 # Create visual progress bar
                 max_days = 30 if plan_type.lower() == "month" else 7
                 progress = min(days_left / max_days, 1.0)
                 filled = int(progress * 10)
-                bar = "█" * filled + "░" * (10 - filled)
+                bar = "▓" * filled + "░" * (10 - filled)
             else:
                 status_icon = "🔴"
                 status_text = "EXPIRED"
@@ -80,30 +74,23 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             bar = "░" * 10
         
         text = f"""
-```
-╔══════════════════════════════╗
-║       🎁 YOUR PLAN 🎁        ║
-╚══════════════════════════════╝
-```
+🎁 *YOUR PLAN*
+━━━━━━━━━━━━━━━━━━━━━━━━
 
 {status_icon} *STATUS:* {status_text}
 
-〔 📋 *CURRENT PLAN* 〕
+📋 *CURRENT PLAN*
 
-╭─────────────────────────────╮
-│  🏷️ *Type:* {plan_type}
-│  {time_display}
-│  
-│  [{bar}]
-╰─────────────────────────────╯
+🏷️ Type: {plan_type}
+{time_display}
+[{bar}]
 
-💰 *EXTEND PLAN*
-╭─────────────────────────────╮
-│  📅 *WEEKLY*  ──── ₹99 (+7d)│
-│  📅 *MONTHLY* ──── ₹299(+30d)│
-╰─────────────────────────────╯
+━━━━ 💰 *EXTEND PLAN* 💰 ━━━━
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📅 *WEEKLY* — ₹99 (+7 days)
+📅 *MONTHLY* — ₹299 (+30 days)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
 💡 Invite 3 friends → *+7 days FREE!*
 """
     

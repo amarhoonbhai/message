@@ -9,48 +9,39 @@ from main_bot.utils.keyboards import get_back_home_keyboard
 
 
 HELP_TEXT = """
-```
-╔══════════════════════════════╗
-║     ❓ HELP & COMMANDS ❓     ║
-╚══════════════════════════════╝
-```
+❓ *HELP & COMMANDS*
+━━━━━━━━━━━━━━━━━━━━━━━━
 
-〔 📖 *QUICK START GUIDE* 〕
+📖 *QUICK START*
+1️⃣ Connect your Telegram account
+2️⃣ Open *Saved Messages*
+3️⃣ Use dot commands below
+4️⃣ Send ads → Auto-forwarded! ⚡
 
-① Connect your Telegram account
-② Open *Saved Messages*
-③ Use dot commands below
-④ Send ads → Auto-forwarded! ⚡
+━━━━ 🎮 *DOT COMMANDS* 🎮 ━━━━
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`.addgroup <url>` — Add group
+`.rmgroup <url>` — Remove group
+`.groups` — List all groups
+`.status` — Check status
+`.interval <min>` — Set delay
+`.help` — Show commands
 
-🎮 *DOT COMMANDS*
-╭─────────────────────────────╮
-│ `.addgroup <url>` ─ Add     │
-│ `.rmgroup <url>` ─ Remove   │
-│ `.groups` ─ List all        │
-│ `.status` ─ Check status    │
-│ `.interval <min>` ─ Delay   │
-│ `.help` ─ Show commands     │
-╰─────────────────────────────╯
+━━━━ 🛡️ *SAFETY* 🛡️ ━━━━
 
-🛡️ *SAFETY SYSTEM*
-╭─────────────────────────────╮
-│  ⏱️ 60s between groups      │
-│  ⏱️ 5min between messages   │
-│  🌙 Night: 00:00–06:00 IST  │
-│  🔄 Auto-remove bad groups  │
-╰─────────────────────────────╯
+⏱️ 60s between groups
+⏱️ 5min between messages
+🌙 Night mode: 00:00–06:00
+🔄 Auto-remove bad groups
 
-💬 *BOT COMMANDS*
-╭─────────────────────────────╮
-│  /start ─ Home screen       │
-│  /dashboard ─ Dashboard     │
-│  /redeem <code> ─ Premium   │
-│  /help ─ This help          │
-╰─────────────────────────────╯
+━━━━ 💬 *BOT COMMANDS* 💬 ━━━━
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/start — Home screen
+/dashboard — Dashboard
+/redeem <code> — Premium
+/help — This help
+
+━━━━━━━━━━━━━━━━━━━━━━━━
 📣 *SUPPORT:* @PHilobots
 """
 

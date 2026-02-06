@@ -46,40 +46,31 @@ async def referral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Enhanced progress bar
     filled_blocks = min(referrals_count, REFERRALS_NEEDED)
     empty_blocks = REFERRALS_NEEDED - filled_blocks
-    progress_bar = "█" * filled_blocks + "░" * empty_blocks
+    progress_bar = "▓" * filled_blocks + "░" * empty_blocks
     percentage = int((referrals_count / REFERRALS_NEEDED) * 100) if REFERRALS_NEEDED > 0 else 0
     
     text = f"""
-```
-╔══════════════════════════════╗
-║     🤝 REFER & EARN 🤝       ║
-╚══════════════════════════════╝
-```
+🤝 *REFER & EARN*
+━━━━━━━━━━━━━━━━━━━━━━━━
 
-〔 📊 *YOUR PROGRESS* 〕
+📊 *YOUR PROGRESS*
 
-╭─────────────────────────────╮
-│  [{progress_bar}] {percentage}%
-│  
-│  *{referrals_count}/{REFERRALS_NEEDED}* friends invited
-│  
-│  {bonus_text}
-╰─────────────────────────────╯
+[{progress_bar}] {percentage}%
+*{referrals_count}/{REFERRALS_NEEDED}* friends invited
 
-🔗 *YOUR REFERRAL LINK*
-╭─────────────────────────────╮
-│  `{referral_link}`
-╰─────────────────────────────╯
+{bonus_text}
 
-〔 📖 *HOW IT WORKS* 〕
+━━━━ 🔗 *YOUR LINK* 🔗 ━━━━
 
-╭─────────────────────────────╮
-│  ① Share your link          │
-│  ② Friends join & connect   │
-│  ③ Get *+{REFERRAL_BONUS_DAYS} days* after {REFERRALS_NEEDED}! │
-╰─────────────────────────────╯
+`{referral_link}`
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━ 📖 *HOW IT WORKS* 📖 ━━━━
+
+1️⃣ Share your link
+2️⃣ Friends join & connect
+3️⃣ Get *+{REFERRAL_BONUS_DAYS} days* after {REFERRALS_NEEDED}!
+
+━━━━━━━━━━━━━━━━━━━━━━━━
 🎁 *REWARD:* {REFERRAL_BONUS_DAYS} FREE days!
 """
     

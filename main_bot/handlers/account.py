@@ -24,21 +24,16 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
     
     if not session:
         text = """
-```
-╔══════════════════════════════╗
-║    ⚙️ MANAGE ACCOUNT ⚙️    ║
-╚══════════════════════════════╝
-```
+⚙️ *MANAGE ACCOUNT*
+━━━━━━━━━━━━━━━━━━━━━━━━
 
 🔴 *STATUS:* No account connected
 
-〔 💡 *NEXT STEPS* 〕
+💡 *NEXT STEPS*
 
-╭─────────────────────────────╮
-│  ① Go to Dashboard          │
-│  ② Tap "Add Account"        │
-│  ③ Connect via Login Bot    │
-╰─────────────────────────────╯
+1️⃣ Go to Dashboard
+2️⃣ Tap "Add Account"
+3️⃣ Connect via Login Bot
 """
         await query.edit_message_text(
             text,
@@ -64,27 +59,21 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
     status_icon = "🟢" if connected else "🔴"
     
     text = f"""
-```
-╔══════════════════════════════╗
-║    ⚙️ MANAGE ACCOUNT ⚙️    ║
-╚══════════════════════════════╝
-```
+⚙️ *MANAGE ACCOUNT*
+━━━━━━━━━━━━━━━━━━━━━━━━
 
 {status_icon} *STATUS:* {status_text}
 
-〔 📱 *ACCOUNT INFO* 〕
+📱 *ACCOUNT INFO*
 
-╭─────────────────────────────╮
-│  📞 *Phone:* `{phone}`
-│  📅 *Since:* {connected_date}
-╰─────────────────────────────╯
+📞 Phone: `{phone}`
+📅 Since: {connected_date}
 
-⚠️ *DISCONNECT WARNING*
-╭─────────────────────────────╮
-│  • Stops all forwarding      │
-│  • Removes your session      │
-│  • You can reconnect later   │
-╰─────────────────────────────╯
+━━━━ ⚠️ *WARNING* ⚠️ ━━━━
+
+• Stops all forwarding
+• Removes your session
+• You can reconnect later
 """
     
     await query.edit_message_text(
@@ -100,23 +89,16 @@ async def disconnect_account_callback(update: Update, context: ContextTypes.DEFA
     await query.answer()
     
     text = """
-```
-╔══════════════════════════════╗
-║   ⚠️ CONFIRM DISCONNECT ⚠️   ║
-╚══════════════════════════════╝
-```
+⚠️ *CONFIRM DISCONNECT*
+━━━━━━━━━━━━━━━━━━━━━━━━
 
 ❓ *ARE YOU SURE?*
 
-╭─────────────────────────────╮
-│                               │
-│  This action will:            │
-│  ❌ Stop forwarding NOW        │
-│  🗑️ Remove saved session       │
-│                               │
-│  ✅ You can reconnect later    │
-│                               │
-╰─────────────────────────────╯
+This action will:
+❌ Stop forwarding NOW
+🗑️ Remove saved session
+
+✅ You can reconnect later
 """
     
     await query.edit_message_text(
@@ -137,21 +119,16 @@ async def confirm_disconnect_callback(update: Update, context: ContextTypes.DEFA
     await disconnect_session(user_id)
     
     text = """
-```
-╔══════════════════════════════╗
-║    ✅ DISCONNECTED ✅         ║
-╚══════════════════════════════╝
-```
+✅ *DISCONNECTED*
+━━━━━━━━━━━━━━━━━━━━━━━━
 
-〔 📋 *STATUS UPDATE* 〕
+📋 *STATUS UPDATE*
 
-╭─────────────────────────────╮
-│  ✅ Session removed           │
-│  ✅ Forwarding stopped        │
-│                               │
-│  You can reconnect anytime    │
-│  via the Login Bot.           │
-╰─────────────────────────────╯
+✅ Session removed
+✅ Forwarding stopped
+
+You can reconnect anytime
+via the Login Bot.
 """
     
     await query.edit_message_text(
