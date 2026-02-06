@@ -234,32 +234,38 @@ async def receive_broadcast_message(update: Update, context: ContextTypes.DEFAUL
     for uid in user_ids:
         try:
             if message.text:
-                await context.bot.send_message(
-                    uid, 
-                    message.text, 
-                    parse_mode="Markdown",
-                    disable_web_page_preview=False  # Enable link previews
-                )
+                # Try without parse_mode first (safer for plain text with special chars)
+                try:
+                    await context.bot.send_message(
+                        uid, 
+                        message.text, 
+                        parse_mode="Markdown",
+                        disable_web_page_preview=False
+                    )
+                except Exception:
+                    # Fallback: send without Markdown if it fails
+                    await context.bot.send_message(
+                        uid, 
+                        message.text,
+                        disable_web_page_preview=False
+                    )
             elif message.photo:
                 await context.bot.send_photo(
                     uid,
                     message.photo[-1].file_id,
-                    caption=message.caption,
-                    parse_mode="Markdown"
+                    caption=message.caption
                 )
             elif message.video:
                 await context.bot.send_video(
                     uid,
                     message.video.file_id,
-                    caption=message.caption,
-                    parse_mode="Markdown"
+                    caption=message.caption
                 )
             elif message.animation:
                 await context.bot.send_animation(
                     uid,
                     message.animation.file_id,
-                    caption=message.caption,
-                    parse_mode="Markdown"
+                    caption=message.caption
                 )
             elif message.sticker:
                 await context.bot.send_sticker(uid, message.sticker.file_id)
@@ -267,15 +273,13 @@ async def receive_broadcast_message(update: Update, context: ContextTypes.DEFAUL
                 await context.bot.send_voice(
                     uid,
                     message.voice.file_id,
-                    caption=message.caption,
-                    parse_mode="Markdown"
+                    caption=message.caption
                 )
             elif message.audio:
                 await context.bot.send_audio(
                     uid,
                     message.audio.file_id,
-                    caption=message.caption,
-                    parse_mode="Markdown"
+                    caption=message.caption
                 )
             elif message.video_note:
                 await context.bot.send_video_note(uid, message.video_note.file_id)
@@ -283,8 +287,7 @@ async def receive_broadcast_message(update: Update, context: ContextTypes.DEFAUL
                 await context.bot.send_document(
                     uid,
                     message.document.file_id,
-                    caption=message.caption,
-                    parse_mode="Markdown"
+                    caption=message.caption
                 )
             else:
                 # Fallback: copy the message directly for any other type
@@ -294,14 +297,17 @@ async def receive_broadcast_message(update: Update, context: ContextTypes.DEFAUL
                     message_id=message.message_id
                 )
             success += 1
-        except Exception:
+        except Exception as e:
             failed += 1
+            # Log first few failures for debugging
+            if failed <= 3:
+                import logging
+                logging.warning(f"Broadcast failed for {uid}: {e}")
     
     await status_msg.edit_text(
-        f"✅ *Broadcast Complete*\n\n"
-        f"📤 Sent: {success}\n"
-        f"❌ Failed: {failed}",
-        parse_mode="Markdown",
+        f"Broadcast Complete\n\n"
+        f"Sent: {success}\n"
+        f"Failed: {failed}",
     )
     
     context.user_data.pop("waiting_for", None)
