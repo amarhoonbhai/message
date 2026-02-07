@@ -68,7 +68,7 @@ async def check_referral_bonus(referral_code: str):
     if referrer and referrer.get("referrals_count", 0) >= REFERRALS_NEEDED:
         # Check if bonus not already applied
         if not referrer.get("referral_bonus_applied"):
-            await extend_plan(referrer["user_id"], REFERRAL_BONUS_DAYS)
+            await extend_plan(referrer["user_id"], REFERRAL_BONUS_DAYS, upgrade_to_paid=False)
             await db.users.update_one(
                 {"user_id": referrer["user_id"]},
                 {"$set": {"referral_bonus_applied": True}}
@@ -303,20 +303,33 @@ async def is_trial_user(user_id: int) -> bool:
     )
 
 
-async def extend_plan(user_id: int, days: int):
-    """Extend user's plan by days."""
+async def extend_plan(user_id: int, days: int, upgrade_to_paid: bool = True):
+    """Extend user's plan by days. If user has trial days remaining, add them to premium."""
     db = get_database()
     
     plan = await get_plan(user_id)
     
     if plan:
+        # Calculate remaining trial days if upgrading from trial to premium
+        remaining_trial_days = 0
+        if plan.get("plan_type") == "trial" and upgrade_to_paid:
+            if plan["expires_at"] > datetime.utcnow():
+                remaining_trial_days = (plan["expires_at"] - datetime.utcnow()).days
+        
         # Extend from current expiry or now
         base_date = max(plan["expires_at"], datetime.utcnow())
-        new_expiry = base_date + timedelta(days=days)
+        # Add the purchased days + any remaining trial days
+        total_days = days + remaining_trial_days
+        new_expiry = base_date + timedelta(days=total_days)
+        
+        # Update plan - change to 'paid' if upgrading
+        update_fields = {"expires_at": new_expiry, "status": "active"}
+        if upgrade_to_paid:
+            update_fields["plan_type"] = "paid"
         
         await db.plans.update_one(
             {"user_id": user_id},
-            {"$set": {"expires_at": new_expiry, "status": "active"}}
+            {"$set": update_fields}
         )
     else:
         # Create new plan

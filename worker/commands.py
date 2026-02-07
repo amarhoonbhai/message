@@ -123,36 +123,36 @@ async def handle_status(client: TelegramClient, user_id: int, message):
         expires = plan.get("expires_at")
         if expires and expires > datetime.utcnow():
             days_left = (expires - datetime.utcnow()).days
-            plan_status = f"✅ Active ({days_left} days left)"
+            plan_status = f"● Active ({days_left} days left)"
             plan_type = plan.get("plan_type", "trial").title()
         else:
-            plan_status = "❌ Expired"
+            plan_status = "○ Expired"
             plan_type = "Expired"
     else:
-        plan_status = "❌ No Plan"
+        plan_status = "○ No Plan"
         plan_type = "None"
     
     phone = session.get("phone", "Unknown") if session else "Unknown"
     from config import DEFAULT_INTERVAL_MINUTES
     interval = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
     
-    text = f"""📊 Account Status
+    text = f"""■ Account Status
 
 ━━━━━━━━━━━━━━━━━━━━
 
-📱 Phone: {phone}
-🔗 Status: ✅ Connected
+  ➤ Phone: {phone}
+  ➤ Status: ● Connected
 
-📋 Plan: {plan_type}
-⏰ Status: {plan_status}
+  ➤ Plan: {plan_type}
+  ➤ Status: {plan_status}
 
-👥 Groups: {enabled_groups}/{total_groups} (Max {MAX_GROUPS_PER_USER})
-⏱ Interval: {interval} minutes
-🌙 Night Mode: 00:00–06:00 IST
+  ➤ Groups: {enabled_groups}/{total_groups} (Max {MAX_GROUPS_PER_USER})
+  ➤ Interval: {interval} minutes
+  ➤ Night Mode: 00:00-06:00 IST
 
 ━━━━━━━━━━━━━━━━━━━━
 
-Use .help to see all commands."""
+▪ Use .help to see all commands."""
     await reply_to_command(client, message, text)
 
 
@@ -161,18 +161,18 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
     groups = await get_user_groups(user_id)
     
     if not groups:
-        await reply_to_command(client, message, "📭 No groups added yet\n\nUse .addgroup <url> to add a group.")
+        await reply_to_command(client, message, "○ No groups added yet\n\nUse .addgroup <url> to add a group.")
         return
     
-    text = f"👥 Your Groups ({len(groups)}/{MAX_GROUPS_PER_USER})\n\n"
+    text = f"■ Your Groups ({len(groups)}/{MAX_GROUPS_PER_USER})\n\n"
     
     for i, group in enumerate(groups, 1):
         title = group.get("chat_title", "Unknown")
-        enabled = "✅" if group.get("enabled", True) else "❌"
+        enabled = "●" if group.get("enabled", True) else "○"
         text += f"{i}. {enabled} {title}\n"
     
     text += "\n━━━━━━━━━━━━━━━━━━━\n"
-    text += "Use .rmgroup <number> to remove a group."
+    text += "▪ Use .rmgroup <number> to remove a group."
     
     await reply_to_command(client, message, text)
 
@@ -183,11 +183,11 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         await reply_to_command(client, message, 
-            "❌ Usage: .addgroup <url> [url2] [url3]...\n\n"
+            "○ Usage: .addgroup <url> [url2] [url3]...\n\n"
             "Examples:\n"
-            "• .addgroup @group1\n"
-            "• .addgroup @group1 @group2 @group3\n"
-            "• .addgroup https://t.me/group1 https://t.me/group2"
+            "  ◦ .addgroup @group1\n"
+            "  ◦ .addgroup @group1 @group2 @group3\n"
+            "  ◦ .addgroup https://t.me/group1 https://t.me/group2"
         )
         return
     
@@ -195,7 +195,7 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     group_inputs = parts[1].replace('\n', ' ').split()
     
     if not group_inputs:
-        await reply_to_command(client, message, "❌ No groups provided")
+        await reply_to_command(client, message, "○ No groups provided")
         return
     
     # Check group limit
@@ -204,7 +204,7 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     
     if available_slots <= 0:
         await reply_to_command(client, message,
-            f"❌ Maximum groups reached!\n\n"
+            f"○ Maximum groups reached!\n\n"
             f"You can only add up to {MAX_GROUPS_PER_USER} groups.\n"
             f"Remove a group with .rmgroup first."
         )
@@ -214,10 +214,10 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     if len(group_inputs) > available_slots:
         group_inputs = group_inputs[:available_slots]
         await reply_to_command(client, message, 
-            f"⚠️ Only processing {available_slots} group(s) due to limit..."
+            f"▪ Only processing {available_slots} group(s) due to limit..."
         )
     
-    await reply_to_command(client, message, f"🔄 Checking {len(group_inputs)} group(s)...")
+    await reply_to_command(client, message, f"➤ Checking {len(group_inputs)} group(s)...")
     
     added = []
     failed = []
@@ -261,17 +261,17 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     response = ""
     
     if added:
-        response += f"✅ Added {len(added)} group(s):\n"
+        response += f"● Added {len(added)} group(s):\n"
         for title in added:
-            response += f"  • {title}\n"
+            response += f"  ◦ {title}\n"
     
     if failed:
-        response += f"\n❌ Failed {len(failed)}:\n"
+        response += f"\n○ Failed {len(failed)}:\n"
         for name, reason in failed:
-            response += f"  • {name[:15]}... - {reason}\n"
+            response += f"  ◦ {name[:15]}... ▪ {reason}\n"
     
     if not response:
-        response = "❌ No groups were added"
+        response = "○ No groups were added"
     
     await reply_to_command(client, message, response.strip())
 
@@ -282,11 +282,11 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         await reply_to_command(client, message,
-            "❌ Usage: .rmgroup <number or url>\n\n"
+            "○ Usage: .rmgroup <number or url>\n\n"
             "Examples:\n"
-            "• .rmgroup 1\n"
-            "• .rmgroup @groupname\n\n"
-            "Use .groups to see your groups first."
+            "  ◦ .rmgroup 1\n"
+            "  ◦ .rmgroup @groupname\n\n"
+            "▪ Use .groups to see your groups first."
         )
         return
     
@@ -296,7 +296,7 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
     groups = await get_user_groups(user_id)
     
     if not groups:
-        await reply_to_command(client, message, "📭 No groups to remove.\n\nUse .addgroup to add groups first.")
+        await reply_to_command(client, message, "○ No groups to remove.\n\n▪ Use .addgroup to add groups first.")
         return
     
     chat_id = None
@@ -311,7 +311,7 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
             chat_title = group.get("chat_title", "Unknown")
         else:
             await reply_to_command(client, message,
-                f"❌ Invalid group number\n\n"
+                f"○ Invalid group number\n\n"
                 f"You have {len(groups)} group(s). Use a number between 1 and {len(groups)}."
             )
             return
@@ -320,7 +320,7 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
         group_identifier = parse_group_input(group_input)
         
         if not group_identifier:
-            await reply_to_command(client, message, "❌ Invalid group URL or username")
+            await reply_to_command(client, message, "○ Invalid group URL or username")
             return
         
         try:
@@ -339,19 +339,19 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
             
             if not chat_id:
                 await reply_to_command(client, message,
-                    "❌ Group not found in your list\n\n"
-                    "Use .groups to see your groups."
+                    "○ Group not found in your list\n\n"
+                    "▪ Use .groups to see your groups."
                 )
                 return
     
     try:
         # Remove from database
         await remove_group(user_id, chat_id)
-        await reply_to_command(client, message, f"✅ Group removed!\n\n📌 {chat_title}")
+        await reply_to_command(client, message, f"● Group removed!\n\n➤ {chat_title}")
         
     except Exception as e:
         logger.error(f"Error removing group: {e}")
-        await reply_to_command(client, message, f"❌ Error: {str(e)}")
+        await reply_to_command(client, message, f"○ Error: {str(e)}")
 
 
 async def handle_interval(client: TelegramClient, user_id: int, message, text: str):
@@ -362,7 +362,7 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
         config = await get_user_config(user_id)
         current = config.get("interval_min", 30)
         await reply_to_command(client, message,
-            f"⏱ Current Interval: {current} minutes\n\n"
+            f"➤ Current Interval: {current} minutes\n\n"
             f"Usage: .interval <minutes>\n"
             f"Minimum: {MIN_INTERVAL_MINUTES} minutes\n\n"
             f"Example: .interval 30"
@@ -373,7 +373,7 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
         interval = int(parts[1].strip())
     except ValueError:
         await reply_to_command(client, message,
-            f"❌ Invalid number\n\n"
+            f"○ Invalid number\n\n"
             f"Please enter a valid number of minutes.\n"
             f"Example: .interval 30"
         )
@@ -382,14 +382,14 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
     # Validate interval
     if interval < MIN_INTERVAL_MINUTES:
         await reply_to_command(client, message,
-            f"❌ Interval too low\n\n"
+            f"○ Interval too low\n\n"
             f"Minimum interval is {MIN_INTERVAL_MINUTES} minutes."
         )
         return
     
     if interval > 1440:  # 24 hours max
         await reply_to_command(client, message,
-            "❌ Interval too high\n\n"
+            "○ Interval too high\n\n"
             "Maximum interval is 1440 minutes (24 hours)."
         )
         return
@@ -398,8 +398,8 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
     await update_user_config(user_id, interval_min=interval)
     
     await reply_to_command(client, message,
-        f"✅ Interval updated!\n\n"
-        f"⏱ New interval: {interval} minutes\n\n"
+        f"● Interval updated!\n\n"
+        f"➤ New interval: {interval} minutes\n\n"
         f"Messages will be forwarded every {interval} minutes."
     )
 

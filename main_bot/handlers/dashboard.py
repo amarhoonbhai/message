@@ -22,9 +22,9 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Build status strings
     if session and session.get("connected"):
-        account_status = "Connected ✅"
+        account_status = "Connected ●"
     else:
-        account_status = "Not Connected ❌"
+        account_status = "Not Connected ○"
     
     # Plan status
     if plan:
@@ -33,33 +33,33 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             days_left = (plan["expires_at"] - __import__("datetime").datetime.utcnow()).days
             plan_status = f"{plan_type} ({days_left} days left)"
         else:
-            plan_status = "Expired ❌"
+            plan_status = "Expired ○"
     else:
         plan_status = "No Plan"
     
     interval = config.get("interval_min", MIN_INTERVAL_MINUTES)
     
     # Dynamic status icons
-    account_icon = "🟢" if session and session.get("connected") else "🔴"
-    plan_icon = "💎" if plan and plan.get("status") == "active" else "⚠️"
+    account_icon = "●" if session and session.get("connected") else "○"
+    plan_icon = "●" if plan and plan.get("status") == "active" else "○"
     
     dashboard_text = f"""
-📊 *DASHBOARD*
+■ *DASHBOARD*
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 {account_icon} *ACCOUNT*
-   ➳ {account_status}
+   ➤ {account_status}
 
 {plan_icon} *SUBSCRIPTION*
-   ➳ {plan_status}
+   ➤ {plan_status}
 
-⚙️ *SETTINGS*
-   ➳ 🌙 Night Mode: 00:00–06:00
-   ➳ 📩 Auto-forward: ✅ Active
-   ➳ ⏱️ Interval: {interval} min
+● *SETTINGS*
+   ➤ Night Mode: 00:00-06:00
+   ➤ Auto-forward: ● Active
+   ➤ Interval: {interval} min
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
-💡 *TIP:* Send `.addgroup <url>` in Saved Messages!
+▪ TIP: Send `.addgroup <url>` in Saved Messages!
 """
     
     # Determine how to respond
@@ -89,12 +89,12 @@ async def add_account_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     
     text = """
-🔐 *Connect Your Telegram Account*
+■ *Connect Your Telegram Account*
 
 To send messages from your own account,
 please connect securely via the Login Bot.
 
-After successful login, you'll return here automatically ✅
+After successful login, you'll return here automatically ●
 """
     
     await query.edit_message_text(

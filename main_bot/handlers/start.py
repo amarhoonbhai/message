@@ -10,26 +10,26 @@ from main_bot.utils.keyboards import get_welcome_keyboard
 
 
 WELCOME_TEXT = """
-⚡️ *GROUP MESSAGE SCHEDULER* ⚡️
+■ *GROUP MESSAGE SCHEDULER* ■
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🚀 *POWER YOUR TELEGRAM ADS*
+● *POWER YOUR TELEGRAM ADS*
 
-➳ Auto-forward to *15+ Groups*
-➳ Smart delays • Anti-flood
-➳ Night mode • Full automation
+  ➤ Auto-forward to *15+ Groups*
+  ➤ Smart delays ▪ Anti-flood
+  ➤ Night mode ▪ Full automation
 
-━━━━ ✨ *FEATURES* ✨ ━━━━
+━━━━ *FEATURES* ━━━━
 
-❊ Instant Forwarding
-❊ 60s Safe Delays
-❊ Night Mode (0-6 AM)
-❊ Real-time Dashboard
-❊ Secure Sessions
+  ○ Instant Forwarding
+  ○ 60s Safe Delays
+  ○ Night Mode (0-6 AM)
+  ○ Real-time Dashboard
+  ○ Secure Sessions
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⬇️ *SELECT AN OPTION* ⬇️
+▼ *SELECT AN OPTION BELOW*
 """
 
 

@@ -23,7 +23,7 @@ from telethon.tl.types import InputPeerSelf, InputUserSelf
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.functions.account import UpdateProfileRequest
 
-from config import GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, MIN_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL
+from config import GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL
 from db.models import (
     get_session, get_plan, get_user_config, get_user_groups,
     update_last_saved_id, update_current_msg_index, remove_group, log_send, is_plan_active, is_trial_user
@@ -171,7 +171,7 @@ class UserSender:
         """Main sender loop - INFINITE LOOP that continuously forwards ALL saved messages."""
         # Log runtime config values for validation
         logger.info(f"[User {self.user_id}] Starting infinite forwarding loop...")
-        logger.info(f"[User {self.user_id}] Config: GROUP_GAP={GROUP_GAP_SECONDS}s, MESSAGE_GAP={MESSAGE_GAP_SECONDS}s, CYCLE_INTERVAL={MIN_INTERVAL_MINUTES}min")
+        logger.info(f"[User {self.user_id}] Config: GROUP_GAP={GROUP_GAP_SECONDS}s, MESSAGE_GAP={MESSAGE_GAP_SECONDS}s, DEFAULT_INTERVAL={DEFAULT_INTERVAL_MINUTES}min")
         
         while self.running:
             try:
@@ -208,14 +208,17 @@ class UserSender:
                 config = await get_user_config(self.user_id)
                 current_msg_index = config.get("current_msg_index", 0)
                 
+                # Get user's configured interval (or default if not set)
+                user_interval_minutes = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
+                
                 # 6. CRITICAL: Reset index if out of bounds (ensures infinite loop)
                 # This handles: single message, message deletion, first run, etc.
                 if current_msg_index >= len(all_messages) or current_msg_index < 0:
-                    logger.info(f"[User {self.user_id}] 🔄 Loop cycle complete! Waiting {MIN_INTERVAL_MINUTES} minutes before restarting...")
+                    logger.info(f"[User {self.user_id}] 🔄 Loop cycle complete! Waiting {user_interval_minutes} minutes before restarting...")
                     
                     # Wait for the full cycle interval before restarting
                     # Sleep in chunks to respect Auto-Night pauses
-                    cycle_wait_seconds = MIN_INTERVAL_MINUTES * 60
+                    cycle_wait_seconds = user_interval_minutes * 60
                     elapsed = 0
                     while elapsed < cycle_wait_seconds and self.running:
                         # Check for night mode during wait
