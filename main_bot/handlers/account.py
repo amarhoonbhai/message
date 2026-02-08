@@ -6,28 +6,29 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from db.models import get_session, disconnect_session
+from db.models import get_all_user_sessions, get_session, disconnect_session
 from main_bot.utils.keyboards import (
+    get_account_selection_keyboard,
     get_manage_account_keyboard, 
     get_confirm_disconnect_keyboard,
     get_back_home_keyboard
 )
 
 
-async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show account management screen with details."""
+async def accounts_list_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show list of connected accounts."""
     query = update.callback_query
     await query.answer()
     
     user_id = update.effective_user.id
-    session = await get_session(user_id)
+    sessions = await get_all_user_sessions(user_id)
     
-    if not session:
+    if not sessions:
         text = """
-⚙️ *MANAGE ACCOUNT*
+⚙️ *MANAGE ACCOUNTS*
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔴 *STATUS:* No account connected
+🔴 *STATUS:* No accounts connected
 
 💡 *NEXT STEPS*
 
@@ -42,21 +43,44 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
         )
         return
     
+    text = """
+⚙️ *MANAGE ACCOUNTS*
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+Select an account to view details or disconnect:
+"""
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_account_selection_keyboard(sessions),
+    )
+
+
+async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show specific account details."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    phone = query.data.split(":")[1]
+    
+    session = await get_session(user_id, phone)
+    
+    if not session:
+        await query.answer("❌ Account not found", show_alert=True)
+        return
+    
     # Build account details
-    phone = session.get("phone", "Unknown")
     connected = session.get("connected", False)
     connected_at = session.get("connected_at")
     
-    status_emoji = "✅" if connected else "❌"
+    status_icon = "🟢" if connected else "🔴"
     status_text = "Connected" if connected else "Disconnected"
     
     if connected_at:
         connected_date = connected_at.strftime("%d %b %Y, %H:%M UTC")
     else:
         connected_date = "Unknown"
-    
-    # Dynamic status
-    status_icon = "🟢" if connected else "🔴"
     
     text = f"""
 ⚙️ *MANAGE ACCOUNT*
@@ -71,15 +95,15 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
 
 ━━━━ ⚠️ *WARNING* ⚠️ ━━━━
 
-❊ Stops all forwarding
-❊ Removes your session
+❊ Stops forwarding for THIS account
+❊ Removes this session
 ❊ You can reconnect later
 """
     
     await query.edit_message_text(
         text,
         parse_mode="Markdown",
-        reply_markup=get_manage_account_keyboard(),
+        reply_markup=get_manage_account_keyboard(phone),
     )
 
 
@@ -88,15 +112,19 @@ async def disconnect_account_callback(update: Update, context: ContextTypes.DEFA
     query = update.callback_query
     await query.answer()
     
-    text = """
+    phone = query.data.split(":")[1]
+    
+    text = f"""
 ⚠️ *CONFIRM DISCONNECT*
 ━━━━━━━━━━━━━━━━━━━━━━━━
+
+📱 *Account:* `{phone}`
 
 ❓ *ARE YOU SURE?*
 
 This action will:
-❌ Stop forwarding NOW
-🗑️ Remove saved session
+❌ Stop forwarding NOW for `{phone}`
+🗑️ Remove this saved session
 
 ✅ You can reconnect later
 """
@@ -104,7 +132,7 @@ This action will:
     await query.edit_message_text(
         text,
         parse_mode="Markdown",
-        reply_markup=get_confirm_disconnect_keyboard(),
+        reply_markup=get_confirm_disconnect_keyboard(phone),
     )
 
 
@@ -114,18 +142,21 @@ async def confirm_disconnect_callback(update: Update, context: ContextTypes.DEFA
     await query.answer("🔄 Disconnecting...")
     
     user_id = update.effective_user.id
+    phone = query.data.split(":")[1]
     
-    # Disconnect session in database
-    await disconnect_session(user_id)
+    # Disconnect session in database for specific phone
+    await disconnect_session(user_id, phone)
     
-    text = """
+    text = f"""
 ✅ *DISCONNECTED*
 ━━━━━━━━━━━━━━━━━━━━━━━━
+
+📱 *Account:* `{phone}`
 
 📋 *STATUS UPDATE*
 
 ✅ Session removed
-✅ Forwarding stopped
+✅ Forwarding stopped for this account
 
 You can reconnect anytime
 via the Login Bot.

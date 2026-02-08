@@ -88,33 +88,54 @@ def create_application() -> Application:
 
 
 async def main():
-    """Main entry point."""
-    logger.info("Starting Login Bot...")
+    """Main entry point with graceful shutdown."""
+    logger.info("=" * 50)
+    logger.info("Group Message Scheduler - Login Bot V2.0")
+    logger.info("=" * 50)
     
     # Initialize database indexes
     await init_indexes()
     
-    # Create and run application
+    # Create application
     application = create_application()
     
-    # Start polling
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling(drop_pending_updates=True)
+    # Setup shutdown event
+    stop_event = asyncio.Event()
     
-    logger.info("Login Bot is running! Press Ctrl+C to stop.")
+    # Setup signal handlers
+    import signal
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: stop_event.set())
+        except NotImplementedError:
+            pass # Windows support varies
     
-    # Keep running
     try:
-        while True:
-            await asyncio.sleep(1)
-    except asyncio.CancelledError:
-        pass
+        # Start the bot
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(drop_pending_updates=True)
+        
+        logger.info("Login Bot is running! Press Ctrl+C to stop.")
+        
+        # Wait for stop signal
+        await stop_event.wait()
+        
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        logger.info("Shutdown signal received...")
     finally:
-        await application.updater.stop()
-        await application.stop()
+        logger.info("Cleaning up...")
+        if application.updater.running:
+            await application.updater.stop()
+        if application.running:
+            await application.stop()
         await application.shutdown()
+        logger.info("Login Bot stopped.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

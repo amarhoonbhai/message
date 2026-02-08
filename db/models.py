@@ -98,7 +98,7 @@ async def create_session(
     }
     
     await db.sessions.update_one(
-        {"user_id": user_id},
+        {"user_id": user_id, "phone": phone},
         {"$set": session_doc},
         upsert=True
     )
@@ -109,10 +109,20 @@ async def create_session(
     return session_doc
 
 
-async def get_session(user_id: int) -> Optional[Dict[str, Any]]:
-    """Get session by user ID."""
+async def get_session(user_id: int, phone: str = None) -> Optional[Dict[str, Any]]:
+    """Get session by user ID (and optionally phone)."""
     db = get_database()
-    return await db.sessions.find_one({"user_id": user_id})
+    query = {"user_id": user_id}
+    if phone:
+        query["phone"] = phone
+    return await db.sessions.find_one(query)
+
+
+async def get_all_user_sessions(user_id: int) -> List[Dict[str, Any]]:
+    """Get all connected sessions for a specific user."""
+    db = get_database()
+    cursor = db.sessions.find({"user_id": user_id, "connected": True})
+    return await cursor.to_list(length=None)
 
 
 async def get_all_connected_sessions() -> List[Dict[str, Any]]:
@@ -122,13 +132,33 @@ async def get_all_connected_sessions() -> List[Dict[str, Any]]:
     return await cursor.to_list(length=None)
 
 
-async def disconnect_session(user_id: int):
-    """Mark session as disconnected."""
+async def update_session_activity(user_id: int, phone: str):
+    """Update last active timestamp for a session."""
     db = get_database()
     await db.sessions.update_one(
-        {"user_id": user_id},
+        {"user_id": user_id, "phone": phone},
+        {"$set": {"last_active_at": datetime.utcnow()}}
+    )
+
+
+async def disconnect_session(user_id: int, phone: str = None):
+    """Mark session as disconnected."""
+    db = get_database()
+    query = {"user_id": user_id}
+    if phone:
+        query["phone"] = phone
+    
+    await db.sessions.update_many(
+        query,
         {"$set": {"connected": False}}
     )
+
+
+async def is_account_active(user_id: int, phone: str) -> bool:
+    """Check if a specific account is connected and session is valid."""
+    session = await get_session(user_id, phone)
+    return session is not None and session.get("connected", False)
+
 
 
 # ==================== CONFIG ====================
@@ -144,6 +174,10 @@ async def get_user_config(user_id: int) -> Dict[str, Any]:
             "user_id": user_id,
             "interval_min": DEFAULT_INTERVAL_MINUTES,
             "last_saved_id": 0,
+            "shuffle_mode": False,
+            "copy_mode": False,
+            "auto_reply_enabled": False,
+            "auto_reply_text": "Hello! Thanks for your interest. Please check our official channel for more details: [YOUR_CHANNEL_HERE]",
             "updated_at": datetime.utcnow(),
         }
         await db.config.insert_one(config)
@@ -188,14 +222,13 @@ async def update_current_msg_index(user_id: int, index: int):
 
 # ==================== GROUPS ====================
 
-async def add_group(user_id: int, chat_id: int, chat_title: str) -> bool:
-    """Add a group for user. Returns False if at max limit."""
+async def add_group(user_id: int, chat_id: int, chat_title: str, account_phone: str = None) -> bool:
+    """Add a group linked to a specific account phone."""
     db = get_database()
     
     # Check group count
     from config import MAX_GROUPS_PER_USER
-    count = await db.groups.count_documents({"user_id": user_id})
-    
+    count = await get_group_count(user_id)
     if count >= MAX_GROUPS_PER_USER:
         return False
     
@@ -203,8 +236,9 @@ async def add_group(user_id: int, chat_id: int, chat_title: str) -> bool:
         "user_id": user_id,
         "chat_id": chat_id,
         "chat_title": chat_title,
+        "account_phone": account_phone,
         "enabled": True,
-        "added_at": datetime.utcnow(),
+        "added_at": datetime.utcnow()
     }
     
     await db.groups.update_one(
@@ -216,13 +250,15 @@ async def add_group(user_id: int, chat_id: int, chat_title: str) -> bool:
     return True
 
 
-async def get_user_groups(user_id: int, enabled_only: bool = False) -> List[Dict[str, Any]]:
-    """Get all groups for user."""
+async def get_user_groups(user_id: int, enabled_only: bool = False, phone: str = None) -> List[Dict[str, Any]]:
+    """Get all groups for user (optionally filtered by account phone)."""
     db = get_database()
     
     query = {"user_id": user_id}
     if enabled_only:
         query["enabled"] = True
+    if phone:
+        query["account_phone"] = phone
     
     cursor = db.groups.find(query)
     return await cursor.to_list(length=None)
@@ -413,21 +449,57 @@ async def log_send(
     chat_id: int,
     saved_msg_id: int,
     status: str = "success",
-    error: Optional[str] = None
+    error: Optional[str] = None,
+    phone: Optional[str] = None
 ):
-    """Log a message send attempt."""
+    """Log a message send attempt and update account stats."""
     db = get_database()
     
+    now = datetime.utcnow()
     log_doc = {
         "user_id": user_id,
+        "phone": phone,
         "chat_id": chat_id,
         "saved_msg_id": saved_msg_id,
-        "sent_at": datetime.utcnow(),
+        "sent_at": now,
         "status": status,
         "error": error,
     }
     
     await db.send_logs.insert_one(log_doc)
+    
+    # Update session activity and success rate
+    if phone:
+        update_data = {"last_active_at": now}
+        
+        # Increment total/success counters in session for fast dashboard access
+        inc_data = {"stats_total": 1}
+        if status == "success":
+            inc_data["stats_success"] = 1
+            
+        await db.sessions.update_one(
+            {"user_id": user_id, "phone": phone},
+            {"$set": update_data, "$inc": inc_data}
+        )
+
+
+async def get_account_stats(user_id: int, phone: str) -> Dict[str, Any]:
+    """Get activity and success rate for a specific account."""
+    db = get_database()
+    session = await db.sessions.find_one({"user_id": user_id, "phone": phone})
+    
+    if not session:
+        return {"success_rate": 0, "last_active": None}
+    
+    total = session.get("stats_total", 0)
+    success = session.get("stats_success", 0)
+    rate = (success / total * 100) if total > 0 else 0
+    
+    return {
+        "success_rate": round(rate, 1),
+        "last_active": session.get("last_active_at"),
+        "total_sent": total
+    }
 
 
 async def get_send_stats(hours: int = 24) -> Dict[str, int]:

@@ -53,3 +53,18 @@ def format_time_remaining(seconds: int) -> str:
     if hours > 0:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+import logging
+
+class UserLogAdapter(logging.LoggerAdapter):
+    """
+    Adapter that adds user context to log messages.
+    Usage:
+        logger = UserLogAdapter(original_logger, {'user_id': 123, 'phone': '+1234'})
+        logger.info("Message") -> "[User 123][+1234] Message"
+    """
+    def process(self, msg, kwargs):
+        user_id = self.extra.get('user_id', 'Unknown')
+        phone = self.extra.get('phone', 'Unknown')
+        return f"[User {user_id}][{phone}] {msg}", kwargs

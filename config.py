@@ -18,15 +18,38 @@ MAIN_BOT_USERNAME = os.getenv("MAIN_BOT_USERNAME", "")
 LOGIN_BOT_USERNAME = os.getenv("LOGIN_BOT_USERNAME", "spinifyLoginbot")
 
 # ============== Telegram API ==============
+# ============== Telegram API ==============
 def _safe_int(value: str, default: int = 0) -> int:
     """Safely parse integer from string."""
     try:
-        return int(value) if value and value.isdigit() else default
+        if not value:
+            return default
+        return int(value)
     except (ValueError, TypeError):
         return default
 
 API_ID = _safe_int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
+
+# ============== Validation ==============
+def validate_config():
+    """Validate critical configuration on startup."""
+    missing = []
+    if not MAIN_BOT_TOKEN: missing.append("MAIN_BOT_TOKEN")
+    if not LOGIN_BOT_TOKEN: missing.append("LOGIN_BOT_TOKEN")
+    if API_ID == 0: missing.append("API_ID")
+    if not API_HASH: missing.append("API_HASH")
+    
+    if missing:
+        import sys
+        print("\n" + "!"*50)
+        print(f"CRITICAL ERROR: Missing configuration keys:\n{', '.join(missing)}")
+        print("Please check your .env file.")
+        print("!"*50 + "\n")
+        sys.exit(1)
+
+# Run validation
+validate_config()
 
 # ============== Owner/Admin ==============
 OWNER_ID = _safe_int(os.getenv("OWNER_ID", "0"))

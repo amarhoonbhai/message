@@ -42,7 +42,7 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
     """Build dashboard keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("⚙️ Manage Account", callback_data="manage_account"),
+            InlineKeyboardButton("⚙️ Manage Accounts", callback_data="accounts_list"),
         ],
         [
             InlineKeyboardButton("🎁 My Plan", callback_data="my_plan"),
@@ -59,6 +59,21 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🏠 Home", callback_data="home"),
         ],
     ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_account_selection_keyboard(sessions: list) -> InlineKeyboardMarkup:
+    """Build keyboard with list of accounts for selection."""
+    keyboard = []
+    
+    for s in sessions:
+        phone = s.get("phone", "Unknown")
+        status = "🟢" if s.get("connected") else "🔴"
+        keyboard.append([InlineKeyboardButton(f"{status} {phone}", callback_data=f"manage_account:{phone}")])
+    
+    keyboard.append([InlineKeyboardButton("➕ Add Another Account", callback_data="add_account")])
+    keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="dashboard")])
+    
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -157,26 +172,26 @@ def get_broadcast_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_manage_account_keyboard() -> InlineKeyboardMarkup:
+def get_manage_account_keyboard(phone: str) -> InlineKeyboardMarkup:
     """Build manage account keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("🔌 Disconnect Account", callback_data="disconnect_account"),
+            InlineKeyboardButton("🔌 Disconnect Account", callback_data=f"disconnect_account:{phone}"),
         ],
         [
-            InlineKeyboardButton("🔙 Back", callback_data="dashboard"),
+            InlineKeyboardButton("🔙 Back", callback_data="accounts_list"),
             InlineKeyboardButton("🏠 Home", callback_data="home"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_confirm_disconnect_keyboard() -> InlineKeyboardMarkup:
+def get_confirm_disconnect_keyboard(phone: str) -> InlineKeyboardMarkup:
     """Build disconnect confirmation keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("✅ Yes, Disconnect", callback_data="confirm_disconnect"),
-            InlineKeyboardButton("❌ Cancel", callback_data="manage_account"),
+            InlineKeyboardButton("✅ Yes, Disconnect", callback_data=f"confirm_disconnect:{phone}"),
+            InlineKeyboardButton("❌ Cancel", callback_data=f"manage_account:{phone}"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)

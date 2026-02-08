@@ -23,8 +23,10 @@ HELP_TEXT = """
   ○ `.addgroup <url>` ▪ Add group
   ○ `.rmgroup <url>` ▪ Remove group
   ○ `.groups` ▪ List all groups
-  ○ `.status` ▪ Check status
   ○ `.interval <min>` ▪ Set delay
+  ○ `.shuffle on/off` ▪ Shuffle groups
+  ○ `.copymode on/off` ▪ Send as copy
+  ○ `.status` ▪ Check status
   ○ `.help` ▪ Show commands
 
 ━━━━ *SAFETY* ━━━━

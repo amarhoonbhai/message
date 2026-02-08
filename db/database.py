@@ -42,14 +42,14 @@ async def init_indexes():
     await database.users.create_index("user_id", unique=True)
     await database.users.create_index("referred_by")
     
-    # Sessions collection
-    await database.sessions.create_index("user_id", unique=True)
+    # Sessions collection - Allow multiple per user (unique by user_id + phone)
+    await database.sessions.create_index([("user_id", 1), ("phone", 1)], unique=True)
     await database.sessions.create_index("connected")
     
     # Config collection
     await database.config.create_index("user_id", unique=True)
     
-    # Groups collection
+    # Groups collection - Each group is added to a specific user's pool
     await database.groups.create_index([("user_id", 1), ("chat_id", 1)], unique=True)
     await database.groups.create_index("user_id")
     

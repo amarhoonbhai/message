@@ -29,9 +29,7 @@ from main_bot.handlers.admin import (
     generate_command, admin_users_callback, WAITING_BROADCAST_MESSAGE
 )
 from main_bot.handlers.help import help_callback, help_command
-from main_bot.handlers.account import (
-    manage_account_callback, disconnect_account_callback, confirm_disconnect_callback
-)
+from main_bot.handlers.account import accounts_list_callback, manage_account_callback, disconnect_account_callback, confirm_disconnect_callback
 
 # Configure logging
 logging.basicConfig(
@@ -112,41 +110,63 @@ def create_application() -> Application:
     application.add_handler(CallbackQueryHandler(admin_users_callback, pattern="^admin_users$"))
     
     # Account Management
-    application.add_handler(CallbackQueryHandler(manage_account_callback, pattern="^manage_account$"))
-    application.add_handler(CallbackQueryHandler(disconnect_account_callback, pattern="^disconnect_account$"))
-    application.add_handler(CallbackQueryHandler(confirm_disconnect_callback, pattern="^confirm_disconnect$"))
+    application.add_handler(CallbackQueryHandler(accounts_list_callback, pattern="^accounts_list$"))
+    application.add_handler(CallbackQueryHandler(manage_account_callback, pattern="^manage_account:"))
+    application.add_handler(CallbackQueryHandler(disconnect_account_callback, pattern="^disconnect_account:"))
+    application.add_handler(CallbackQueryHandler(confirm_disconnect_callback, pattern="^confirm_disconnect:"))
     
     return application
 
 
 async def main():
-    """Main entry point."""
-    logger.info("Starting Main Bot...")
+    """Main entry point with graceful shutdown."""
+    logger.info("=" * 50)
+    logger.info("Group Message Scheduler - Main Bot V2.0")
+    logger.info("=" * 50)
     
     # Initialize database indexes
     await init_indexes()
     
-    # Create and run application
+    # Create application
     application = create_application()
     
-    # Start polling
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling(drop_pending_updates=True)
+    # Setup shutdown event
+    stop_event = asyncio.Event()
     
-    logger.info("Main Bot is running! Press Ctrl+C to stop.")
+    # Setup signal handlers
+    import signal
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: stop_event.set())
+        except NotImplementedError:
+            pass # Windows support varies
     
-    # Keep running
     try:
-        while True:
-            await asyncio.sleep(1)
-    except asyncio.CancelledError:
-        pass
+        # Start the bot
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(drop_pending_updates=True)
+        
+        logger.info("Main Bot is running! Press Ctrl+C to stop.")
+        
+        # Wait for stop signal
+        await stop_event.wait()
+        
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        logger.info("Shutdown signal received...")
     finally:
-        await application.updater.stop()
-        await application.stop()
+        logger.info("Cleaning up...")
+        if application.updater.running:
+            await application.updater.stop()
+        if application.running:
+            await application.stop()
         await application.shutdown()
+        logger.info("Main Bot stopped.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

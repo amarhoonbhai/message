@@ -5,9 +5,28 @@ Dashboard handler for Main Bot.
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from db.models import get_session, get_plan, get_user_config, get_group_count
+from db.models import get_all_user_sessions, get_plan, get_user_config, get_group_count, get_account_stats
 from main_bot.utils.keyboards import get_dashboard_keyboard, get_add_account_keyboard
 from config import MIN_INTERVAL_MINUTES
+import datetime
+
+
+def format_last_active(dt: datetime.datetime) -> str:
+    """Format datetime as relative 'N m/h/d ago'."""
+    if not dt:
+        return "Never"
+    
+    now = datetime.datetime.utcnow()
+    diff = now - dt
+    
+    if diff.total_seconds() < 60:
+        return "Just now"
+    if diff.total_seconds() < 3600:
+        return f"{int(diff.total_seconds() // 60)}m ago"
+    if diff.total_seconds() < 86400:
+        return f"{int(diff.total_seconds() // 3600)}h ago"
+    
+    return f"{diff.days}d ago"
 
 
 async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -15,16 +34,27 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     # Get user data
-    session = await get_session(user_id)
+    sessions = await get_all_user_sessions(user_id)
     plan = await get_plan(user_id)
     config = await get_user_config(user_id)
     group_count = await get_group_count(user_id)
     
-    # Build status strings
-    if session and session.get("connected"):
-        account_status = "Connected ●"
+    # Build account list
+    account_lines = ""
+    if sessions:
+        for s in sessions:
+            status_icon = "●" if s.get("connected") else "○"
+            phone = s.get("phone", "Unknown")
+            stats = await get_account_stats(user_id, phone)
+            
+            last_active = format_last_active(stats["last_active"])
+            rate = stats["success_rate"]
+            
+            # Professional formatting: [Status] Phone | Active: time | Success: %
+            account_lines += f"   {status_icon} `{phone}`\n"
+            account_lines += f"   └─ Active: {last_active} ▪ Rate: {rate}%\n"
     else:
-        account_status = "Not Connected ○"
+        account_lines = "   ○ No accounts connected"
     
     # Plan status
     if plan:
@@ -40,23 +70,27 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     interval = config.get("interval_min", MIN_INTERVAL_MINUTES)
     
     # Dynamic status icons
-    account_icon = "●" if session and session.get("connected") else "○"
+    has_connected = any(s.get("connected") for s in sessions) if sessions else False
+    account_icon = "●" if has_connected else "○"
     plan_icon = "●" if plan and plan.get("status") == "active" else "○"
     
     dashboard_text = f"""
 ■ *DASHBOARD*
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
-{account_icon} *ACCOUNT*
-   ➤ {account_status}
+● *ACCOUNTS*
+{account_lines}
 
 {plan_icon} *SUBSCRIPTION*
    ➤ {plan_status}
 
 ● *SETTINGS*
-   ➤ Night Mode: 00:00-06:00
+   ➤ Copy Mode: {"● ON" if config.get("copy_mode") else "○ OFF"}
+   ➤ Shuffle Mode: {"● ON" if config.get("shuffle_mode") else "○ OFF"}
+   ➤ Responder: {"● ON" if config.get("auto_reply_enabled") else "○ OFF"}
    ➤ Auto-forward: ● Active
    ➤ Interval: {interval} min
+   ➤ Night Mode: 00:00-06:00
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 ▪ TIP: Send `.addgroup <url>` in Saved Messages!

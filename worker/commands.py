@@ -59,6 +59,15 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".interval":
             await handle_interval(client, user_id, message, text)
             return True
+        elif cmd == ".shuffle":
+            await handle_shuffle(client, user_id, message, text)
+            return True
+        elif cmd == ".copymode":
+            await handle_copymode(client, user_id, message, text)
+            return True
+        elif cmd == ".responder":
+            await handle_responder(client, user_id, message, text)
+            return True
     except Exception as e:
         logger.error(f"[User {user_id}] Command error: {e}")
         await reply_to_command(client, message, f"Error: {str(e)}")
@@ -82,6 +91,9 @@ GROUP MANAGEMENT
 
 SETTINGS
 ▢ .interval <minutes> — Set interval (min {min_interval})
+▢ .shuffle on/off — Shuffle group order
+▢ .copymode on/off — Send as copy (new msg)
+▢ .responder on/off — Auto-reply to DMs
 ▢ .status — Account status
 
 HELP
@@ -89,31 +101,35 @@ HELP
 ━━━━━━━━━━━━━━━━━━━━
 EXAMPLES
 ▢ .addgroup https://t.me/mygroup
-▢ .addgroup @mygroup
+▢ .shuffle on
+▢ .copymode on
 ▢ .interval 30
 
 NOTES
 ▢ Must be a group member
 ▢ Max {max_groups} groups allowed
 ▢ Minimum interval {min_interval} minutes
+▢ Copy Mode hides "Forwarded from"
+▢ Shuffle Mode adds random delays
 """.format(min_interval=MIN_INTERVAL_MINUTES, max_groups=MAX_GROUPS_PER_USER)
     
     await reply_to_command(client, message, text)
 
 
 async def handle_status(client: TelegramClient, user_id: int, message):
-    """Handle .status command with detailed group info."""
-    # Get session
-    session = await get_session(user_id)
+    """Handle .status command with detailed information for THIS account."""
+    # Get specifically this account's session
+    phone = getattr(client, 'phone', None)
+    session = await get_session(user_id, phone)
     
-    # Get plan
+    # Get plan (User-wide)
     plan = await get_plan(user_id)
     
-    # Get config
+    # Get config (User-wide)
     config = await get_user_config(user_id)
     
-    # Get groups for diagonal count
-    groups = await get_user_groups(user_id)
+    # Get groups specifically for THIS account
+    groups = await get_user_groups(user_id, phone=phone)
     total_groups = len(groups)
     enabled_groups = len([g for g in groups if g.get("enabled", True)])
     
@@ -146,8 +162,11 @@ async def handle_status(client: TelegramClient, user_id: int, message):
   ➤ Plan: {plan_type}
   ➤ Status: {plan_status}
 
-  ➤ Groups: {enabled_groups}/{total_groups} (Max {MAX_GROUPS_PER_USER})
+  ➤ Groups: {enabled_groups}/{total_groups} (Account specific)
   ➤ Interval: {interval} minutes
+  ➤ Copy Mode: {"● ON" if config.get("copy_mode") else "○ OFF"}
+  ➤ Shuffle Mode: {"● ON" if config.get("shuffle_mode") else "○ OFF"}
+  ➤ Responder: {"● ON" if config.get("auto_reply_enabled") else "○ OFF"}
   ➤ Night Mode: 00:00-06:00 IST
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -157,14 +176,18 @@ async def handle_status(client: TelegramClient, user_id: int, message):
 
 
 async def handle_groups(client: TelegramClient, user_id: int, message):
-    """Handle .groups command - list all groups."""
-    groups = await get_user_groups(user_id)
+    """Handle .groups command - list groups for THIS account."""
+    phone = getattr(client, 'phone', None)
+    groups = await get_user_groups(user_id, phone=phone)
     
     if not groups:
-        await reply_to_command(client, message, "○ No groups added yet\n\nUse .addgroup <url> to add a group.")
+        await reply_to_command(client, message, 
+            f"○ No groups added for this account ({phone})\n\n"
+            "Use .addgroup <url> to add a group."
+        )
         return
     
-    text = f"■ Your Groups ({len(groups)}/{MAX_GROUPS_PER_USER})\n\n"
+    text = f"■ Your Groups ({len(groups)} handled by this account)\n\n"
     
     for i, group in enumerate(groups, 1):
         title = group.get("chat_title", "Unknown")
@@ -241,7 +264,8 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
             
             # Save to database
-            success = await add_group(user_id, chat_id, chat_title)
+            # Link to the current account's phone for multi-account support
+            success = await add_group(user_id, chat_id, chat_title, account_phone=getattr(client, 'phone', None))
             
             if success:
                 added.append(chat_title)
@@ -292,11 +316,15 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
     
     group_input = parts[1].strip()
     
-    # Get user's groups
-    groups = await get_user_groups(user_id)
+    # Get user's groups FOR THIS ACCOUNT
+    phone = getattr(client, 'phone', None)
+    groups = await get_user_groups(user_id, phone=phone)
     
     if not groups:
-        await reply_to_command(client, message, "○ No groups to remove.\n\n▪ Use .addgroup to add groups first.")
+        await reply_to_command(client, message, 
+            f"○ No groups found for this account ({phone}).\n\n"
+            "▪ Use .addgroup to add groups first."
+        )
         return
     
     chat_id = None
@@ -402,6 +430,88 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
         f"➤ New interval: {interval} minutes\n\n"
         f"Messages will be forwarded every {interval} minutes."
     )
+
+
+async def handle_shuffle(client: TelegramClient, user_id: int, message, text: str):
+    """Handle .shuffle on/off command."""
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        config = await get_user_config(user_id)
+        current = "ON" if config.get("shuffle_mode", False) else "OFF"
+        await reply_to_command(client, message,
+            f"➤ Shuffle Mode: {current}\n\n"
+            f"Usage: .shuffle on/off\n"
+            f"Randomizes group order each cycle."
+        )
+        return
+    
+    val = parts[1].strip().lower()
+    enable = val == "on"
+    
+    await update_user_config(user_id, shuffle_mode=enable)
+    status_text = "ENABLED ●" if enable else "DISABLED ○"
+    
+    await reply_to_command(client, message,
+        f"■ Shuffle Mode {status_text}\n\n"
+        f"Groups will now be {'randomized' if enable else 'sent in order'} each cycle."
+    )
+
+
+async def handle_copymode(client: TelegramClient, user_id: int, message, text: str):
+    """Handle .copymode on/off command."""
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        config = await get_user_config(user_id)
+        current = "ON" if config.get("copy_mode", False) else "OFF"
+        await reply_to_command(client, message,
+            f"➤ Copy Mode: {current}\n\n"
+            f"Usage: .copymode on/off\n"
+            f"Sends as new message instead of forwarding."
+        )
+        return
+    
+    val = parts[1].strip().lower()
+    enable = val == "on"
+    
+    await update_user_config(user_id, copy_mode=enable)
+    status_text = "ENABLED ●" if enable else "DISABLED ○"
+    
+    await reply_to_command(client, message,
+        f"■ Copy Mode {status_text}\n\n"
+        f"Messages will now be {'sent as new copies' if enable else 'forwarded normally'}."
+    )
+
+
+async def handle_responder(client: TelegramClient, user_id: int, message, text: str):
+    """Handle .responder on/off or .responder <message>."""
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        config = await get_user_config(user_id)
+        current = "ON" if config.get("auto_reply_enabled", False) else "OFF"
+        await reply_to_command(client, message,
+            f"➤ Auto-Responder: {current}\n\n"
+            f"Usage:\n"
+            f"  .responder on/off\n"
+            f"  .responder <your message>\n\n"
+            f"Current message: {config.get('auto_reply_text')}"
+        )
+        return
+    
+    val = parts[1].strip()
+    
+    if val.lower() == "on":
+        await update_user_config(user_id, auto_reply_enabled=True)
+        await reply_to_command(client, message, "■ Auto-Responder ENABLED ●")
+    elif val.lower() == "off":
+        await update_user_config(user_id, auto_reply_enabled=False)
+        await reply_to_command(client, message, "■ Auto-Responder DISABLED ○")
+    else:
+        # Set message
+        await update_user_config(user_id, auto_reply_text=val, auto_reply_enabled=True)
+        await reply_to_command(client, message, 
+            f"● Auto-Responder set and ENABLED!\n\n"
+            f"➤ New message: {val}"
+        )
 
 
 def parse_group_input(input_str: str) -> str:

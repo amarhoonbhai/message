@@ -41,8 +41,8 @@ echo "  Worker:    $WORKER_PID"
 echo ""
 echo "Logs are in ./logs/"
 echo ""
-echo "To stop all services:"
-echo "  kill $MAIN_BOT_PID $LOGIN_BOT_PID $WORKER_PID"
+echo "To stop all services gracefully (recommended):"
+echo "  kill -SIGINT $MAIN_BOT_PID $LOGIN_BOT_PID $WORKER_PID"
 
 # Save PIDs to file for easy stopping
 echo "$MAIN_BOT_PID" > logs/main_bot.pid
