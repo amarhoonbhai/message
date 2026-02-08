@@ -101,6 +101,7 @@ HELP
 ━━━━━━━━━━━━━━━━━━━━
 EXAMPLES
 ▢ .addgroup https://t.me/mygroup
+▢ .responder Hello! I am busy right now.
 ▢ .shuffle on
 ▢ .copymode on
 ▢ .interval 30
@@ -493,7 +494,8 @@ async def handle_responder(client: TelegramClient, user_id: int, message, text: 
             f"Usage:\n"
             f"  .responder on/off\n"
             f"  .responder <your message>\n\n"
-            f"Current message: {config.get('auto_reply_text')}"
+            f"Current message:\n"
+            f"\"{config.get('auto_reply_text')}\""
         )
         return
     

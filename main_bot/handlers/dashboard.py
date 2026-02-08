@@ -88,12 +88,14 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
    ➤ Copy Mode: {"● ON" if config.get("copy_mode") else "○ OFF"}
    ➤ Shuffle Mode: {"● ON" if config.get("shuffle_mode") else "○ OFF"}
    ➤ Responder: {"● ON" if config.get("auto_reply_enabled") else "○ OFF"}
+     └Msg: "{config.get("auto_reply_text", "")[:20]}..."
    ➤ Auto-forward: ● Active
    ➤ Interval: {interval} min
    ➤ Night Mode: 00:00-06:00
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 ▪ TIP: Send `.addgroup <url>` in Saved Messages!
+▪ TIP: Send `.responder <msg>` to set auto-reply!
 """
     
     # Determine how to respond
