@@ -93,11 +93,25 @@ class UserSender:
         self.client.phone = self.phone  # Attach phone for commands to access it
         
         try:
-            await self.client.connect()
-            
-            if not await self.client.is_user_authorized():
-                self.logger.warning(f"[User {self.user_id}] Session not authorized")
-                return
+            # Retry connection up to 3 times with exponential backoff
+            max_retries = 3
+            for attempt in range(1, max_retries + 1):
+                try:
+                    await self.client.connect()
+                    if await self.client.is_user_authorized():
+                        break
+                    else:
+                        self.logger.warning(f"[User {self.user_id}] Session not authorized (attempt {attempt}/{max_retries})")
+                        if attempt < max_retries:
+                            await asyncio.sleep(5 * (2 ** (attempt - 1)))  # 5s, 10s, 20s
+                            continue
+                        return
+                except (ConnectionError, OSError) as conn_err:
+                    self.logger.warning(f"[User {self.user_id}] Connection failed (attempt {attempt}/{max_retries}): {conn_err}")
+                    if attempt < max_retries:
+                        await asyncio.sleep(5 * (2 ** (attempt - 1)))
+                        continue
+                    return
             
             # Add event handler for messages (to process commands AND new ads)
             @self.client.on(events.NewMessage(from_users='me', incoming=True, outgoing=True))
@@ -123,6 +137,9 @@ class UserSender:
                     if is_me:
                         self.logger.info(f"[User {self.user_id}][{self.phone}] New ad detected! Waking up worker...")
                         self.wake_up_event.set()
+                        # Clear event after a brief pause so it can fire again
+                        await asyncio.sleep(0.1)
+                        self.wake_up_event.clear()
                         return
 
                     # 3. Handle Auto-Responder (Incoming PMs from others)
@@ -415,7 +432,7 @@ class UserSender:
                 # Flood wait supersedes all logic - return immediately
                 logger.warning(f"[User {self.user_id}] FloodWait: {e.seconds}s (superseding all logic)")
                 await log_send(self.user_id, chat_id, message.id, "flood_wait", f"FloodWait {e.seconds}s", phone=self.phone)
-                return (True, e.seconds + 10)  # Return flood state, let caller handle sleep
+                return (True, int(e.seconds * 1.5) + 10)  # Scaled backoff + buffer
                 
             except PeerFloodError:
                 # PeerFlood is severe - return with 1 hour wait

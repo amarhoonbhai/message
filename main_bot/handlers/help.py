@@ -9,42 +9,54 @@ from main_bot.utils.keyboards import get_back_home_keyboard
 
 
 HELP_TEXT = """
-■ *HELP & COMMANDS*
-━━━━━━━━━━━━━━━━━━━━━━━━
+📖 *HELP & COMMANDS*
+╔══════════════════════════╗
+║     ★ V3.0 — COMMAND GUIDE ★    ║
+╚══════════════════════════╝
 
-● *QUICK START*
-  ➤ Connect your Telegram account
-  ➤ Open *Saved Messages*
-  ➤ Use dot commands below
-  ➤ Send ads ▪ Auto-forwarded!
+━━━━ 🚀 *QUICK START* ━━━━
 
-━━━━ *DOT COMMANDS* ━━━━
+  1️⃣ Connect your Telegram account
+  2️⃣ Open *Saved Messages*
+  3️⃣ Use dot commands below
+  4️⃣ Send ads → Auto-forwarded! 🎯
 
-  ○ `.addgroup <url>` ▪ Add group
-  ○ `.rmgroup <url>` ▪ Remove group
-  ○ `.groups` ▪ List all groups
-  ○ `.interval <min>` ▪ Set delay
-  ○ `.shuffle on/off` ▪ Shuffle groups
-  ○ `.copymode on/off` ▪ Send as copy
-  ○ `.status` ▪ Check status
-  ○ `.help` ▪ Show commands
+━━━━ 📋 *GROUP COMMANDS* ━━━━
 
-━━━━ *SAFETY* ━━━━
+  ▸ `.addgroup <url>` — Add group
+  ▸ `.rmgroup <url|#>` — Remove group
+  ▸ `.groups` — List all groups
 
-  ○ 60s between groups
-  ○ 5min between messages
-  ○ Night mode: 00:00-06:00
-  ○ Auto-remove bad groups
+━━━━ ⚙️ *SETTINGS* ━━━━
 
-━━━━ *BOT COMMANDS* ━━━━
+  ▸ `.interval <min>` — Set delay
+  ▸ `.shuffle on/off` — Shuffle groups
+  ▸ `.copymode on/off` — Send as copy
+  ▸ `.responder on/off` — Toggle DM reply
+  ▸ `.responder <msg>` — Set reply text
 
-  ○ /start ▪ Home screen
-  ○ /dashboard ▪ Dashboard
-  ○ /redeem <code> ▪ Premium
-  ○ /help ▪ This help
+━━━━ 📊 *INFO* ━━━━
 
-━━━━━━━━━━━━━━━━━━━━━━━━
-*SUPPORT:* @PHilobots
+  ▸ `.status` — Account status card
+  ▸ `.help` — This help screen
+
+━━━━ 🛡️ *SAFETY RULES* ━━━━
+
+  ┌─────────────────────────┐
+  │  ⏱️ 10s gap between groups      │
+  │  ⏱️ 2min gap between messages   │
+  │  🌙 Night pause: 00:00–06:00    │
+  │  🗑️ Auto-remove bad groups      │
+  └─────────────────────────┘
+
+━━━━ 🤖 *BOT COMMANDS* ━━━━
+
+  ▸ /start — Home screen
+  ▸ /help — This help
+  ▸ /redeem `<code>` — Activate plan
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💬 *SUPPORT:* @PHilobots
 """
 
 

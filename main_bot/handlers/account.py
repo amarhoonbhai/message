@@ -6,7 +6,7 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from db.models import get_all_user_sessions, get_session, disconnect_session
+from db.models import get_all_user_sessions, get_session, disconnect_session, get_account_stats
 from main_bot.utils.keyboards import (
     get_account_selection_keyboard,
     get_manage_account_keyboard, 
@@ -26,15 +26,17 @@ async def accounts_list_callback(update: Update, context: ContextTypes.DEFAULT_T
     if not sessions:
         text = """
 ⚙️ *MANAGE ACCOUNTS*
-━━━━━━━━━━━━━━━━━━━━━━━━
+╔══════════════════════════╗
 
-🔴 *STATUS:* No accounts connected
+🔴 *No accounts connected*
+
+╚══════════════════════════╝
 
 💡 *NEXT STEPS*
 
-➳ Go to Dashboard
-➳ Tap "Add Account"
-➳ Connect via Login Bot
+  1️⃣ Go to Dashboard
+  2️⃣ Tap \"➕ Add Account\"
+  3️⃣ Connect via Login Bot
 """
         await query.edit_message_text(
             text,
@@ -43,11 +45,30 @@ async def accounts_list_callback(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
     
-    text = """
+    # Build account list with stats
+    accounts_text = ""
+    for idx, s in enumerate(sessions, 1):
+        phone = s.get("phone", "Unknown")
+        status_icon = "🟢" if s.get("connected") else "🔴"
+        connected_at = s.get("connected_at")
+        
+        if connected_at:
+            since = connected_at.strftime("%d %b %Y")
+        else:
+            since = "Unknown"
+        
+        accounts_text += f"  {status_icon} `{phone}` — Since {since}\n"
+    
+    text = f"""
 ⚙️ *MANAGE ACCOUNTS*
-━━━━━━━━━━━━━━━━━━━━━━━━
+╔══════════════════════════╗
 
-Select an account to view details or disconnect:
+📱 *Connected:* {len(sessions)} account(s)
+
+{accounts_text}
+╚══════════════════════════╝
+
+👇 _Select an account to manage:_
 """
     await query.edit_message_text(
         text,
@@ -82,22 +103,35 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
     else:
         connected_date = "Unknown"
     
+    # Get account stats
+    try:
+        stats = await get_account_stats(user_id, phone)
+        total_sent = stats.get("total_sent", 0)
+        success_rate = stats.get("success_rate", 0)
+        stats_line = f"  ▸ Total Sent: *{total_sent}* msgs\n  ▸ Success Rate: *{success_rate}%*\n"
+    except Exception:
+        stats_line = ""
+    
     text = f"""
-⚙️ *MANAGE ACCOUNT*
-━━━━━━━━━━━━━━━━━━━━━━━━
+⚙️ *ACCOUNT DETAILS*
+╔══════════════════════════╗
 
-{status_icon} *STATUS:* {status_text}
+{status_icon} *{status_text}*
 
-📱 *ACCOUNT INFO*
+╚══════════════════════════╝
 
-❊ Phone: `{phone}`
-❊ Since: {connected_date}
+📱 *INFO*
 
-━━━━ ⚠️ *WARNING* ⚠️ ━━━━
+  ▸ Phone: `{phone}`
+  ▸ Connected: _{connected_date}_
+{stats_line}
+━━━━ ⚠️ *DISCONNECT* ⚠️ ━━━━
 
-❊ Stops forwarding for THIS account
-❊ Removes this session
-❊ You can reconnect later
+  ┌─────────────────────────┐
+  │  ❌ Stops forwarding for THIS acct  │
+  │  🗑️ Removes this session            │
+  │  ✅ You can reconnect later         │
+  └─────────────────────────┘
 """
     
     await query.edit_message_text(
@@ -116,17 +150,17 @@ async def disconnect_account_callback(update: Update, context: ContextTypes.DEFA
     
     text = f"""
 ⚠️ *CONFIRM DISCONNECT*
-━━━━━━━━━━━━━━━━━━━━━━━━
+╔══════════════════════════╗
 
-📱 *Account:* `{phone}`
+📱 Account: `{phone}`
 
 ❓ *ARE YOU SURE?*
 
-This action will:
-❌ Stop forwarding NOW for `{phone}`
-🗑️ Remove this saved session
+  ❌ Stop forwarding NOW
+  🗑️ Remove saved session
+  ✅ Reconnect anytime later
 
-✅ You can reconnect later
+╚══════════════════════════╝
 """
     
     await query.edit_message_text(
@@ -149,17 +183,17 @@ async def confirm_disconnect_callback(update: Update, context: ContextTypes.DEFA
     
     text = f"""
 ✅ *DISCONNECTED*
-━━━━━━━━━━━━━━━━━━━━━━━━
+╔══════════════════════════╗
 
-📱 *Account:* `{phone}`
+📱 `{phone}` removed
+
+╚══════════════════════════╝
 
 📋 *STATUS UPDATE*
 
-✅ Session removed
-✅ Forwarding stopped for this account
-
-You can reconnect anytime
-via the Login Bot.
+  ✅ Session removed
+  ✅ Forwarding stopped
+  🔄 Reconnect anytime via Login Bot
 """
     
     await query.edit_message_text(

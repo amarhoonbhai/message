@@ -90,7 +90,7 @@ def create_application() -> Application:
 async def main():
     """Main entry point with graceful shutdown."""
     logger.info("=" * 50)
-    logger.info("Group Message Scheduler - Login Bot V2.0")
+    logger.info("Group Message Scheduler - Login Bot V3.0")
     logger.info("=" * 50)
     
     # Initialize database indexes

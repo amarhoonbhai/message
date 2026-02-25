@@ -13,7 +13,7 @@ def get_login_welcome_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📱 Add Account", callback_data="add_account"),
         ],
         [
-            InlineKeyboardButton("❓ Help", callback_data="help"),
+            InlineKeyboardButton("📖 Help", callback_data="help"),
             InlineKeyboardButton("🔙 Back to Main Bot", url=f"https://t.me/{MAIN_BOT_USERNAME}"),
         ],
     ]
@@ -34,7 +34,7 @@ def get_api_input_keyboard() -> InlineKeyboardMarkup:
     """Keyboard shown during API ID/Hash input."""
     keyboard = [
         [
-            InlineKeyboardButton("❓ How to get API?", url="https://my.telegram.org"),
+            InlineKeyboardButton("📖 How to get API?", url="https://my.telegram.org"),
         ],
         [
             InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
@@ -131,7 +131,7 @@ def get_success_keyboard() -> InlineKeyboardMarkup:
     """Success screen keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("🚀 Go to Main Dashboard", url=f"https://t.me/{MAIN_BOT_USERNAME}?start=connected"),
+            InlineKeyboardButton("🚀 Go to Dashboard", url=f"https://t.me/{MAIN_BOT_USERNAME}?start=connected"),
         ],
         [
             InlineKeyboardButton("📌 Join @PHilobots", url=f"https://t.me/{CHANNEL_USERNAME}"),

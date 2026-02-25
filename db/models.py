@@ -564,6 +564,47 @@ async def get_admin_stats() -> Dict[str, Any]:
     }
 
 
+async def get_user_profile_data(user_id: int) -> Dict[str, Any]:
+    """Fetch all user data for the Profile screen in one aggregated call."""
+    db = get_database()
+    
+    user = await db.users.find_one({"user_id": user_id})
+    plan = await get_plan(user_id)
+    sessions = await get_all_user_sessions(user_id)
+    config = await get_user_config(user_id)
+    
+    # Get all groups (across all accounts)
+    all_groups = await get_user_groups(user_id)
+    enabled_groups = [g for g in all_groups if g.get("enabled", True)]
+    
+    # Aggregate stats across all sessions
+    total_sent = 0
+    total_success = 0
+    last_active = None
+    for s in sessions:
+        total_sent += s.get("stats_total", 0)
+        total_success += s.get("stats_success", 0)
+        sa = s.get("last_active_at")
+        if sa and (last_active is None or sa > last_active):
+            last_active = sa
+    
+    success_rate = round((total_success / total_sent * 100), 1) if total_sent > 0 else 0
+    
+    return {
+        "user": user,
+        "plan": plan,
+        "sessions": sessions,
+        "config": config,
+        "groups": all_groups,
+        "enabled_groups": len(enabled_groups),
+        "total_groups": len(all_groups),
+        "total_sent": total_sent,
+        "total_success": total_success,
+        "success_rate": success_rate,
+        "last_active": last_active,
+    }
+
+
 async def get_all_users_for_broadcast(filter_type: str = "all") -> List[int]:
     """Get user IDs for broadcast."""
     db = get_database()

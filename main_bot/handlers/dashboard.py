@@ -29,9 +29,17 @@ def format_last_active(dt: datetime.datetime) -> str:
     return f"{diff.days}d ago"
 
 
+def format_expiry_date(dt: datetime.datetime) -> str:
+    """Format expiry date as a readable string."""
+    if not dt:
+        return "N/A"
+    return dt.strftime("%d %b %Y, %I:%M %p")
+
+
 async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show the main dashboard."""
     user_id = update.effective_user.id
+    user_name = update.effective_user.first_name or "User"
     
     # Get user data
     sessions = await get_all_user_sessions(user_id)
@@ -39,63 +47,93 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     config = await get_user_config(user_id)
     group_count = await get_group_count(user_id)
     
-    # Build account list
-    account_lines = ""
+    # ═══ Build account section ═══
+    account_section = ""
+    total_sends = 0
     if sessions:
-        for s in sessions:
-            status_icon = "●" if s.get("connected") else "○"
+        for idx, s in enumerate(sessions, 1):
+            status_icon = "🟢" if s.get("connected") else "🔴"
             phone = s.get("phone", "Unknown")
             stats = await get_account_stats(user_id, phone)
             
             last_active = format_last_active(stats["last_active"])
             rate = stats["success_rate"]
+            sends = stats.get("total_sent", 0)
+            total_sends += sends
             
-            # Professional formatting: [Status] Phone | Active: time | Success: %
-            account_lines += f"   {status_icon} `{phone}`\n"
-            account_lines += f"   └─ Active: {last_active} ▪ Rate: {rate}%\n"
+            account_section += f"  {status_icon} `{phone}`\n"
+            account_section += f"     ├─ 📊 Sent: {sends} ▪ Rate: {rate}%\n"
+            account_section += f"     └─ ⏱️ Active: {last_active}\n"
     else:
-        account_lines = "   ○ No accounts connected"
+        account_section = "  ○ No accounts connected\n  └─ Tap *Add Account* below"
     
-    # Plan status
+    # ═══ Plan badge ═══
     if plan:
         if plan.get("status") == "active":
             plan_type = plan.get("plan_type", "trial").title()
-            days_left = (plan["expires_at"] - __import__("datetime").datetime.utcnow()).days
-            plan_status = f"{plan_type} ({days_left} days left)"
+            days_left = (plan["expires_at"] - datetime.datetime.utcnow()).days
+            hours_left = ((plan["expires_at"] - datetime.datetime.utcnow()).seconds // 3600)
+            expiry_date = format_expiry_date(plan["expires_at"])
+            
+            if plan_type.lower() == "trial":
+                plan_badge = "🏅 TRIAL"
+            else:
+                plan_badge = "💎 PREMIUM"
+            
+            if days_left > 0:
+                plan_status = f"{plan_badge} ▪ {days_left}d {hours_left}h left"
+            else:
+                plan_status = f"{plan_badge} ▪ {hours_left}h left"
+            
+            plan_line2 = f"     └─ 📅 Expires: {expiry_date}"
         else:
-            plan_status = "Expired ○"
+            plan_status = "🔴 EXPIRED"
+            plan_line2 = "     └─ Redeem a code to reactivate!"
     else:
-        plan_status = "No Plan"
+        plan_status = "⚪ NO PLAN"
+        plan_line2 = "     └─ Connect an account for *7 days FREE!*"
+    
+    # ═══ Forwarding status ═══
+    has_connected = any(s.get("connected") for s in sessions) if sessions else False
+    if has_connected and group_count > 0 and plan and plan.get("status") == "active":
+        fwd_status = "🟢 *ACTIVE*"
+    elif has_connected and group_count == 0:
+        fwd_status = "🟡 *NO GROUPS*"
+    elif not has_connected:
+        fwd_status = "🔴 *NO ACCOUNT*"
+    else:
+        fwd_status = "🔴 *PAUSED*"
     
     interval = config.get("interval_min", MIN_INTERVAL_MINUTES)
     
-    # Dynamic status icons
-    has_connected = any(s.get("connected") for s in sessions) if sessions else False
-    account_icon = "●" if has_connected else "○"
-    plan_icon = "●" if plan and plan.get("status") == "active" else "○"
+    # ═══ Settings section ═══
+    copy_icon = "🟢" if config.get("copy_mode") else "⚫"
+    shuffle_icon = "🟢" if config.get("shuffle_mode") else "⚫"
+    responder_icon = "🟢" if config.get("auto_reply_enabled") else "⚫"
+    reply_text = config.get("auto_reply_text", "")
+    reply_preview = reply_text[:25] + "..." if len(reply_text) > 25 else reply_text
     
     dashboard_text = f"""
-■ *DASHBOARD*
-━━━━━━━━━━━━━━━━━━━━━━━━
+📊 *DASHBOARD* — {user_name}
+╔══════════════════════════╗
 
-● *ACCOUNTS*
-{account_lines}
+📱 *ACCOUNTS* ({len(sessions) if sessions else 0})
+{account_section}
 
-{plan_icon} *SUBSCRIPTION*
-   ➤ {plan_status}
+🏷️ *SUBSCRIPTION*
+  ➤ {plan_status}
+{plan_line2}
 
-● *SETTINGS*
-   ➤ Copy Mode: {"● ON" if config.get("copy_mode") else "○ OFF"}
-   ➤ Shuffle Mode: {"● ON" if config.get("shuffle_mode") else "○ OFF"}
-   ➤ Responder: {"● ON" if config.get("auto_reply_enabled") else "○ OFF"}
-     └Msg: "{config.get("auto_reply_text", "")[:20]}..."
-   ➤ Auto-forward: ● Active
-   ➤ Interval: {interval} min
-   ➤ Night Mode: 00:00-06:00
+📤 *FORWARDING:* {fwd_status}
+  ➤ Groups: {group_count} ▪ Total Sent: {total_sends}
+  ➤ Interval: {interval} min ▪ Night: 12-6 AM
 
-━━━━━━━━━━━━━━━━━━━━━━━━
-▪ TIP: Send `.addgroup <url>` in Saved Messages!
-▪ TIP: Send `.responder <msg>` to set auto-reply!
+⚙️ *SETTINGS*
+  {copy_icon} Copy Mode ▪ {shuffle_icon} Shuffle
+  {responder_icon} Responder: _{reply_preview}_
+
+╚══════════════════════════╝
+💡 *TIP:* Send `.addgroup <url>` in Saved Messages!
 """
     
     # Determine how to respond
@@ -125,12 +163,19 @@ async def add_account_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     
     text = """
-■ *Connect Your Telegram Account*
+🔗 *CONNECT YOUR ACCOUNT*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-To send messages from your own account,
-please connect securely via the Login Bot.
+Securely link your Telegram account
+to start auto-forwarding messages.
 
-After successful login, you'll return here automatically ●
+┌─────────────────────────┐
+│  ✅ 256-bit encrypted session     │
+│  ✅ Your API credentials only     │
+│  ✅ Disconnect anytime             │
+└─────────────────────────┘
+
+👇 *Tap below to continue to Login Bot*
 """
     
     await query.edit_message_text(

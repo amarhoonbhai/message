@@ -9,22 +9,33 @@ from login_bot.utils.keyboards import get_login_welcome_keyboard
 
 
 WELCOME_TEXT = """
-👋 *Welcome to Spinify Login*
+🔐 *SECURE LOGIN*
+╔══════════════════════════╗
+║    ★ V3.0 — ACCOUNT LINK ★     ║
+╚══════════════════════════╝
 
-Let's connect your Telegram account securely.
+Connect your Telegram account
+securely to start auto-forwarding.
 
-✅ Saved session
-✅ Safe scheduling rules
-✅ Manage everything from the main dashboard
+  ┌─────────────────────────┐
+  │  ✅ Encrypted session storage   │
+  │  ✅ Safe scheduling rules       │
+  │  ✅ Manage from main dashboard  │
+  │  ✅ Disconnect anytime          │
+  └─────────────────────────┘
 
-Tap below to start.
+  👇 *Tap below to begin*
 """
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
+    user = update.effective_user
+    first_name = user.first_name or "User"
+    greeting = f"👋 *Hey {first_name}!*\n"
+    
     await update.message.reply_text(
-        WELCOME_TEXT,
+        greeting + WELCOME_TEXT,
         parse_mode="Markdown",
         reply_markup=get_login_welcome_keyboard(),
     )
@@ -36,21 +47,25 @@ async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     help_text = """
-❓ *Login Help*
+📖 *LOGIN HELP*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 *How to connect your account:*
-1️⃣ Tap "Add Account"
-2️⃣ Enter your phone number with country code
-3️⃣ Confirm and receive OTP
-4️⃣ Enter OTP using the keypad
-5️⃣ If 2FA is enabled, enter your password
 
-*FAQ:*
-• Your session is stored securely
-• We never access your private chats
-• You can disconnect anytime from the main bot
+  1️⃣ Tap \"📱 Add Account\"
+  2️⃣ Enter phone with country code
+  3️⃣ Confirm & receive OTP
+  4️⃣ Enter OTP via secure keypad
+  5️⃣ Enter 2FA password (if enabled)
 
-Need help? Join @PHilobots
+━━━━ ❓ *FAQ* ━━━━
+
+  ▸ Session stored with encryption 🔐
+  ▸ We never access private chats 🛡️
+  ▸ Disconnect anytime from main bot ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💬 Need help? Join @PHilobots
 """
     
     await query.edit_message_text(

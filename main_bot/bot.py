@@ -30,6 +30,7 @@ from main_bot.handlers.admin import (
 )
 from main_bot.handlers.help import help_callback, help_command
 from main_bot.handlers.account import accounts_list_callback, manage_account_callback, disconnect_account_callback, confirm_disconnect_callback
+from main_bot.handlers.profile import profile_callback
 
 # Configure logging
 logging.basicConfig(
@@ -101,6 +102,7 @@ def create_application() -> Application:
     # Plans & Referral
     application.add_handler(CallbackQueryHandler(my_plan_callback, pattern="^my_plan$"))
     application.add_handler(CallbackQueryHandler(referral_callback, pattern="^referral$"))
+    application.add_handler(CallbackQueryHandler(profile_callback, pattern="^profile$"))
     
     # Admin
     application.add_handler(CallbackQueryHandler(admin_callback, pattern="^admin$"))
@@ -121,7 +123,7 @@ def create_application() -> Application:
 async def main():
     """Main entry point with graceful shutdown."""
     logger.info("=" * 50)
-    logger.info("Group Message Scheduler - Main Bot V2.0")
+    logger.info("Group Message Scheduler - Main Bot V3.0")
     logger.info("=" * 50)
     
     # Initialize database indexes

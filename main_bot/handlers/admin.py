@@ -31,9 +31,17 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     text = """
-🔐 *Admin Panel*
+🔐 *ADMIN PANEL*
+╔══════════════════════════╗
+║     ★ OWNER CONTROLS ★        ║
+╚══════════════════════════╝
 
-Welcome, Owner! Use the options below to manage the bot.
+  Welcome, *Owner*! 👑
+
+  Use the options below to manage
+  your bot, users, and codes.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
     
     await query.edit_message_text(
@@ -52,9 +60,17 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     text = """
-🔐 *Admin Panel*
+🔐 *ADMIN PANEL*
+╔══════════════════════════╗
+║     ★ OWNER CONTROLS ★        ║
+╚══════════════════════════╝
 
-Welcome, Owner! Use the options below to manage the bot.
+  Welcome, *Owner*! 👑
+
+  Use the options below to manage
+  your bot, users, and codes.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
     
     await update.message.reply_text(
@@ -74,21 +90,32 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     stats = await get_admin_stats()
     
+    # Calculate percentages
+    total = stats['total_users'] or 1
+    connected_pct = int((stats['connected_sessions'] / total) * 100)
+    sends_total = stats['sends_24h'] or 1
+    success_pct = int((stats['success_24h'] / sends_total) * 100) if sends_total > 0 else 0
+    
     text = f"""
-📊 *Bot Statistics*
+📊 *BOT STATISTICS*
+╔══════════════════════════╗
 
-👥 *Users:*
-├ Total: {stats['total_users']}
-├ Connected: {stats['connected_sessions']}
-├ Trial Active: {stats['trial_active']}
-├ Paid Active: {stats['paid_active']}
-└ Expired: {stats['expired']}
+👥 *USERS*
+  ├─ 📊 Total: *{stats['total_users']}*
+  ├─ 🔗 Connected: *{stats['connected_sessions']}* ({connected_pct}%)
+  ├─ 🏅 Trial: *{stats['trial_active']}*
+  ├─ 💎 Paid: *{stats['paid_active']}*
+  └─ ⏰ Expired: *{stats['expired']}*
 
-📨 *Sends (24h):*
-├ Total: {stats['sends_24h']}
-├ Success: {stats['success_24h']}
-├ Failed: {stats['failed_24h']}
-└ Groups Removed: {stats['groups_removed_24h']}
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📨 *SENDS (24h)*
+  ├─ 📤 Total: *{stats['sends_24h']}*
+  ├─ ✅ Success: *{stats['success_24h']}* ({success_pct}%)
+  ├─ ❌ Failed: *{stats['failed_24h']}*
+  └─ 🗑️ Groups Removed: *{stats['groups_removed_24h']}*
+
+╚══════════════════════════╝
 """
     
     await update.message.reply_text(
@@ -107,9 +134,10 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     text = """
-📢 *Broadcast Message*
+📢 *BROADCAST*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Select the target audience for your broadcast:
+Select the target audience:
 """
     
     await update.message.reply_text(
@@ -132,21 +160,32 @@ async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     stats = await get_admin_stats()
     
+    # Calculate percentages
+    total = stats['total_users'] or 1
+    connected_pct = int((stats['connected_sessions'] / total) * 100)
+    sends_total = stats['sends_24h'] or 1
+    success_pct = int((stats['success_24h'] / sends_total) * 100) if sends_total > 0 else 0
+    
     text = f"""
-📊 *Bot Statistics*
+📊 *BOT STATISTICS*
+╔══════════════════════════╗
 
-👥 *Users:*
-├ Total: {stats['total_users']}
-├ Connected: {stats['connected_sessions']}
-├ Trial Active: {stats['trial_active']}
-├ Paid Active: {stats['paid_active']}
-└ Expired: {stats['expired']}
+👥 *USERS*
+  ├─ 📊 Total: *{stats['total_users']}*
+  ├─ 🔗 Connected: *{stats['connected_sessions']}* ({connected_pct}%)
+  ├─ 🏅 Trial: *{stats['trial_active']}*
+  ├─ 💎 Paid: *{stats['paid_active']}*
+  └─ ⏰ Expired: *{stats['expired']}*
 
-📨 *Sends (24h):*
-├ Total: {stats['sends_24h']}
-├ Success: {stats['success_24h']}
-├ Failed: {stats['failed_24h']}
-└ Groups Removed: {stats['groups_removed_24h']}
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📨 *SENDS (24h)*
+  ├─ 📤 Total: *{stats['sends_24h']}*
+  ├─ ✅ Success: *{stats['success_24h']}* ({success_pct}%)
+  ├─ ❌ Failed: *{stats['failed_24h']}*
+  └─ 🗑️ Groups Removed: *{stats['groups_removed_24h']}*
+
+╚══════════════════════════╝
 """
     
     await query.edit_message_text(
@@ -168,9 +207,10 @@ async def admin_broadcast_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     
     text = """
-📢 *Broadcast Message*
+📢 *BROADCAST*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Select the target audience for your broadcast:
+Select the target audience:
 """
     
     await query.edit_message_text(
@@ -196,11 +236,12 @@ async def broadcast_target_callback(update: Update, context: ContextTypes.DEFAUL
     
     text = f"""
 📢 *Broadcast to: {target.title()}*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Now send me the message you want to broadcast.
+Now send me the message to broadcast.
 
-Supports text, photos, and documents.
-Use /cancel to abort.
+  ✅ Text, photos, documents
+  ❌ /cancel to abort
 """
     
     await query.edit_message_text(
@@ -304,10 +345,15 @@ async def receive_broadcast_message(update: Update, context: ContextTypes.DEFAUL
                 import logging
                 logging.warning(f"Broadcast failed for {uid}: {e}")
     
+    total = success + failed
+    pct = int((success / total) * 100) if total > 0 else 0
+    
     await status_msg.edit_text(
-        f"Broadcast Complete\n\n"
-        f"Sent: {success}\n"
-        f"Failed: {failed}",
+        f"✅ *Broadcast Complete*\n\n"
+        f"  ▸ Sent: *{success}* ({pct}%)\n"
+        f"  ▸ Failed: *{failed}*\n"
+        f"  ▸ Target: *{target.title()}*",
+        parse_mode="Markdown",
     )
     
     context.user_data.pop("waiting_for", None)
@@ -333,14 +379,18 @@ async def gen_code_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     days = 7 if plan_type == "week" else 30
     
     text = f"""
-🎟 *New Redeem Code Generated*
+🎟 *CODE GENERATED*
+╔══════════════════════════╗
 
-📋 *Code:* `{code}`
-📦 *Type:* {plan_type.title()}
-📅 *Duration:* {days} days
-🔄 *Usage:* Single-use
+📋 Code: `{code}`
 
-Share this code with a user to extend their plan.
+╚══════════════════════════╝
+
+  ▸ Type: *{plan_type.title()}*
+  ▸ Duration: *{days} days*
+  ▸ Usage: *Single-use*
+
+_Share this code with a user._
 """
     
     await query.edit_message_text(
@@ -374,10 +424,10 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     days = 7 if plan_type == "week" else 30
     
     await update.message.reply_text(
-        f"🎟 *New Redeem Code Generated*\n\n"
-        f"📋 *Code:* `{code}`\n"
-        f"📦 *Type:* {plan_type.title()}\n"
-        f"📅 *Duration:* {days} days",
+        f"🎟 *CODE GENERATED*\n\n"
+        f"📋 Code: `{code}`\n"
+        f"📦 Type: *{plan_type.title()}*\n"
+        f"📅 Duration: *{days} days*",
         parse_mode="Markdown",
     )
 
@@ -395,18 +445,25 @@ async def admin_users_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     stats = await get_admin_stats()
     
+    # Calculate percentages
+    total = stats['total_users'] or 1
+    connected_pct = int((stats['connected_sessions'] / total) * 100)
+    
     text = f"""
-👥 *Users Overview*
+👥 *USERS OVERVIEW*
+╔══════════════════════════╗
 
 📊 *Total Users:* {stats['total_users']}
 
-*By Status:*
-├ 🔗 Connected: {stats['connected_sessions']}
-├ 🎁 Trial Active: {stats['trial_active']}
-├ 💎 Paid Active: {stats['paid_active']}
-└ ⏰ Expired: {stats['expired']}
+╚══════════════════════════╝
 
-Use /broadcast to send messages to users.
+  ├─ 🔗 Connected: *{stats['connected_sessions']}* ({connected_pct}%)
+  ├─ 🏅 Trial: *{stats['trial_active']}*
+  ├─ 💎 Paid: *{stats['paid_active']}*
+  └─ ⏰ Expired: *{stats['expired']}*
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 Use /broadcast to message users.
 """
     
     await query.edit_message_text(

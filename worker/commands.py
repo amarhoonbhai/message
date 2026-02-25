@@ -82,37 +82,39 @@ async def reply_to_command(client: TelegramClient, message, text: str):
 
 async def handle_help(client: TelegramClient, user_id: int, message):
     """Handle .help command with professional styling."""
-    text = """AVAILABLE COMMANDS
-━━━━━━━━━━━━━━━━━━━━
-GROUP MANAGEMENT
-▢ .addgroup <url> — Add group
-▢ .rmgroup <url> — Remove group
-▢ .groups — List groups
+    text = """⚡ COMMAND GUIDE — V3.0
+══════════════════════════
 
-SETTINGS
-▢ .interval <minutes> — Set interval (min {min_interval})
-▢ .shuffle on/off — Shuffle group order
-▢ .copymode on/off — Send as copy (new msg)
-▢ .responder on/off — Auto-reply to DMs
-▢ .status — Account status
+📁 GROUP MANAGEMENT
+  ▸ .addgroup <url>  — Add group
+  ▸ .rmgroup <url|#> — Remove group
+  ▸ .groups          — List groups
 
-HELP
-▢ .help — Show help
-━━━━━━━━━━━━━━━━━━━━
-EXAMPLES
-▢ .addgroup https://t.me/mygroup
-▢ .responder Hello! I am busy right now.
-▢ .shuffle on
-▢ .copymode on
-▢ .interval 30
+⚙️ SETTINGS
+  ▸ .interval <min>   — Set delay (min {min_interval})
+  ▸ .shuffle on/off   — Shuffle group order
+  ▸ .copymode on/off  — Send as copy
+  ▸ .responder on/off — Toggle DM reply
+  ▸ .responder <msg>  — Set reply text
 
-NOTES
-▢ Must be a group member
-▢ Max {max_groups} groups allowed
-▢ Minimum interval {min_interval} minutes
-▢ Copy Mode hides "Forwarded from"
-▢ Shuffle Mode adds random delays
-""".format(min_interval=MIN_INTERVAL_MINUTES, max_groups=MAX_GROUPS_PER_USER)
+📊 INFO
+  ▸ .status — Account status card
+  ▸ .help   — This help screen
+
+══════════════════════════
+📝 EXAMPLES
+  ▸ .addgroup https://t.me/mygroup
+  ▸ .addgroup @grp1 @grp2 @grp3
+  ▸ .responder Hello! I'm busy.
+  ▸ .shuffle on
+  ▸ .interval 30
+
+🛡️ NOTES
+  ▸ Must be a group member
+  ▸ Max {max_groups} groups allowed
+  ▸ Min interval: {min_interval} min
+  ▸ Copy Mode hides "Forwarded from"
+══════════════════════════""".format(min_interval=MIN_INTERVAL_MINUTES, max_groups=MAX_GROUPS_PER_USER)
     
     await reply_to_command(client, message, text)
 
@@ -140,39 +142,57 @@ async def handle_status(client: TelegramClient, user_id: int, message):
         expires = plan.get("expires_at")
         if expires and expires > datetime.utcnow():
             days_left = (expires - datetime.utcnow()).days
-            plan_status = f"● Active ({days_left} days left)"
+            hours_left = ((expires - datetime.utcnow()).seconds // 3600)
             plan_type = plan.get("plan_type", "trial").title()
+            if plan_type.lower() == "trial":
+                plan_badge = "🏅 TRIAL"
+            else:
+                plan_badge = "💎 PREMIUM"
+            if days_left > 0:
+                plan_status = f"🟢 Active — {days_left}d {hours_left}h left"
+            else:
+                plan_status = f"🟢 Active — {hours_left}h left"
         else:
-            plan_status = "○ Expired"
+            plan_status = "🔴 Expired"
+            plan_badge = "⚠️ EXPIRED"
             plan_type = "Expired"
     else:
-        plan_status = "○ No Plan"
+        plan_status = "⚪ No Plan"
+        plan_badge = "❌ NONE"
         plan_type = "None"
     
     phone = session.get("phone", "Unknown") if session else "Unknown"
     from config import DEFAULT_INTERVAL_MINUTES
     interval = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
     
-    text = f"""■ Account Status
+    # Setting indicators
+    copy_icon = "🟢 ON" if config.get("copy_mode") else "⚫ OFF"
+    shuffle_icon = "🟢 ON" if config.get("shuffle_mode") else "⚫ OFF"
+    responder_icon = "🟢 ON" if config.get("auto_reply_enabled") else "⚫ OFF"
+    
+    text = f"""📊 ACCOUNT STATUS
+══════════════════════════
 
-━━━━━━━━━━━━━━━━━━━━
+📱 ACCOUNT
+  ▸ Phone: {phone}
+  ▸ Status: 🟢 Connected
 
-  ➤ Phone: {phone}
-  ➤ Status: ● Connected
+🏷️ PLAN
+  ▸ {plan_badge} — {plan_type}
+  ▸ {plan_status}
 
-  ➤ Plan: {plan_type}
-  ➤ Status: {plan_status}
+📤 FORWARDING
+  ▸ Groups: {enabled_groups}/{total_groups}
+  ▸ Interval: {interval} min
+  ▸ Night: 00:00–06:00 IST
 
-  ➤ Groups: {enabled_groups}/{total_groups} (Account specific)
-  ➤ Interval: {interval} minutes
-  ➤ Copy Mode: {"● ON" if config.get("copy_mode") else "○ OFF"}
-  ➤ Shuffle Mode: {"● ON" if config.get("shuffle_mode") else "○ OFF"}
-  ➤ Responder: {"● ON" if config.get("auto_reply_enabled") else "○ OFF"}
-  ➤ Night Mode: 00:00-06:00 IST
+⚙️ SETTINGS
+  ▸ Copy Mode:  {copy_icon}
+  ▸ Shuffle:    {shuffle_icon}
+  ▸ Responder:  {responder_icon}
 
-━━━━━━━━━━━━━━━━━━━━
-
-▪ Use .help to see all commands."""
+══════════════════════════
+💡 Type .help for all commands."""
     await reply_to_command(client, message, text)
 
 
@@ -183,20 +203,25 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
     
     if not groups:
         await reply_to_command(client, message, 
-            f"○ No groups added for this account ({phone})\n\n"
-            "Use .addgroup <url> to add a group."
+            f"📁 GROUPS — {phone}\n"
+            f"══════════════════════════\n\n"
+            f"⚪ No groups added yet.\n\n"
+            f"💡 Use .addgroup <url> to add one."
         )
         return
     
-    text = f"■ Your Groups ({len(groups)} handled by this account)\n\n"
+    enabled = len([g for g in groups if g.get("enabled", True)])
+    text = f"📁 GROUPS — {phone}\n"
+    text += f"══════════════════════════\n\n"
+    text += f"🟢 {enabled} active \u25aa {len(groups) - enabled} paused \u25aa {len(groups)}/{MAX_GROUPS_PER_USER} slots\n\n"
     
     for i, group in enumerate(groups, 1):
         title = group.get("chat_title", "Unknown")
-        enabled = "●" if group.get("enabled", True) else "○"
-        text += f"{i}. {enabled} {title}\n"
+        icon = "🟢" if group.get("enabled", True) else "🔴"
+        text += f"  {i}. {icon} {title}\n"
     
-    text += "\n━━━━━━━━━━━━━━━━━━━\n"
-    text += "▪ Use .rmgroup <number> to remove a group."
+    text += f"\n══════════════════════════\n"
+    text += "💡 .rmgroup <number> to remove."
     
     await reply_to_command(client, message, text)
 
@@ -286,17 +311,21 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     response = ""
     
     if added:
-        response += f"● Added {len(added)} group(s):\n"
+        response += f"✅ Added {len(added)} group(s):\n"
         for title in added:
-            response += f"  ◦ {title}\n"
+            response += f"  ▸ 🟢 {title}\n"
     
     if failed:
-        response += f"\n○ Failed {len(failed)}:\n"
+        response += f"\n❌ Failed {len(failed)}:\n"
         for name, reason in failed:
-            response += f"  ◦ {name[:15]}... ▪ {reason}\n"
+            response += f"  ▸ 🔴 {name[:15]}... — {reason}\n"
     
     if not response:
-        response = "○ No groups were added"
+        response = "⚪ No groups were added."
+    
+    # Add current count
+    new_count = await get_group_count(user_id)
+    response += f"\n📁 Total: {new_count}/{MAX_GROUPS_PER_USER} slots used."
     
     await reply_to_command(client, message, response.strip())
 
@@ -376,11 +405,16 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
     try:
         # Remove from database
         await remove_group(user_id, chat_id)
-        await reply_to_command(client, message, f"● Group removed!\n\n➤ {chat_title}")
+        remaining = await get_group_count(user_id)
+        await reply_to_command(client, message, 
+            f"✅ Group removed!\n\n"
+            f"  ▸ {chat_title}\n\n"
+            f"📁 Remaining: {remaining}/{MAX_GROUPS_PER_USER} slots."
+        )
         
     except Exception as e:
         logger.error(f"Error removing group: {e}")
-        await reply_to_command(client, message, f"○ Error: {str(e)}")
+        await reply_to_command(client, message, f"❌ Error: {str(e)}")
 
 
 async def handle_interval(client: TelegramClient, user_id: int, message, text: str):

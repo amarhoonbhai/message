@@ -1,12 +1,14 @@
-# Group Message Scheduler
+# Group Message Scheduler — V3.0
 
 A Telegram system that auto-forwards Saved Messages to up to 15 groups with safe delays and fixed night mode.
 
 ## Features
 
-- ✨ **Main Bot** - Dashboard, Plans, Referral, Admin
-- 🔐 **Login Bot** - Account linking via OTP + 2FA using Telethon
-- 🚀 **Worker Service** - Auto-forward with safety rules
+- ⚡ **Main Bot** — Dashboard, Plans, Referral, Admin
+- 🔐 **Login Bot** — Account linking via OTP + 2FA using Telethon
+- 🚀 **Worker Service** — Auto-forward with safety rules
+- 💬 **Auto-Responder** — Auto-reply to DMs
+- 🔄 **Copy Mode & Shuffle** — Smart forwarding options
 
 ## Quick Start
 
@@ -68,9 +70,10 @@ python -m worker.worker
 | Rule | Value |
 |------|-------|
 | Max groups per user | 15 |
-| Group gap | 90 seconds |
-| Message gap | 500 seconds |
+| Group gap | 10 seconds |
+| Message gap | 120 seconds |
 | Min user interval | 20 minutes |
+| Default interval | 23 minutes |
 | Night mode | 00:00–06:00 IST (fixed) |
 
 ## License

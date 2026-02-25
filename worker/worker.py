@@ -25,10 +25,13 @@ import signal
 class WorkerManager:
     """Manages all account sender tasks with graceful shutdown support."""
     
+    MAX_RESTART_ATTEMPTS = 3
+    
     def __init__(self):
         # Keys are (user_id, phone) tuples
         self.senders: Dict[tuple, UserSender] = {}
         self.tasks: Dict[tuple, asyncio.Task] = {}
+        self.restart_counts: Dict[tuple, int] = {}  # Track restart attempts
         self.running = False
         self._shutdown_event = asyncio.Event()
     
@@ -140,7 +143,7 @@ class WorkerManager:
         del self.senders[key]
     
     def _on_task_done(self, key: tuple, task: asyncio.Task):
-        """Handle completed sender tasks."""
+        """Handle completed sender tasks — auto-restart on crash."""
         if task.cancelled():
             return
         
@@ -148,6 +151,20 @@ class WorkerManager:
             exc = task.exception()
             if exc:
                 logger.error(f"Account {key[1]} [User {key[0]}] crashed: {exc}")
+                
+                # Auto-restart with exponential backoff
+                if self.running:
+                    attempts = self.restart_counts.get(key, 0)
+                    if attempts < self.MAX_RESTART_ATTEMPTS:
+                        delay = 30 * (2 ** attempts)  # 30s, 60s, 120s
+                        self.restart_counts[key] = attempts + 1
+                        logger.info(f"Scheduling restart #{attempts + 1} for {key[1]} in {delay}s...")
+                        asyncio.get_event_loop().call_later(
+                            delay,
+                            lambda k=key: asyncio.ensure_future(self._restart_sender(k))
+                        )
+                    else:
+                        logger.error(f"Account {key[1]} [User {key[0]}] exceeded max restarts ({self.MAX_RESTART_ATTEMPTS})")
         except asyncio.CancelledError:
             pass
         
@@ -156,6 +173,14 @@ class WorkerManager:
             del self.senders[key]
         if key in self.tasks:
             del self.tasks[key]
+    
+    async def _restart_sender(self, key: tuple):
+        """Restart a crashed sender after backoff delay."""
+        if not self.running:
+            return
+        user_id, phone = key
+        logger.info(f"Restarting sender for {phone} [User {user_id}]...")
+        await self.start_sender(user_id, phone)
     
     async def stop_all(self):
         """Stop all senders."""
@@ -183,7 +208,7 @@ class WorkerManager:
 async def main():
     """Main entry point."""
     logger.info("=" * 50)
-    logger.info("Group Message Scheduler - Worker Service V2.0")
+    logger.info("Group Message Scheduler - Worker Service V3.0")
     logger.info("=" * 50)
     
     manager = WorkerManager()

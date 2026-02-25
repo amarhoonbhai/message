@@ -10,16 +10,19 @@ def get_welcome_keyboard() -> InlineKeyboardMarkup:
     """Build welcome screen keyboard."""
     keyboard = [
         [
+            InlineKeyboardButton("📊 Dashboard", callback_data="dashboard"),
             InlineKeyboardButton("➕ Add Account", callback_data="add_account"),
-            InlineKeyboardButton("📊 Open Dashboard", callback_data="dashboard"),
         ],
         [
-            InlineKeyboardButton("🎁 Free Trial / My Plan", callback_data="my_plan"),
+            InlineKeyboardButton("👤 My Profile", callback_data="profile"),
+            InlineKeyboardButton("🏷️ My Plan", callback_data="my_plan"),
+        ],
+        [
             InlineKeyboardButton("🤝 Refer & Earn", callback_data="referral"),
+            InlineKeyboardButton("📖 Help", callback_data="help"),
         ],
         [
             InlineKeyboardButton("📌 Join @PHilobots", url=f"https://t.me/{CHANNEL_USERNAME}"),
-            InlineKeyboardButton("❓ Help", callback_data="help"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -42,20 +45,41 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
     """Build dashboard keyboard."""
     keyboard = [
         [
+            InlineKeyboardButton("➕ Add Account", callback_data="add_account"),
             InlineKeyboardButton("⚙️ Manage Accounts", callback_data="accounts_list"),
         ],
         [
-            InlineKeyboardButton("🎁 My Plan", callback_data="my_plan"),
+            InlineKeyboardButton("👤 My Profile", callback_data="profile"),
+            InlineKeyboardButton("🏷️ My Plan", callback_data="my_plan"),
+        ],
+        [
             InlineKeyboardButton("🤝 Refer & Earn", callback_data="referral"),
-        ],
-        [
             InlineKeyboardButton("🧾 Redeem Code", callback_data="redeem_code"),
-            InlineKeyboardButton("❓ Help", callback_data="help"),
         ],
         [
+            InlineKeyboardButton("📖 Help", callback_data="help"),
             InlineKeyboardButton("📌 Join @PHilobots", url=f"https://t.me/{CHANNEL_USERNAME}"),
         ],
         [
+            InlineKeyboardButton("🏠 Home", callback_data="home"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_profile_keyboard() -> InlineKeyboardMarkup:
+    """Build profile screen keyboard."""
+    keyboard = [
+        [
+            InlineKeyboardButton("🏷️ My Plan", callback_data="my_plan"),
+            InlineKeyboardButton("⚙️ Manage Accounts", callback_data="accounts_list"),
+        ],
+        [
+            InlineKeyboardButton("🤝 Refer & Earn", callback_data="referral"),
+            InlineKeyboardButton("📖 Help", callback_data="help"),
+        ],
+        [
+            InlineKeyboardButton("📊 Dashboard", callback_data="dashboard"),
             InlineKeyboardButton("🏠 Home", callback_data="home"),
         ],
     ]
@@ -75,7 +99,6 @@ def get_account_selection_keyboard(sessions: list) -> InlineKeyboardMarkup:
     keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="dashboard")])
     
     return InlineKeyboardMarkup(keyboard)
-
 
 
 
@@ -137,14 +160,14 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton("📊 Stats", callback_data="admin_stats"),
+            InlineKeyboardButton("👥 Users", callback_data="admin_users"),
+        ],
+        [
             InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
         ],
         [
-            InlineKeyboardButton("🎟 Generate Week Code", callback_data="gen_code:week"),
-            InlineKeyboardButton("🎟 Generate Month Code", callback_data="gen_code:month"),
-        ],
-        [
-            InlineKeyboardButton("👥 Users Overview", callback_data="admin_users"),
+            InlineKeyboardButton("🎟 Gen Week Code", callback_data="gen_code:week"),
+            InlineKeyboardButton("🎟 Gen Month Code", callback_data="gen_code:month"),
         ],
         [
             InlineKeyboardButton("🏠 Home", callback_data="home"),
@@ -161,7 +184,7 @@ def get_broadcast_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🔗 Connected", callback_data="broadcast:connected"),
         ],
         [
-            InlineKeyboardButton("🎁 Trial", callback_data="broadcast:trial"),
+            InlineKeyboardButton("🏅 Trial", callback_data="broadcast:trial"),
             InlineKeyboardButton("💎 Paid", callback_data="broadcast:paid"),
         ],
         [
