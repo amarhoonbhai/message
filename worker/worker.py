@@ -8,7 +8,7 @@ import logging
 import asyncio
 from typing import Dict
 
-from db.database import init_indexes
+from db.database import init_database
 from db.models import get_all_connected_sessions
 from worker.sender import UserSender
 
@@ -40,8 +40,8 @@ class WorkerManager:
         self.running = True
         logger.info("Worker Manager starting...")
         
-        # Initialize database indexes
-        await init_indexes()
+        # Initialize database and indexes
+        await init_database()
         
         # Setup signal handlers for graceful shutdown
         loop = asyncio.get_running_loop()

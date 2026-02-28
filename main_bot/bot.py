@@ -14,7 +14,7 @@ from telegram.ext import (
 )
 
 from config import MAIN_BOT_TOKEN
-from db.database import init_indexes
+from db.database import init_database
 
 # Import handlers
 from main_bot.handlers.start import start_handler, home_callback
@@ -126,8 +126,8 @@ async def main():
     logger.info("Group Message Scheduler - Main Bot V3.0")
     logger.info("=" * 50)
     
-    # Initialize database indexes
-    await init_indexes()
+    # Initialize database and indexes
+    await init_database()
     
     # Create application
     application = create_application()
