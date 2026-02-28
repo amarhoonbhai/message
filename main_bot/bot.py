@@ -24,7 +24,6 @@ from main_bot.handlers.dashboard import (
     add_account_callback,
 )
 from main_bot.handlers.plans import my_plan_callback
-2026-02-28 22:12:41,319 - httpx - INFO - HTTP Request: GET https://api.telegram.org "HTTP/1.1 302 Moved Temporarily"
 from main_bot.handlers.referral import referral_callback
 from main_bot.handlers.redeem import (
     redeem_code_callback,
