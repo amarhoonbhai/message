@@ -7,6 +7,7 @@ Runs continuously and manages sender tasks for all connected users.
 import logging
 import asyncio
 from typing import Dict
+import signal
 
 from db.database import init_database
 from db.models import get_all_connected_sessions
@@ -19,8 +20,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-
-import signal
 
 class WorkerManager:
     """Manages all account sender tasks with graceful shutdown support."""
@@ -49,7 +48,6 @@ class WorkerManager:
             try:
                 loop.add_signal_handler(sig, lambda: self.stop())
             except NotImplementedError:
-                # Signal handlers not supported on Windows in some environments
                 pass
         
         # Main loop - periodically check for new sessions
@@ -60,9 +58,9 @@ class WorkerManager:
                 # Sleep in a way that respects shutdown signal immediately
                 try:
                     await asyncio.wait_for(self._shutdown_event.wait(), timeout=60)
-                    break # If event is set, exit
+                    break 
                 except asyncio.TimeoutError:
-                    continue # Regular interval sync
+                    continue 
                 
             except asyncio.CancelledError:
                 break
@@ -77,10 +75,8 @@ class WorkerManager:
         """Sync sender tasks with connected sessions in database."""
         try:
             sessions = await get_all_connected_sessions()
-            # Active session keys: {(user_id, phone), ...}
             active_keys = {(s["user_id"], s["phone"]) for s in sessions}
             
-            # Start new senders
             started_count = 0
             for session in sessions:
                 user_id = session["user_id"]
@@ -91,7 +87,6 @@ class WorkerManager:
                     await self.start_sender(user_id, phone)
                     started_count += 1
             
-            # Stop senders for disconnected sessions
             stopped_count = 0
             for key in list(self.senders.keys()):
                 if key not in active_keys:
@@ -101,8 +96,6 @@ class WorkerManager:
             
             if started_count > 0 or stopped_count > 0:
                 logger.info(f"Sync complete: +{started_count} | -{stopped_count} account(s)")
-            
-            logger.debug(f"Active accounts: {len(self.senders)}")
             
         except Exception as e:
             logger.error(f"Error syncing senders: {e}")
@@ -115,12 +108,8 @@ class WorkerManager:
         
         sender = UserSender(user_id, phone)
         self.senders[key] = sender
-        
-        # Create task
         task = asyncio.create_task(sender.start())
         self.tasks[key] = task
-        
-        # Handle task completion
         task.add_done_callback(lambda t: self._on_task_done(key, t))
     
     async def stop_sender(self, key: tuple):
@@ -131,7 +120,6 @@ class WorkerManager:
         sender = self.senders[key]
         await sender.stop()
         
-        # Cancel task
         if key in self.tasks:
             self.tasks[key].cancel()
             try:
@@ -152,11 +140,10 @@ class WorkerManager:
             if exc:
                 logger.error(f"Account {key[1]} [User {key[0]}] crashed: {exc}")
                 
-                # Auto-restart with exponential backoff
                 if self.running:
                     attempts = self.restart_counts.get(key, 0)
                     if attempts < self.MAX_RESTART_ATTEMPTS:
-                        delay = 30 * (2 ** attempts)  # 30s, 60s, 120s
+                        delay = 30 * (2 ** attempts)
                         self.restart_counts[key] = attempts + 1
                         logger.info(f"Scheduling restart #{attempts + 1} for {key[1]} in {delay}s...")
                         asyncio.get_event_loop().call_later(
@@ -168,7 +155,6 @@ class WorkerManager:
         except asyncio.CancelledError:
             pass
         
-        # Clean up
         if key in self.senders:
             del self.senders[key]
         if key in self.tasks:
@@ -188,12 +174,9 @@ class WorkerManager:
             return
             
         logger.info(f"Stopping {len(self.senders)} active sender tasks...")
-        
-        # Stop all senders in parallel for speed
         stop_tasks = [self.stop_sender(key) for key in list(self.senders.keys())]
         if stop_tasks:
             await asyncio.gather(*stop_tasks, return_exceptions=True)
-        
         logger.info("All senders stopped")
     
     def stop(self):
@@ -204,40 +187,13 @@ class WorkerManager:
         self.running = False
         self._shutdown_event.set()
 
-
-async def wait_for_network():
-    """Wait until Telegram API is reachable before starting."""
-    import httpx
-
-    url = "https://api.telegram.org"
-    attempt = 0
-    while True:
-        attempt += 1
-        try:
-            async with httpx.AsyncClient(follow_redirects=True) as client:
-                resp = await client.get(url, timeout=10)
-                if resp.status_code in (200, 301, 302, 404):
-                    logger.info("Network is ready (Telegram API reachable).")
-                    return
-        except Exception as e:
-            logger.warning(
-                f"Network not ready (attempt {attempt}): {e}. "
-                "Retrying in 5s..."
-            )
-            await asyncio.sleep(5)
-
-
 async def run_worker():
-    """Run the worker manager with graceful shutdown."""
+    """Run the worker manager."""
     logger.info("=" * 50)
-    logger.info("Group Message Scheduler - Worker Service V3.1")
+    logger.info("Group Message Scheduler - Worker Service V3.2")
     logger.info("=" * 50)
-    
-    # Wait for network
-    await wait_for_network()
     
     manager = WorkerManager()
-    
     try:
         await manager.start()
     except (KeyboardInterrupt, asyncio.CancelledError):
@@ -245,26 +201,20 @@ async def run_worker():
     finally:
         await manager.stop_all()
 
-
 async def main():
-    """Auto-restart wrapper: keeps the worker alive on crashes."""
+    """Auto-restart wrapper."""
     restart_delay = 5
     max_delay = 60
-
     while True:
         try:
             await run_worker()
-            break  # Clean exit (signal received)
+            break 
         except KeyboardInterrupt:
             break
         except Exception as e:
-            logger.error(
-                f"Worker crashed (unexpected): {e}. "
-                f"Restarting in {restart_delay}s..."
-            )
+            logger.error(f"Worker crashed: {e}. Restarting in {restart_delay}s...")
             await asyncio.sleep(restart_delay)
             restart_delay = min(restart_delay * 2, max_delay)
-
 
 if __name__ == "__main__":
     try:
