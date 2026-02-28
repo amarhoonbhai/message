@@ -27,9 +27,9 @@ def _safe_int(value: str, default: int = 0) -> int:
         return int(value)
     except (ValueError, TypeError):
         return default
-
-API_ID = _safe_int(os.getenv("API_ID", "0"))
-API_HASH = os.getenv("API_HASH", "")
+# ============== Telegram API ==============
+# Note: User's individual API ID and Hash are collected during Login
+# and stored in the database. No global API ID needed here.
 
 # ============== Validation ==============
 def validate_config():
@@ -37,9 +37,6 @@ def validate_config():
     missing = []
     if not MAIN_BOT_TOKEN: missing.append("MAIN_BOT_TOKEN")
     if not LOGIN_BOT_TOKEN: missing.append("LOGIN_BOT_TOKEN")
-    if API_ID == 0: missing.append("API_ID")
-    if not API_HASH: missing.append("API_HASH")
-    
     if missing:
         import sys
         print("\n" + "!"*50)

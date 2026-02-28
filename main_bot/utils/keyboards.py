@@ -192,3 +192,21 @@ def get_confirm_disconnect_keyboard(phone: str) -> InlineKeyboardMarkup:
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+def get_profile_keyboard() -> InlineKeyboardMarkup:
+    """Build profile screen keyboard."""
+    keyboard = [
+        [
+            InlineKeyboardButton("⚙️ Manage Accounts", callback_data="accounts_list"),
+        ],
+        [
+            InlineKeyboardButton("🎁 My Plan", callback_data="my_plan"),
+            InlineKeyboardButton("🤝 Referrals", callback_data="referral"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Dashboard", callback_data="dashboard"),
+            InlineKeyboardButton("🏠 Home", callback_data="home"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
