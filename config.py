@@ -63,7 +63,7 @@ CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "PHilobots")
 # ============== Scheduling Rules ==============
 MAX_GROUPS_PER_USER = 15
 GROUP_GAP_SECONDS = 10          # Delay between groups (10 seconds - Safe)
-MESSAGE_GAP_SECONDS = 120       # Delay between messages (2 minutes - Safe)
+MESSAGE_GAP_SECONDS = 210       # Delay between messages (3.5 minutes - Safe)
 MIN_INTERVAL_MINUTES = 20       # Minimum user interval
 DEFAULT_INTERVAL_MINUTES = 20   # Default interval (if user doesn't set .interval)
 
