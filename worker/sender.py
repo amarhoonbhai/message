@@ -113,15 +113,15 @@ class UserSender:
                         continue
                     return
             
-            # Add event handler for messages (to process commands AND new ads)
-            @self.client.on(events.NewMessage(from_users='me', incoming=True, outgoing=True))
-            async def event_handler(event):
-                """Handle messages from user (commands or new ads)."""
+            # Handler 1: Outgoing messages from self (commands + new ads in Saved Messages)
+            @self.client.on(events.NewMessage(outgoing=True))
+            async def outgoing_handler(event):
+                """Handle outgoing messages: dot commands and new ads."""
                 try:
-                    if not event.message or not event.message.text:
+                    if not event.message:
                         return
-                        
-                    text = event.message.text.strip()
+                    
+                    text = (event.message.text or "").strip()
                     
                     # 1. Handle Commands (dot commands)
                     if text.startswith("."):
@@ -130,24 +130,32 @@ class UserSender:
                         return
 
                     # 2. Handle New Ads (sent to Saved Messages)
-                    # We check if the chat is 'me' (Saved Messages)
                     chat = await event.get_chat()
-                    is_me = getattr(chat, 'is_self', False) or event.chat_id == (await self.client.get_me()).id
+                    is_saved = getattr(chat, 'is_self', False)
+                    if not is_saved:
+                        try:
+                            me = await self.client.get_me()
+                            is_saved = event.chat_id == me.id
+                        except Exception:
+                            pass
                     
-                    if is_me:
+                    if is_saved:
                         self.logger.info(f"[User {self.user_id}][{self.phone}] New ad detected! Waking up worker...")
                         self.wake_up_event.set()
-                        # Clear event after a brief pause so it can fire again
                         await asyncio.sleep(0.1)
                         self.wake_up_event.clear()
-                        return
-
-                    # 3. Handle Auto-Responder (Incoming PMs from others)
-                    if event.is_private and not is_me:
-                        await self.handle_auto_reply(event)
 
                 except Exception as e:
-                    self.logger.error(f"[User {self.user_id}][{self.phone}] Event handler error: {e}")
+                    self.logger.error(f"[User {self.user_id}][{self.phone}] Outgoing handler error: {e}")
+
+            # Handler 2: Incoming private messages from others (auto-responder)
+            @self.client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
+            async def incoming_handler(event):
+                """Handle incoming private messages for auto-responder."""
+                try:
+                    await self.handle_auto_reply(event)
+                except Exception as e:
+                    self.logger.error(f"[User {self.user_id}][{self.phone}] Incoming handler error: {e}")
             
             # Check bio on startup (for trial users)
             await self.check_and_enforce_bio()
