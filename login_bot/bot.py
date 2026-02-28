@@ -43,6 +43,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # ============== Timeout Configuration ==============
 CONNECT_TIMEOUT = 30
