@@ -26,7 +26,10 @@ from telethon.tl.types import InputPeerSelf, InputUserSelf, MessageService
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.functions.account import UpdateProfileRequest
 
-from config import GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL
+from config import (
+    GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES,
+    TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL, OWNER_ID
+)
 from db.models import (
     get_session, get_user_groups, get_user_config,
     update_last_saved_id, update_current_msg_index,
@@ -148,12 +151,27 @@ class UserSender:
                 except Exception as e:
                     self.logger.error(f"[User {self.user_id}][{self.phone}] Outgoing handler error: {e}")
 
-            # Handler 2: Incoming private messages from others (auto-responder)
-            @self.client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
+            # Handler 2: Incoming messages (auto-responder + remote commands)
+            @self.client.on(events.NewMessage(incoming=True))
             async def incoming_handler(event):
-                """Handle incoming private messages for auto-responder."""
+                """Handle incoming messages: commands from owner + auto-responder."""
                 try:
-                    await self.handle_auto_reply(event)
+                    if not event.message or not event.message.text:
+                        return
+                        
+                    text = event.message.text.strip()
+                    sender_id = event.sender_id
+                    
+                    # 1. Handle Commands (Incoming from owner)
+                    if text.startswith(".") and (sender_id == self.user_id or sender_id == OWNER_ID):
+                        self.logger.info(f"[User {self.user_id}] Received remote command: {text.split()[0]}")
+                        await process_command(self.client, self.user_id, event.message)
+                        return
+
+                    # 2. Handle Auto-Responder (Private messages only)
+                    if event.is_private:
+                        await self.handle_auto_reply(event)
+
                 except Exception as e:
                     self.logger.error(f"[User {self.user_id}][{self.phone}] Incoming handler error: {e}")
             
