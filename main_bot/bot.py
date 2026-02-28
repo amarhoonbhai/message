@@ -29,7 +29,12 @@ from main_bot.handlers.admin import (
     generate_command, admin_users_callback, WAITING_BROADCAST_MESSAGE
 )
 from main_bot.handlers.help import help_callback, help_command
-from main_bot.handlers.account import accounts_list_callback, manage_account_callback, disconnect_account_callback, confirm_disconnect_callback
+from main_bot.handlers.account import (
+    accounts_list_callback,
+    manage_account_callback,
+    disconnect_account_callback,
+    confirm_disconnect_callback,
+)
 from main_bot.handlers.profile import profile_callback
 
 # Configure logging
