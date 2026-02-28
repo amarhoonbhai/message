@@ -60,9 +60,9 @@ async def wait_for_network():
     while True:
         attempt += 1
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(follow_redirects=True) as client:
                 resp = await client.get(url, timeout=10)
-                if resp.status_code in (200, 404):
+                if resp.status_code in (200, 301, 302, 404):
                     logger.info("Network is ready (Telegram API reachable).")
                     return
         except Exception as e:
