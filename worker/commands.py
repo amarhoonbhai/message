@@ -68,6 +68,12 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".responder":
             await handle_responder(client, user_id, message, text)
             return True
+        elif cmd == ".ping":
+            await reply_to_command(client, message, "● Pong! Worker is active ⚡")
+            return True
+        elif cmd == ".stats":
+            await handle_status(client, user_id, message)
+            return True
     except Exception as e:
         logger.error(f"[User {user_id}] Command error: {e}")
         await reply_to_command(client, message, f"Error: {str(e)}")
@@ -82,24 +88,25 @@ async def reply_to_command(client: TelegramClient, message, text: str):
 
 async def handle_help(client: TelegramClient, user_id: int, message):
     """Handle .help command with professional styling."""
-    text = """📘 *WORKER COMMANDS* 📘
-
-👥 *GROUP MANAGEMENT*
-🔸 `.addgroup <url>` — Add to forwarding list
-🔸 `.rmgroup <url/number>` — Remove from list
-🔸 `.groups` — Show active groups
-
-⚙️ *SETTINGS*
-🔸 `.interval <min>` — Set delay (min: {min_interval}m)
-🔸 `.shuffle on/off` — Randomize loop order
-🔸 `.copymode on/off` — Send as fresh message
-🔸 `.responder <msg>` — Auto-reply to direct messages
-🔸 `.responder off` — Disable auto-reply
-🔸 `.status` — Live worker diagnostic
-
-💡 Note: You can add multiple groups at once!
-Example: `.addgroup @group1 @group2 @group3`
-""".format(min_interval=MIN_INTERVAL_MINUTES)
+    from config import MIN_INTERVAL_MINUTES
+    text = (
+        "📘 *BOT WORKER COMMANDS* 📘\n\n"
+        "👥 *GROUP MANAGEMENT*\n"
+        "🔸 `.addgroup <url>` — Add to forward list\n"
+        "🔸 `.rmgroup <url/idx>` — Remove from list\n"
+        "🔸 `.groups` — Show your active groups\n\n"
+        "⚙️ *SETTINGS*\n"
+        "🔸 `.interval <min>` — Set loop delay (min: {min}m)\n"
+        "🔸 `.shuffle on/off` — Randomize loop order\n"
+        "🔸 `.copymode on/off` — Send as fresh message\n"
+        "🔸 `.responder <msg>` — Set auto-reply for DMs\n"
+        "🔸 `.responder off` — Disable auto-reply\n\n"
+        "⚡ *DIAGNOSTICS*\n"
+        "🔸 `.status` — Check live worker stats\n"
+        "🔸 `.ping` — Check if worker is alive\n\n"
+        "💡 *PRO TIP:* You can add multiple groups at once!\n"
+        "Example: `.addgroup @group1 @group2`"
+    ).format(min=MIN_INTERVAL_MINUTES)
     
     await reply_to_command(client, message, text)
 
