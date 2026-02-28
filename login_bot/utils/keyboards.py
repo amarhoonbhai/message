@@ -10,10 +10,10 @@ def get_login_welcome_keyboard() -> InlineKeyboardMarkup:
     """Build login welcome screen keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("📱 Add Account", callback_data="add_account"),
+            InlineKeyboardButton("➕ Add Account / Connect", callback_data="add_account"),
         ],
         [
-            InlineKeyboardButton("📖 Help", callback_data="help"),
+            InlineKeyboardButton("❓ How to get API ID?", callback_data="help"),
             InlineKeyboardButton("🔙 Back to Main Bot", url=f"https://t.me/{MAIN_BOT_USERNAME}"),
         ],
     ]
@@ -24,7 +24,7 @@ def get_phone_input_keyboard() -> InlineKeyboardMarkup:
     """Keyboard shown during phone input."""
     keyboard = [
         [
-            InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
+            InlineKeyboardButton("❌ Cancel Process", callback_data="cancel"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -34,7 +34,7 @@ def get_api_input_keyboard() -> InlineKeyboardMarkup:
     """Keyboard shown during API ID/Hash input."""
     keyboard = [
         [
-            InlineKeyboardButton("📖 How to get API?", url="https://my.telegram.org"),
+            InlineKeyboardButton("❓ How to get API?", url="https://my.telegram.org"),
         ],
         [
             InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
@@ -47,10 +47,10 @@ def get_confirm_phone_keyboard() -> InlineKeyboardMarkup:
     """Keyboard for phone confirmation."""
     keyboard = [
         [
-            InlineKeyboardButton("✅ Send OTP", callback_data="send_otp"),
+            InlineKeyboardButton("📥 Send Verification Code", callback_data="send_otp"),
         ],
         [
-            InlineKeyboardButton("✏️ Edit Number", callback_data="edit_phone"),
+            InlineKeyboardButton("✏️ Change Number", callback_data="edit_phone"),
             InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
         ],
     ]
@@ -91,14 +91,14 @@ def get_otp_keypad(current_otp: str = "") -> InlineKeyboardMarkup:
         ],
         # Row 4: ⌫ 0 🧹
         [
-            InlineKeyboardButton("⌫ Back", callback_data="otp:back"),
+            InlineKeyboardButton("⌫ ", callback_data="otp:back"),
             InlineKeyboardButton("0", callback_data="otp:0"),
-            InlineKeyboardButton("🧹 Clear", callback_data="otp:clear"),
+            InlineKeyboardButton("🗑️ ", callback_data="otp:clear"),
         ],
         # Row 5: Submit Cancel
         [
-            InlineKeyboardButton("✅ Submit", callback_data="otp:submit"),
-            InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
+            InlineKeyboardButton("✅ LOGIN", callback_data="otp:submit"),
+            InlineKeyboardButton("❌ CANCEL", callback_data="cancel"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -108,7 +108,7 @@ def get_resend_otp_keyboard() -> InlineKeyboardMarkup:
     """Keyboard for resending OTP."""
     keyboard = [
         [
-            InlineKeyboardButton("🔄 Resend OTP", callback_data="resend_otp"),
+            InlineKeyboardButton("🔄 Resend Code (SMS)", callback_data="resend_otp"),
         ],
         [
             InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
@@ -131,10 +131,10 @@ def get_success_keyboard() -> InlineKeyboardMarkup:
     """Success screen keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("🚀 Go to Dashboard", url=f"https://t.me/{MAIN_BOT_USERNAME}?start=connected"),
+            InlineKeyboardButton("🚀 Go to Main Dashboard", url=f"https://t.me/{MAIN_BOT_USERNAME}?start=connected"),
         ],
         [
-            InlineKeyboardButton("📌 Join @PHilobots", url=f"https://t.me/{CHANNEL_USERNAME}"),
+            InlineKeyboardButton("📌 Join Community", url=f"https://t.me/{CHANNEL_USERNAME}"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)

@@ -9,54 +9,46 @@ from main_bot.utils.keyboards import get_back_home_keyboard
 
 
 HELP_TEXT = """
-📖 *HELP & COMMANDS*
-╔══════════════════════════╗
-║     ★ V3.0 — COMMAND GUIDE ★    ║
-╚══════════════════════════╝
+📘 *HELP & DOCUMENTATION*
 
-━━━━ 🚀 *QUICK START* ━━━━
+🚀 *QUICK START GUIDE*
+1️⃣ Go to Dashboard > Add Account
+2️⃣ Login securely via Login Bot
+3️⃣ Go to your *Saved Messages*
+4️⃣ Add target groups using `.addgroup`
+5️⃣ Send any message to Saved Messages!
 
-  1️⃣ Connect your Telegram account
-  2️⃣ Open *Saved Messages*
-  3️⃣ Use dot commands below
-  4️⃣ Send ads → Auto-forwarded! 🎯
+📝 *WORKER COMMANDS* (Use in Saved Messages)
 
-━━━━ 📋 *GROUP COMMANDS* ━━━━
+*Group Management:*
+🔸 `.addgroup <url>` — Add a new group
+🔸 `.rmgroup <url/number>` — Remove a group
+🔸 `.groups` — List your active groups
 
-  ▸ `.addgroup <url>` — Add group
-  ▸ `.rmgroup <url|#>` — Remove group
-  ▸ `.groups` — List all groups
+*Settings & Controls:*
+🔸 `.interval <min>` — Set delay between loops
+🔸 `.shuffle on/off` — Randomize group sending order
+🔸 `.copymode on/off` — Send as new message (hides "Forwarded from")
+🔸 `.responder <msg>` — Set auto-reply for incoming DMs
+🔸 `.status` — Check your live worker status
 
-━━━━ ⚙️ *SETTINGS* ━━━━
+*General:*
+🔸 `.help` — Show worker commands list
 
-  ▸ `.interval <min>` — Set delay
-  ▸ `.shuffle on/off` — Shuffle groups
-  ▸ `.copymode on/off` — Send as copy
-  ▸ `.responder on/off` — Toggle DM reply
-  ▸ `.responder <msg>` — Set reply text
+🛡️ *SAFETY & LIMITS*
 
-━━━━ 📊 *INFO* ━━━━
+✅ *Group Gap:* 10s between each group
+✅ *Message Gap:* 2m between different messages
+✅ *Night Mode:* Pauses automatically (12AM-6AM IST)
+✅ *Auto-Clean:* Invalid groups are removed automatically
 
-  ▸ `.status` — Account status card
-  ▸ `.help` — This help screen
+🤖 *BOT MANAGER COMMANDS*
+🔹 `/start` — Return home
+🔹 `/dashboard` — View live stats
+🔹 `/redeem <code>` — Apply premium code
+🔹 `/help` — Show this menu
 
-━━━━ 🛡️ *SAFETY RULES* ━━━━
-
-  ┌─────────────────────────┐
-  │  ⏱️ 10s gap between groups      │
-  │  ⏱️ 2min gap between messages   │
-  │  🌙 Night pause: 00:00–06:00    │
-  │  🗑️ Auto-remove bad groups      │
-  └─────────────────────────┘
-
-━━━━ 🤖 *BOT COMMANDS* ━━━━
-
-  ▸ /start — Home screen
-  ▸ /help — This help
-  ▸ /redeem `<code>` — Activate plan
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💬 *SUPPORT:* @PHilobots
+👨‍💻 *SUPPORT & UPDATES:* @PHilobots
 """
 
 

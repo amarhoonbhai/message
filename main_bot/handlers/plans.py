@@ -11,6 +11,12 @@ from main_bot.utils.keyboards import get_plan_keyboard, get_back_home_keyboard
 from config import PLAN_PRICES
 
 
+def format_expiry_date(dt: datetime) -> str:
+    if not dt:
+        return "N/A"
+    return dt.strftime("%d %b %Y, %I:%M %p UTC")
+
+
 async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show user's plan status."""
     query = update.callback_query
@@ -21,32 +27,26 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not plan:
         text = """
-🏷️ *MY PLAN*
-╔══════════════════════════╗
+💳 *SUBSCRIPTION & PLANS*
 
-⚪ *STATUS:* No Active Plan
+⚪ *STATUS:* NO ACTIVE PLAN
 
-╚══════════════════════════╝
+🚀 *UNLOCK PREMIUM AUTO-FORWARDING*
+Connect your Telegram account to instantly receive *7 DAYS FREE TRIAL!*
 
-🚀 *GET STARTED*
+💰 *PRICING TIERS*
 
-  ➳ Connect your account
-     → Get *7 DAYS FREE!* 🎉
-  ➳ Or redeem a premium code
+📅 *WEEKLY PRO* — ₹99
+└ 7 days of uninterrupted service
 
-━━━━ 💰 *PRICING* 💰 ━━━━
+🏆 *MONTHLY ULTRA* — ₹299
+└ 30 days — Best value!
 
-  ┌─────────────────────────┐
-  │  📅 *WEEKLY*  — ₹99  (+7 days)  │
-  │  📅 *MONTHLY* — ₹299 (+30 days) │
-  └─────────────────────────┘
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💡 Invite 3 friends → *+7 days FREE!*
+💡 *TIP:* Have a promo code? Tap Redeem below!
 """
     else:
-        plan_type = plan.get("plan_type", "trial").title()
-        status = plan.get("status", "unknown").title()
+        plan_type = plan.get("plan_type", "trial").upper()
+        status = plan.get("status", "unknown").upper()
         expires_at = plan.get("expires_at")
         
         if expires_at:
@@ -54,7 +54,6 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if expires_at > now:
                 days_left = (expires_at - now).days
                 hours_left = ((expires_at - now).seconds // 3600)
-                expiry_date = expires_at.strftime("%d %b %Y, %I:%M %p")
                 
                 if days_left > 0:
                     time_left = f"{days_left}d {hours_left}h"
@@ -63,62 +62,48 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 status_icon = "🟢"
                 status_text = "ACTIVE"
+                time_display = f"⏳ Expires in: *{time_left}*"
                 
-                # Plan badge
-                if plan_type.lower() == "trial":
-                    plan_badge = "🏅 TRIAL"
-                else:
-                    plan_badge = "💎 PREMIUM"
+                badge = "🏅" if plan_type == "TRIAL" else "💎"
                 
-                # Visual progress bar
-                max_days = 30 if plan_type.lower() == "month" else 7
+                # Create visual progress bar
+                max_days = 30 if plan_type == "MONTH" else 7
                 progress = min(days_left / max_days, 1.0)
                 filled = int(progress * 10)
-                bar = "▓" * filled + "░" * (10 - filled)
-                percent = int(progress * 100)
+                bar = "█" * filled + "▒" * (10 - filled)
             else:
                 status_icon = "🔴"
                 status_text = "EXPIRED"
-                plan_badge = "⚠️ EXPIRED"
-                time_left = "Expired"
-                expiry_date = expires_at.strftime("%d %b %Y, %I:%M %p")
-                bar = "░" * 10
-                percent = 0
+                time_display = "⚠️ *Your plan has expired!*"
+                bar = "▒" * 10
+                badge = "⚠️"
         else:
             status_icon = "⚪"
-            status_text = "Unknown"
-            plan_badge = "❓ Unknown"
-            time_left = "N/A"
-            expiry_date = "N/A"
-            bar = "░" * 10
-            percent = 0
+            status_text = "UNKNOWN"
+            time_display = ""
+            bar = "▒" * 10
+            badge = "❓"
+            
+        expiry_date = format_expiry_date(expires_at)
         
         text = f"""
-🏷️ *MY PLAN*
-╔══════════════════════════╗
+💳 *SUBSCRIPTION DASHBOARD*
 
-{status_icon} *{plan_badge}*
+{status_icon} *STATUS:* {status_text}
 
-╚══════════════════════════╝
+📋 *CURRENT PLAN DETAILS*
+{badge} *Type:* {plan_type}
+{time_display}
+📅 *Valid till:* {expiry_date}
 
-📋 *PLAN DETAILS*
+[{bar}]
 
-  ▸ Type: *{plan_type}*
-  ▸ Status: *{status_text}*
-  ▸ Time Left: *{time_left}*
-  ▸ Expires: _{expiry_date}_
+💰 *EXTEND YOUR SUBSCRIPTION*
 
-  [{bar}] {percent}%
+📅 *WEEKLY PRO* — ₹99 (+7 days)
+🏆 *MONTHLY ULTRA* — ₹299 (+30 days)
 
-━━━━ 💰 *EXTEND PLAN* 💰 ━━━━
-
-  ┌─────────────────────────┐
-  │  📅 *WEEKLY*  — ₹99  (+7 days)  │
-  │  📅 *MONTHLY* — ₹299 (+30 days) │
-  └─────────────────────────┘
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💡 Invite 3 friends → *+7 days FREE!*
+💡 invite 3 friends → *+7 days FREE!*
 """
     
     await query.edit_message_text(

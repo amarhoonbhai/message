@@ -1,14 +1,12 @@
-# Group Message Scheduler — V3.0
+# Group Message Scheduler V3.0
 
-A Telegram system that auto-forwards Saved Messages to up to 15 groups with safe delays and fixed night mode.
+A premium Telegram system that auto-forwards Saved Messages to up to 15 groups with safe delays and fixed night mode.
 
 ## Features
 
-- ⚡ **Main Bot** — Dashboard, Plans, Referral, Admin
-- 🔐 **Login Bot** — Account linking via OTP + 2FA using Telethon
-- 🚀 **Worker Service** — Auto-forward with safety rules
-- 💬 **Auto-Responder** — Auto-reply to DMs
-- 🔄 **Copy Mode & Shuffle** — Smart forwarding options
+- ✨ **Main Bot** - Rich Dashboard, Plans, Referral, Admin
+- 🔐 **Login Bot** - Secure Account linking via OTP + 2FA
+- 🚀 **Worker Service** - Premium Auto-forward with safety rules
 
 ## Quick Start
 

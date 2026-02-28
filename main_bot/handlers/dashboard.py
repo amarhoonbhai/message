@@ -115,7 +115,6 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     dashboard_text = f"""
 📊 *DASHBOARD* — {user_name}
-╔══════════════════════════╗
 
 📱 *ACCOUNTS* ({len(sessions) if sessions else 0})
 {account_section}
@@ -132,7 +131,6 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
   {copy_icon} Copy Mode ▪ {shuffle_icon} Shuffle
   {responder_icon} Responder: _{reply_preview}_
 
-╚══════════════════════════╝
 💡 *TIP:* Send `.addgroup <url>` in Saved Messages!
 """
     
@@ -164,16 +162,13 @@ async def add_account_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     text = """
 🔗 *CONNECT YOUR ACCOUNT*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Securely link your Telegram account
 to start auto-forwarding messages.
 
-┌─────────────────────────┐
-│  ✅ 256-bit encrypted session     │
-│  ✅ Your API credentials only     │
-│  ✅ Disconnect anytime             │
-└─────────────────────────┘
+✅ 256-bit encrypted session
+✅ Your API credentials only
+✅ Disconnect anytime
 
 👇 *Tap below to continue to Login Bot*
 """

@@ -31,56 +31,40 @@ async def referral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     referral_link = f"https://t.me/{MAIN_BOT_USERNAME}?start=ref_{referral_code}"
     
-    # Visual progress dots
-    filled = min(referrals_count, REFERRALS_NEEDED)
-    empty = REFERRALS_NEEDED - filled
-    progress_dots = "🟢" * filled + "⚪" * empty
-    
-    # Progress bar
-    progress_bar = "▓" * filled + "░" * empty
-    percentage = int((referrals_count / REFERRALS_NEEDED) * 100) if REFERRALS_NEEDED > 0 else 0
-    percentage = min(percentage, 100)
-    
-    # Bonus status
     if bonus_applied:
-        bonus_text = f"✅ *Bonus claimed!* +{REFERRAL_BONUS_DAYS} days added!"
-        reward_icon = "🎊"
+        bonus_text = f"✅ *Bonus Claimed!* +{REFERRAL_BONUS_DAYS} days added."
     elif referrals_count >= REFERRALS_NEEDED:
-        bonus_text = f"🎉 *Bonus earned!* +{REFERRAL_BONUS_DAYS} days!"
-        reward_icon = "🏆"
+        bonus_text = f"🎉 *Target Met!* +{REFERRAL_BONUS_DAYS} days unlocked!"
     else:
         remaining = REFERRALS_NEEDED - referrals_count
-        bonus_text = f"Invite *{remaining} more* to earn +{REFERRAL_BONUS_DAYS} days!"
-        reward_icon = "🎯"
+        bonus_text = f"Invite *{remaining} more* friend(s) to unlock!"
+    
+    # Enhanced progress bar
+    filled_blocks = min(referrals_count, REFERRALS_NEEDED)
+    empty_blocks = REFERRALS_NEEDED - filled_blocks
+    progress_bar = "🟢" * filled_blocks + "⚪" * empty_blocks
+    percentage = int((referrals_count / REFERRALS_NEEDED) * 100) if REFERRALS_NEEDED > 0 else 0
     
     text = f"""
-🤝 *REFER & EARN*
-╔══════════════════════════╗
+🤝 *REFER & EARN PROGRAM*
 
-{reward_icon} *YOUR PROGRESS*
+Earn free premium days by inviting your friends to use Group Message Scheduler!
 
-  {progress_dots}
-  [{progress_bar}] *{percentage}%*
+📊 *YOUR PROGRESS*
+► {progress_bar} *{percentage}%*
+► *{referrals_count}/{REFERRALS_NEEDED}* friends joined
 
-  👥 *{referrals_count}/{REFERRALS_NEEDED}* friends invited
-  {bonus_text}
+📌 {bonus_text}
 
-╚══════════════════════════╝
+🔗 *YOUR UNIQUE INVITE LINK*
+`{referral_link}`
 
-━━━━ 🔗 *YOUR LINK* 🔗 ━━━━
+📖 *HOW IT WORKS*
+1️⃣ Share the link above with friends
+2️⃣ They start the bot using your link
+3️⃣ You instantly get *+{REFERRAL_BONUS_DAYS} FREE DAYS* when {REFERRALS_NEEDED} friends join!
 
-  `{referral_link}`
-
-  _Tap to copy • Share with friends!_
-
-━━━━ 📖 *HOW IT WORKS* ━━━━
-
-  1️⃣ Share your referral link
-  2️⃣ Friends join & connect account
-  3️⃣ Get *+{REFERRAL_BONUS_DAYS} FREE days!* 🎁
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎁 *REWARD:* {REFERRAL_BONUS_DAYS} FREE premium days!
+🎁 *REWARD:* {REFERRAL_BONUS_DAYS} Days of Premium Auto-Forwarding!
 """
     
     await query.edit_message_text(

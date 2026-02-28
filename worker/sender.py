@@ -245,252 +245,226 @@ class UserSender:
             self.logger.error(f"[User {self.user_id}] Auto-reply error: {e}")
 
     async def run_loop(self):
-        """Main sender loop - INFINITE LOOP that continuously forwards ALL saved messages."""
+        """Main sender loop - INFINITE LOOP with Smart Proper Rotation."""
         while self.running:
             try:
                 # 0. Log session status
-                self.logger.info(f"[User {self.user_id}][{self.phone}] Current cycle starting...")
+                self.logger.info(f"[User {self.user_id}][{self.phone}] Current cycle checking config...")
                 await update_session_activity(self.user_id, self.phone)
                 
                 # 1. Check plan validity
                 if not await is_plan_active(self.user_id):
                     self.logger.info(f"[User {self.user_id}][{self.phone}] Plan expired or inactive, sleeping 5 min...")
                     await asyncio.sleep(300)
-                    continue  # Never exit, just continue checking
+                    continue
                 
-                # 2. Check night mode - pause during night hours
+                # 2. Check night mode
                 if is_night_mode():
                     wait_seconds = seconds_until_morning()
                     self.logger.info(f"[User {self.user_id}][{self.phone}] Auto-Night mode, sleeping {format_time_remaining(wait_seconds)}...")
                     await asyncio.sleep(min(wait_seconds, 3600))
-                    continue  # Never exit, resume after night
+                    continue
                 
-                # 3. Get user's groups FOR THIS ACCOUNT
+                # 3. Get groups and messages
                 groups = await get_user_groups(self.user_id, enabled_only=True, phone=self.phone)
-                
                 if not groups:
-                    self.logger.debug(f"[User {self.user_id}][{self.phone}] No groups yet for this account, waiting...")
+                    self.logger.debug(f"[User {self.user_id}][{self.phone}] No groups yet, waiting...")
                     await asyncio.sleep(300)
-                    continue  # Never exit, keep waiting for groups
+                    continue
                 
-                # 3.5 Get user's config for modes
+                all_messages = await self.get_all_saved_messages()
+                if not all_messages:
+                    self.logger.debug(f"[User {self.user_id}][{self.phone}] No messages yet, waiting...")
+                    await asyncio.sleep(300)
+                    continue
+                
+                # 4. Build proper smart rotation pairs
                 config = await get_user_config(self.user_id)
                 shuffle_mode = config.get("shuffle_mode", False)
                 copy_mode = config.get("copy_mode", False)
                 
+                pairs = []
+                for j in range(len(groups)):
+                    for i in range(len(all_messages)):
+                        # Proper rotation: group index shifts so we don't spam same group continuously
+                        grp_idx = (j + i) % len(groups)
+                        pairs.append((all_messages[i], groups[grp_idx]))
+                
                 if shuffle_mode:
-                    self.logger.debug(f"[User {self.user_id}][{self.phone}] Shuffle Mode enabled - randomizing groups")
-                    random.shuffle(groups)
+                    random.shuffle(pairs)
                 
-                # 4. Fetch ALL Saved Messages (non-command messages only)
-                all_messages = await self.get_all_saved_messages()
+                # 5. Get current step (resilient state saving)
+                current_step = config.get("current_msg_index", 0)
                 
-                if not all_messages:
-                    self.logger.debug(f"[User {self.user_id}][{self.phone}] No messages yet, waiting...")
-                    await asyncio.sleep(300)
-                    continue  # Never exit, keep waiting for messages
-                
-                # 5. Get current position in the message loop
-                config = await get_user_config(self.user_id)
-                current_msg_index = config.get("current_msg_index", 0)
-                
-                # Get user's configured interval (or default if not set)
-                user_interval_minutes = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
-                
-                # 6. CRITICAL: Reset index if out of bounds (ensures infinite loop)
-                # This handles: single message, message deletion, first run, etc.
-                if current_msg_index >= len(all_messages) or current_msg_index < 0:
+                if current_step >= len(pairs) or current_step < 0:
+                    # CYCLE COMPLETE
+                    user_interval_minutes = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
                     self.logger.info(f"[User {self.user_id}] 🔄 Loop cycle complete! Waiting {user_interval_minutes} minutes before restarting...")
                     
-                    # Wait for the full cycle interval before restarting
-                    # Sleep in chunks to respect Auto-Night pauses
                     cycle_wait_seconds = user_interval_minutes * 60
                     elapsed = 0
                     while elapsed < cycle_wait_seconds and self.running:
-                        # Check for night mode during wait
                         if is_night_mode():
                             wait_seconds = seconds_until_morning()
-                            self.logger.info(f"[User {self.user_id}] Auto-Night mode during cycle wait, sleeping {format_time_remaining(wait_seconds)}...")
                             await asyncio.sleep(min(wait_seconds, 3600))
-                            continue  # Don't count night pause toward elapsed time
-                        
-                        # Sleep in 60s chunks for responsiveness
+                            continue
                         sleep_chunk = min(60, cycle_wait_seconds - elapsed)
                         await asyncio.sleep(sleep_chunk)
                         elapsed += sleep_chunk
                     
-                    self.logger.info(f"[User {self.user_id}] ▶️ Cycle interval complete! Restarting from message 1...")
-                    current_msg_index = 0
+                    self.logger.info(f"[User {self.user_id}] ▶️ Cycle interval complete! Restarting...")
+                    current_step = 0
                     await update_current_msg_index(self.user_id, 0)
+                    continue # Re-fetch groups and messages for the new cycle
                 
-                # 7. Get current message to forward
-                msg = all_messages[current_msg_index]
-                total_msgs = len(all_messages)
-                self.logger.info(f"[User {self.user_id}] 📤 Forwarding message {current_msg_index + 1}/{total_msgs} to {len(groups)} group(s)...")
+                # 6. Get the pair to send
+                msg, group = pairs[current_step]
+                total_steps = len(pairs)
                 
-                # 8. Forward message to ALL groups (with GROUP_GAP between each)
-                # Returns (flood_triggered, flood_wait_seconds) - flood supersedes all logic
-                flood_triggered, flood_wait = await self.forward_message_to_groups(msg, groups, copy_mode=copy_mode)
+                self.logger.info(f"[User {self.user_id}] 📤 (Step {current_step + 1}/{total_steps}) Forwarding msg {msg.id} to {group.get('chat_title')}...")
+                
+                # 7. Send the single message
+                flood_triggered, flood_wait = await self.forward_single_message(msg, group, copy_mode=copy_mode)
                 
                 if flood_triggered:
-                    # Flood wait supersedes all other timing - sleep and restart loop
                     self.logger.warning(f"[User {self.user_id}] ⚠️ Flood detected, sleeping {flood_wait}s (supersedes all logic)...")
                     await asyncio.sleep(flood_wait)
-                    continue  # Restart loop without incrementing message index
+                    continue # Do not increment step, retry same message later!
                 
-                # 9. Increment position for next iteration
-                current_msg_index += 1
-                await update_current_msg_index(self.user_id, current_msg_index)
+                # 8. Increment and save state! Resilient crash-proof state!
+                current_step += 1
+                await update_current_msg_index(self.user_id, current_step)
                 
-                # 10. Wait MESSAGE_GAP only if more messages remain (state-driven)
-                if current_msg_index < len(all_messages):
-                    self.logger.info(f"[User {self.user_id}] ⏳ Waiting {MESSAGE_GAP_SECONDS}s before next message...")
+                # 9. Smart Interval Delay!
+                if current_step < len(pairs):
+                    # Every time we complete `len(groups)` amount of sends, we apply the MESSAGE_GAP.
+                    # Otherwise, use the GROUP_GAP.
+                    is_batch_end = (current_step % len(groups) == 0)
                     
-                    # Chunked sleep to respect night mode pauses
+                    if is_batch_end:
+                        base_gap = MESSAGE_GAP_SECONDS
+                        gap_type = "MESSAGE_GAP"
+                    else:
+                        base_gap = GROUP_GAP_SECONDS
+                        gap_type = "GROUP_GAP"
+                    
+                    # Apply anti-spam jitter
+                    jitter_min = int(base_gap * 0.8)
+                    jitter_max = int(base_gap * 1.5)
+                    wait_time = random.randint(max(5, jitter_min), jitter_max)
+                    
+                    self.logger.info(f"[User {self.user_id}] ⏳ Waiting {wait_time}s ({gap_type} + Jitter) before next step...")
+                    
                     elapsed = 0
-                    while elapsed < MESSAGE_GAP_SECONDS and self.running:
+                    while elapsed < wait_time and self.running:
                         if is_night_mode():
                             wait_seconds = seconds_until_morning()
-                            self.logger.info(f"[User {self.user_id}] 🌙 Night mode during message gap, pausing {format_time_remaining(wait_seconds)}...")
+                            self.logger.info(f"[User {self.user_id}] 🌙 Night mode forced, pausing {format_time_remaining(wait_seconds)}...")
                             await asyncio.sleep(min(wait_seconds, 3600))
-                            continue  # Don't count night pause toward elapsed time
-                        
-                        # Sleep in 30s chunks for responsiveness
-                        sleep_chunk = min(30, MESSAGE_GAP_SECONDS - elapsed)
+                            continue
+                        sleep_chunk = min(30, wait_time - elapsed)
                         await asyncio.sleep(sleep_chunk)
                         elapsed += sleep_chunk
                 else:
-                    self.logger.info(f"[User {self.user_id}] ✅ Last message forwarded, cycle complete (no gap wait)")
-                
-                # Loop continues automatically - NEVER exits here
+                    self.logger.info(f"[User {self.user_id}] ✅ Last step in cycle forwarded (no gap wait)")
                 
             except asyncio.CancelledError:
                 self.logger.info(f"[User {self.user_id}] Loop cancelled (shutdown)")
-                break  # Only exit on explicit cancellation
+                break
             except Exception as e:
                 self.logger.error(f"[User {self.user_id}] Loop error: {e} - retrying in 60s...")
                 await asyncio.sleep(60)
-                # Continue the loop, never exit on errors
     
     async def get_all_saved_messages(self) -> list:
         """Fetch ALL Saved Messages (excluding command messages)."""
         try:
             messages = []
-            
-            # Fetch all messages from Saved Messages (limit 100 for safety)
             async for msg in self.client.iter_messages('me', limit=100):
-                # Skip command messages (starting with .)
                 if msg.text and msg.text.strip().startswith("."):
                     continue
                 messages.append(msg)
-            
-            # Reverse to process oldest first
             messages.reverse()
-            
             return messages
-            
         except Exception as e:
             logger.error(f"[User {self.user_id}] Error fetching saved messages: {e}")
             return []
     
-    async def forward_message_to_groups(self, message, groups: list, copy_mode: bool = False) -> tuple:
+    async def forward_single_message(self, message, group: dict, copy_mode: bool = False) -> tuple:
         """
-        Forward or copy a message to all enabled groups.
+        Forward or copy a single message to a single group.
         Returns: (flood_triggered: bool, flood_wait_seconds: int)
         """
-        flood_triggered = False
-        flood_wait_seconds = 0
+        chat_id = group.get("chat_id")
+        chat_title = group.get("chat_title", "Unknown")
         
-        for i, group in enumerate(groups):
-            chat_id = group.get("chat_id")
-            chat_title = group.get("chat_title", "Unknown")
-            
-            try:
-                # Decide between Forward and Copy
-                if copy_mode:
-                    # COPY MODE: Send as a new message to hide "Forwarded from" and bypass restrictions
-                    await self.client.send_message(
-                        entity=chat_id,
-                        message=message.message,
-                        file=message.media,
-                        formatting_entities=message.entities
-                    )
-                    log_action = "Copied"
-                else:
-                    # FORWARD MODE: Standard forwarding
-                    await self.client.forward_messages(
-                        entity=chat_id,
-                        messages=message.id,
-                        from_peer=InputPeerSelf()
-                    )
-                    log_action = "Forwarded"
-                
-                logger.info(f"[User {self.user_id}] {log_action} message {message.id} to {chat_title}")
-                
-                # Log success
-                await log_send(
-                    user_id=self.user_id,
-                    chat_id=chat_id,
-                    saved_msg_id=message.id,
-                    status="success",
-                    phone=self.phone
+        try:
+            if copy_mode:
+                await self.client.send_message(
+                    entity=chat_id,
+                    message=message.message,
+                    file=message.media,
+                    formatting_entities=message.entities
                 )
-                
-            except FloodWaitError as e:
-                # Flood wait supersedes all logic - return immediately
-                logger.warning(f"[User {self.user_id}] FloodWait: {e.seconds}s (superseding all logic)")
-                await log_send(self.user_id, chat_id, message.id, "flood_wait", f"FloodWait {e.seconds}s", phone=self.phone)
-                return (True, int(e.seconds * 1.5) + 10)  # Scaled backoff + buffer
-                
-            except PeerFloodError:
-                # PeerFlood is severe - return with 1 hour wait
-                logger.error(f"[User {self.user_id}] PeerFlood error - signaling 1 hour pause")
-                await log_send(self.user_id, chat_id, message.id, "peer_flood", "PeerFlood", phone=self.phone)
-                return (True, 3600)  # 1 hour pause
-                
-            except (ChatWriteForbiddenError, ChannelPrivateError, 
-                    ChatAdminRequiredError, UserBannedInChannelError) as e:
-                # Remove group - access revoked
-                logger.warning(f"[User {self.user_id}] Removing group {chat_title}: {type(e).__name__}")
+                log_action = "Copied"
+            else:
+                await self.client.forward_messages(
+                    entity=chat_id,
+                    messages=message.id,
+                    from_peer=InputPeerSelf()
+                )
+                log_action = "Forwarded"
+            
+            logger.info(f"[User {self.user_id}] {log_action} message {message.id} to {chat_title}")
+            
+            await log_send(
+                user_id=self.user_id,
+                chat_id=chat_id,
+                saved_msg_id=message.id,
+                status="success",
+                phone=self.phone
+            )
+            return (False, 0)
+            
+        except FloodWaitError as e:
+            logger.warning(f"[User {self.user_id}] FloodWait: {e.seconds}s on {chat_title} (superseding logic)")
+            await log_send(self.user_id, chat_id, message.id, "flood_wait", f"FloodWait {e.seconds}s", phone=self.phone)
+            return (True, int(e.seconds * 1.5) + 10)
+            
+        except PeerFloodError:
+            logger.error(f"[User {self.user_id}] PeerFlood error on {chat_title} - signaling 1 hour pause")
+            await log_send(self.user_id, chat_id, message.id, "peer_flood", "PeerFlood", phone=self.phone)
+            return (True, 3600)
+            
+        except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
+            logger.warning(f"[User {self.user_id}] Removing group {chat_title}: {type(e).__name__}")
+            await remove_group(self.user_id, chat_id)
+            await log_send(self.user_id, chat_id, message.id, "removed", str(e), phone=self.phone)
+            return (False, 0)
+            
+        except InputUserDeactivatedError:
+            logger.error(f"[User {self.user_id}] User account deactivated!")
+            await log_send(self.user_id, chat_id, message.id, "failed", "UserDeactivated", phone=self.phone)
+            self.running = False
+            return (False, 0)
+            
+        except MultiError as e:
+            real_error = e.exceptions[0] if e.exceptions else e
+            logger.error(f"[User {self.user_id}] MultiError forwarding to {chat_title}: {real_error}")
+            await log_send(self.user_id, chat_id, message.id, "failed", f"MultiError: {real_error}", phone=self.phone)
+            return (False, 0)
+            
+        except RPCError as e:
+            error_msg = str(e).upper()
+            if any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN", "USER_BANNED_IN_CHANNEL"]):
+                logger.warning(f"[User {self.user_id}] Removing group {chat_title} due to RPC error: {e}")
                 await remove_group(self.user_id, chat_id)
                 await log_send(self.user_id, chat_id, message.id, "removed", str(e), phone=self.phone)
-                continue  # Skip to next group
-                
-            except InputUserDeactivatedError:
-                logger.error(f"[User {self.user_id}] User account deactivated!")
-                await log_send(self.user_id, chat_id, message.id, "failed", "UserDeactivated", phone=self.phone)
-                return (False, 0)
-                
-            except MultiError as e:
-                # Handle MultiError - extract the first real error
-                real_error = e.exceptions[0] if e.exceptions else e
-                logger.error(f"[User {self.user_id}] MultiError forwarding to {chat_title}: {real_error}")
-                await log_send(self.user_id, chat_id, message.id, "failed", f"MultiError: {real_error}", phone=self.phone)
-                
-            except RPCError as e:
-                # Catch specific RPC errors that mean "forbidden" but aren't typed exceptions
-                error_msg = str(e).upper()
-                if any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN", "USER_BANNED_IN_CHANNEL"]):
-                    logger.warning(f"[User {self.user_id}] Removing group {chat_title} due to RPC error: {e}")
-                    await remove_group(self.user_id, chat_id)
-                    await log_send(self.user_id, chat_id, message.id, "removed", str(e), phone=self.phone)
-                else:
-                    logger.error(f"[User {self.user_id}] RPC Error forwarding to {chat_title}: {e}")
-                    await log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone)
-                
-            except Exception as e:
-                logger.error(f"[User {self.user_id}] Error forwarding to {chat_title}: {e}")
+            else:
+                logger.error(f"[User {self.user_id}] RPC Error forwarding to {chat_title}: {e}")
                 await log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone)
+            return (False, 0)
             
-            # Wait between groups (except for last one) - with JITTER
-            if i < len(groups) - 1:
-                # ANTI-SPAM JITTER: Randomize delay between 80% and 120% of config
-                jitter_min = int(GROUP_GAP_SECONDS * 0.8)
-                jitter_max = int(GROUP_GAP_SECONDS * 1.5)
-                wait_time = random.randint(max(5, jitter_min), jitter_max)
-                
-                logger.debug(f"[User {self.user_id}] Waiting {wait_time}s (Jitter) before next group")
-                await asyncio.sleep(wait_time)
-        
-        # No flood occurred, return success state
-        return (False, 0)
+        except Exception as e:
+            logger.error(f"[User {self.user_id}] Error forwarding to {chat_title}: {e}")
+            await log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone)
+            return (False, 0)

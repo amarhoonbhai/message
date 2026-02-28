@@ -275,8 +275,6 @@ async def run_bot():
         logger.info("Main Bot is running!")
         await stop_event.wait()
 
-    except (TimedOut, NetworkError) as e:
-        logger.error(f"Telegram network error: {e}. Will auto-restart.")
     except (asyncio.CancelledError, KeyboardInterrupt):
         logger.info("Shutdown signal received...")
     finally:

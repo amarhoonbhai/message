@@ -82,39 +82,24 @@ async def reply_to_command(client: TelegramClient, message, text: str):
 
 async def handle_help(client: TelegramClient, user_id: int, message):
     """Handle .help command with professional styling."""
-    text = """⚡ COMMAND GUIDE — V3.0
-══════════════════════════
+    text = """📘 *WORKER COMMANDS* 📘
 
-📁 GROUP MANAGEMENT
-  ▸ .addgroup <url>  — Add group
-  ▸ .rmgroup <url|#> — Remove group
-  ▸ .groups          — List groups
+👥 *GROUP MANAGEMENT*
+🔸 `.addgroup <url>` — Add to forwarding list
+🔸 `.rmgroup <url/number>` — Remove from list
+🔸 `.groups` — Show active groups
 
-⚙️ SETTINGS
-  ▸ .interval <min>   — Set delay (min {min_interval})
-  ▸ .shuffle on/off   — Shuffle group order
-  ▸ .copymode on/off  — Send as copy
-  ▸ .responder on/off — Toggle DM reply
-  ▸ .responder <msg>  — Set reply text
+⚙️ *SETTINGS*
+🔸 `.interval <min>` — Set delay (min: {min_interval}m)
+🔸 `.shuffle on/off` — Randomize loop order
+🔸 `.copymode on/off` — Send as fresh message
+🔸 `.responder <msg>` — Auto-reply to direct messages
+🔸 `.responder off` — Disable auto-reply
+🔸 `.status` — Live worker diagnostic
 
-📊 INFO
-  ▸ .status — Account status card
-  ▸ .help   — This help screen
-
-══════════════════════════
-📝 EXAMPLES
-  ▸ .addgroup https://t.me/mygroup
-  ▸ .addgroup @grp1 @grp2 @grp3
-  ▸ .responder Hello! I'm busy.
-  ▸ .shuffle on
-  ▸ .interval 30
-
-🛡️ NOTES
-  ▸ Must be a group member
-  ▸ Max {max_groups} groups allowed
-  ▸ Min interval: {min_interval} min
-  ▸ Copy Mode hides "Forwarded from"
-══════════════════════════""".format(min_interval=MIN_INTERVAL_MINUTES, max_groups=MAX_GROUPS_PER_USER)
+💡 Note: You can add multiple groups at once!
+Example: `.addgroup @group1 @group2 @group3`
+""".format(min_interval=MIN_INTERVAL_MINUTES)
     
     await reply_to_command(client, message, text)
 
@@ -170,29 +155,27 @@ async def handle_status(client: TelegramClient, user_id: int, message):
     shuffle_icon = "🟢 ON" if config.get("shuffle_mode") else "⚫ OFF"
     responder_icon = "🟢 ON" if config.get("auto_reply_enabled") else "⚫ OFF"
     
-    text = f"""📊 ACCOUNT STATUS
-══════════════════════════
+    text = f"""📊 *WORKER DIAGNOSTICS* 📊
 
-📱 ACCOUNT
-  ▸ Phone: {phone}
-  ▸ Status: 🟢 Connected
+📱 *ACCOUNT PROFILE*
+├ Phone: {phone}
+└ Status: 🟢 Connected
 
-🏷️ PLAN
-  ▸ {plan_badge} — {plan_type}
-  ▸ {plan_status}
+🏷️ *PLAN INFO*
+├ Tier: {plan_type}
+└ Status: {plan_status.replace('🟢', '●').replace('🔴', '○')}
 
-📤 FORWARDING
-  ▸ Groups: {enabled_groups}/{total_groups}
-  ▸ Interval: {interval} min
-  ▸ Night: 00:00–06:00 IST
+⚡ *LIVE SETTINGS*
+├ Interval: {interval}m
+├ Shuffle: {"🟢 ON" if config.get("shuffle_mode") else "⚫ OFF"}
+├ Copy Mode: {"🟢 ON" if config.get("copy_mode") else "⚫ OFF"}
+├ Auto-Responder: {"🟢 ON" if config.get("auto_reply_enabled") else "⚫ OFF"}
+└ Night Mode: Active (12AM-6AM IST)
 
-⚙️ SETTINGS
-  ▸ Copy Mode:  {copy_icon}
-  ▸ Shuffle:    {shuffle_icon}
-  ▸ Responder:  {responder_icon}
+👥 *GROUPS ({enabled_groups}/{total_groups})*
 
-══════════════════════════
-💡 Type .help for all commands."""
+Type `.help` for available commands
+"""
     await reply_to_command(client, message, text)
 
 

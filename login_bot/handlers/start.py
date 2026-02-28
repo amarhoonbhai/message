@@ -5,34 +5,39 @@ Start and welcome handler for Login Bot.
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from db.models import create_user
 from login_bot.utils.keyboards import get_login_welcome_keyboard
 
 
 WELCOME_TEXT = """
-🔐 *SECURE LOGIN*
-╔══════════════════════════╗
-║    ★ V3.0 — ACCOUNT LINK ★     ║
-╚══════════════════════════╝
+🔐 *SECURE LOGIN PORTAL*
+*★ V3.0 — PRO LOGIN ★*
 
-Connect your Telegram account
-securely to start auto-forwarding.
+Welcome to the standalone authentication bot for the Group Message Scheduler.
 
-  ┌─────────────────────────┐
-  │  ✅ Encrypted session storage   │
-  │  ✅ Safe scheduling rules       │
-  │  ✅ Manage from main dashboard  │
-  │  ✅ Disconnect anytime          │
-  └─────────────────────────┘
+🛡️ *YOUR SECURITY IS OUR PRIORITY*
+✅ Official Telegram API used
+✅ Sessions encrypted using AES-256
+✅ Complete control over your data
 
-  👇 *Tap below to begin*
+To connect your account, you need:
+1️⃣ Your Phone Number
+2️⃣ Your Telegram API Hash
+3️⃣ Your Telegram API ID
+
+👇 *Tap below to start the connection process*
 """
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
     user = update.effective_user
+    
+    # Ensure user exists in db
+    await create_user(user.id)
+    
     first_name = user.first_name or "User"
-    greeting = f"👋 *Hey {first_name}!*\n"
+    greeting = f"👋 *Greeting {first_name},*\n\n"
     
     await update.message.reply_text(
         greeting + WELCOME_TEXT,
@@ -42,30 +47,24 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show help for login process."""
+    """Show help for login format."""
     query = update.callback_query
     await query.answer()
     
     help_text = """
-📖 *LOGIN HELP*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ℹ️ *HOW TO GET API ID & HASH*
+──────────────────────────────
 
-*How to connect your account:*
+1️⃣ Go to https://my.telegram.org in your browser
+2️⃣ Log in with your Telegram number
+3️⃣ Tap on **"API development tools"**
+4️⃣ Fill out the basic form (any name/app)
+5️⃣ Copy the **API ID** and **API HASH**
 
-  1️⃣ Tap \"📱 Add Account\"
-  2️⃣ Enter phone with country code
-  3️⃣ Confirm & receive OTP
-  4️⃣ Enter OTP via secure keypad
-  5️⃣ Enter 2FA password (if enabled)
-
-━━━━ ❓ *FAQ* ━━━━
-
-  ▸ Session stored with encryption 🔐
-  ▸ We never access private chats 🛡️
-  ▸ Disconnect anytime from main bot ✅
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💬 Need help? Join @PHilobots
+*Why do we need this?*
+Telegram requires every automation app to
+use its own unique API connection. This keeps
+your account completely safe from mass bans.
 """
     
     await query.edit_message_text(

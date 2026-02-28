@@ -14,6 +14,10 @@ from main_bot.utils.keyboards import (
     get_back_home_keyboard
 )
 
+def format_date(dt: datetime) -> str:
+    if not dt:
+        return "Unknown"
+    return dt.strftime("%d %b %Y, %H:%M UTC")
 
 async def accounts_list_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show list of connected accounts."""
@@ -25,18 +29,16 @@ async def accounts_list_callback(update: Update, context: ContextTypes.DEFAULT_T
     
     if not sessions:
         text = """
-⚙️ *MANAGE ACCOUNTS*
-╔══════════════════════════╗
+⚙️ *ACCOUNT MANAGER*
 
-🔴 *No accounts connected*
+🔴 *STATUS:* No accounts connected
 
-╚══════════════════════════╝
+🚀 *GET STARTED NOW!*
+1️⃣ Go back to home
+2️⃣ Tap "➕ Add Account"
+3️⃣ Link your account securely
 
-💡 *NEXT STEPS*
-
-  1️⃣ Go to Dashboard
-  2️⃣ Tap \"➕ Add Account\"
-  3️⃣ Connect via Login Bot
+*Your API credentials are safe and encrypted.*
 """
         await query.edit_message_text(
             text,
@@ -45,30 +47,10 @@ async def accounts_list_callback(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
     
-    # Build account list with stats
-    accounts_text = ""
-    for idx, s in enumerate(sessions, 1):
-        phone = s.get("phone", "Unknown")
-        status_icon = "🟢" if s.get("connected") else "🔴"
-        connected_at = s.get("connected_at")
-        
-        if connected_at:
-            since = connected_at.strftime("%d %b %Y")
-        else:
-            since = "Unknown"
-        
-        accounts_text += f"  {status_icon} `{phone}` — Since {since}\n"
-    
-    text = f"""
-⚙️ *MANAGE ACCOUNTS*
-╔══════════════════════════╗
+    text = """
+⚙️ *ACCOUNT MANAGER*
 
-📱 *Connected:* {len(sessions)} account(s)
-
-{accounts_text}
-╚══════════════════════════╝
-
-👇 _Select an account to manage:_
+Select a connected account below to view its live stats or to disconnect it:
 """
     await query.edit_message_text(
         text,
@@ -96,42 +78,31 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
     connected_at = session.get("connected_at")
     
     status_icon = "🟢" if connected else "🔴"
-    status_text = "Connected" if connected else "Disconnected"
+    status_text = "CONNECTED" if connected else "DISCONNECTED"
     
-    if connected_at:
-        connected_date = connected_at.strftime("%d %b %Y, %H:%M UTC")
-    else:
-        connected_date = "Unknown"
+    connected_date = format_date(connected_at)
     
-    # Get account stats
-    try:
-        stats = await get_account_stats(user_id, phone)
-        total_sent = stats.get("total_sent", 0)
-        success_rate = stats.get("success_rate", 0)
-        stats_line = f"  ▸ Total Sent: *{total_sent}* msgs\n  ▸ Success Rate: *{success_rate}%*\n"
-    except Exception:
-        stats_line = ""
+    stats = await get_account_stats(user_id, phone)
+    total_sent = stats.get("total_sent", 0)
+    success_rate = stats.get("success_rate", 0)
+    last_active = format_date(stats.get("last_active"))
     
     text = f"""
-⚙️ *ACCOUNT DETAILS*
-╔══════════════════════════╗
+📱 *ACCOUNT PROFILE*
 
-{status_icon} *{status_text}*
+{status_icon} *STATUS:* {status_text}
 
-╚══════════════════════════╝
+👤 *DETAILS*
+📞 *Phone:* `{phone}`
+🔗 *Linked On:* {connected_date}
 
-📱 *INFO*
+📊 *LIFETIME STATS*
+📤 *Messages Sent:* {total_sent}
+🎯 *Success Rate:* {success_rate}%
+⏱️ *Last Active:* {last_active}
 
-  ▸ Phone: `{phone}`
-  ▸ Connected: _{connected_date}_
-{stats_line}
-━━━━ ⚠️ *DISCONNECT* ⚠️ ━━━━
-
-  ┌─────────────────────────┐
-  │  ❌ Stops forwarding for THIS acct  │
-  │  🗑️ Removes this session            │
-  │  ✅ You can reconnect later         │
-  └─────────────────────────┘
+⚠️ *DANGER ZONE* ⚠️
+Disconnecting removes your session forever and immediately stops all forwarding.
 """
     
     await query.edit_message_text(
@@ -149,18 +120,18 @@ async def disconnect_account_callback(update: Update, context: ContextTypes.DEFA
     phone = query.data.split(":")[1]
     
     text = f"""
-⚠️ *CONFIRM DISCONNECT*
-╔══════════════════════════╗
+⚠️ *CRITICAL ACTION*
 
-📱 Account: `{phone}`
+📱 *Target:* `{phone}`
 
-❓ *ARE YOU SURE?*
+❗ *Are you absolutely sure you want to disconnect?*
 
-  ❌ Stop forwarding NOW
-  🗑️ Remove saved session
-  ✅ Reconnect anytime later
+*This will immediately:*
+❌ Stop all message forwarding
+🗑️ Delete your stored sessions
+🔴 Require re-login via OTP to reconnect
 
-╚══════════════════════════╝
+👇 *Please confirm your choice below*
 """
     
     await query.edit_message_text(
@@ -182,18 +153,13 @@ async def confirm_disconnect_callback(update: Update, context: ContextTypes.DEFA
     await disconnect_session(user_id, phone)
     
     text = f"""
-✅ *DISCONNECTED*
-╔══════════════════════════╗
+✅ *SUCCESSFULLY DISCONNECTED*
 
-📱 `{phone}` removed
+📱 *Account:* `{phone}`
 
-╚══════════════════════════╝
+Your session has been securely wiped and forwarding has immediately halted.
 
-📋 *STATUS UPDATE*
-
-  ✅ Session removed
-  ✅ Forwarding stopped
-  🔄 Reconnect anytime via Login Bot
+You can reconnect anytime via the **Add Account** button.
 """
     
     await query.edit_message_text(

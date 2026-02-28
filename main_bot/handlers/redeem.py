@@ -19,11 +19,14 @@ async def redeem_code_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     
     text = """
-🧾 *Redeem Code*
+🧾 *REDEEM PROMO CODE*
 
-Enter your redemption code below.
+Got a premium promo code? 
+Send it below to activate your subscription!
 
-Codes are case-insensitive.
+*(Codes are case-insensitive)*
+
+👇 *Waiting for your code...*
 """
     
     await query.edit_message_text(
@@ -59,7 +62,8 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not context.args:
         await update.message.reply_text(
-            "Usage: /redeem <CODE>\n\nExample: /redeem ABC123XYZ",
+            "⚠️ *Usage:* `/redeem <CODE>`\n\nExample: `/redeem PROWEEK123`",
+            parse_mode="Markdown",
             reply_markup=get_back_home_keyboard(),
         )
         return

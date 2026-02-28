@@ -37,8 +37,9 @@ async def build_welcome_text(user) -> str:
         plan_tag = "No Plan"
 
     text = f"""
-*GROUP MESSAGE SCHEDULER*
-*V3.0 — PRO ENGINE*
+⚡ *GROUP MESSAGE SCHEDULER* ⚡
+
+*★ V3.0 — PRO ENGINE ★*
 
 *Welcome, {full_name}!*
 *Username:* {username}
@@ -46,24 +47,24 @@ async def build_welcome_text(user) -> str:
 *Accounts:* {accounts_count} connected
 *Plan:* {plan_tag}
 
-*AUTOMATE YOUR TELEGRAM ADS*
+🎯 *AUTOMATE YOUR TELEGRAM ADS*
 
-  📤 Auto-forward to *15+ Groups*
-  🛡️ Smart Anti-Flood Protection
-  🌙 Auto Night Mode (12AM-6AM)
-  📊 Real-time Dashboard
-  🔄 Copy Mode & Shuffle Mode
-  💬 Auto-Responder (DMs)
-  🔐 Secure Encrypted Sessions
+📤 *Auto-forward* to 15+ Groups
+🛡️ *Smart Anti-Flood* Protection
+🌙 *Auto Night Mode* (12AM-6AM)
+📊 *Real-time* Dashboard
+🔄 *Copy Mode & Shuffle* Mode
+💬 *Auto-Responder* (DMs)
+🔐 *Secure Encrypted* Sessions
 
-*HOW IT WORKS*
+⚙️ *HOW IT WORKS*
 
-  1. Connect your Telegram account
-  2. Add your target groups
-  3. Drop messages in *Saved Messages*
-  4. Sit back — we forward them!
+1️⃣ Connect your Telegram account
+2️⃣ Add your target groups
+3️⃣ Drop messages in *Saved Messages*
+4️⃣ Sit back — we forward them! 🚀
 
-  *TAP A BUTTON BELOW TO BEGIN*
+👇 *TAP A BUTTON BELOW TO BEGIN*
 """
     return text
 

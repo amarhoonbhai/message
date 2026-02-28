@@ -10,28 +10,16 @@ def get_welcome_keyboard() -> InlineKeyboardMarkup:
     """Build welcome screen keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("📊 Dashboard", callback_data="dashboard"),
             InlineKeyboardButton("➕ Add Account", callback_data="add_account"),
+            InlineKeyboardButton("📊 Open Dashboard", callback_data="dashboard"),
         ],
         [
-            InlineKeyboardButton("👤 My Profile", callback_data="profile"),
-            InlineKeyboardButton("🏷️ My Plan", callback_data="my_plan"),
-        ],
-        [
+            InlineKeyboardButton("🎁 My Plan", callback_data="my_plan"),
             InlineKeyboardButton("🤝 Refer & Earn", callback_data="referral"),
-            InlineKeyboardButton("📖 Help", callback_data="help"),
         ],
         [
-            InlineKeyboardButton(
-                "👨‍💻 Developer @spinify",
-                url="https://t.me/spinify",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "📌 Join @PHilobots",
-                url=f"https://t.me/{CHANNEL_USERNAME}",
-            ),
+            InlineKeyboardButton("📌 Join Community", url=f"https://t.me/{CHANNEL_USERNAME}"),
+            InlineKeyboardButton("📘 Help & Docs", callback_data="help"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -41,10 +29,10 @@ def get_add_account_keyboard() -> InlineKeyboardMarkup:
     """Build add account screen keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("✅ Continue to Login Bot", url=f"https://t.me/{LOGIN_BOT_USERNAME}"),
+            InlineKeyboardButton("🚀 Continue to Login Bot", url=f"https://t.me/{LOGIN_BOT_USERNAME}"),
         ],
         [
-            InlineKeyboardButton("🏠 Home", callback_data="home"),
+            InlineKeyboardButton("🏠 Back to Home", callback_data="home"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -58,38 +46,15 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("⚙️ Manage Accounts", callback_data="accounts_list"),
         ],
         [
-            InlineKeyboardButton("👤 My Profile", callback_data="profile"),
-            InlineKeyboardButton("🏷️ My Plan", callback_data="my_plan"),
-        ],
-        [
+            InlineKeyboardButton("🎁 My Plan / Status", callback_data="my_plan"),
             InlineKeyboardButton("🤝 Refer & Earn", callback_data="referral"),
-            InlineKeyboardButton("🧾 Redeem Code", callback_data="redeem_code"),
         ],
         [
-            InlineKeyboardButton("📖 Help", callback_data="help"),
-            InlineKeyboardButton("📌 Join @PHilobots", url=f"https://t.me/{CHANNEL_USERNAME}"),
+            InlineKeyboardButton("🧾 Redeem Promo Code", callback_data="redeem_code"),
+            InlineKeyboardButton("📘 Commands Map", callback_data="help"),
         ],
         [
-            InlineKeyboardButton("🏠 Home", callback_data="home"),
-        ],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-
-def get_profile_keyboard() -> InlineKeyboardMarkup:
-    """Build profile screen keyboard."""
-    keyboard = [
-        [
-            InlineKeyboardButton("🏷️ My Plan", callback_data="my_plan"),
-            InlineKeyboardButton("⚙️ Manage Accounts", callback_data="accounts_list"),
-        ],
-        [
-            InlineKeyboardButton("🤝 Refer & Earn", callback_data="referral"),
-            InlineKeyboardButton("📖 Help", callback_data="help"),
-        ],
-        [
-            InlineKeyboardButton("📊 Dashboard", callback_data="dashboard"),
-            InlineKeyboardButton("🏠 Home", callback_data="home"),
+            InlineKeyboardButton("🏠 Back to Home", callback_data="home"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -105,21 +70,19 @@ def get_account_selection_keyboard(sessions: list) -> InlineKeyboardMarkup:
         keyboard.append([InlineKeyboardButton(f"{status} {phone}", callback_data=f"manage_account:{phone}")])
     
     keyboard.append([InlineKeyboardButton("➕ Add Another Account", callback_data="add_account")])
-    keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="dashboard")])
+    keyboard.append([InlineKeyboardButton("🔙 Back to Dashboard", callback_data="dashboard")])
     
     return InlineKeyboardMarkup(keyboard)
-
-
 
 
 def get_plan_keyboard() -> InlineKeyboardMarkup:
     """Build plan display keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("🧾 Redeem Code", callback_data="redeem_code"),
+            InlineKeyboardButton("🧾 Redeem Promo Code", callback_data="redeem_code"),
         ],
         [
-            InlineKeyboardButton("👨‍💻 Contact @spinify", url="https://t.me/spinify"),
+            InlineKeyboardButton("👨‍💻 Contact Support to Upgrade", url="https://t.me/spinify"),
         ],
         [
             InlineKeyboardButton("🔙 Back", callback_data="dashboard"),
@@ -133,7 +96,7 @@ def get_referral_keyboard(referral_link: str) -> InlineKeyboardMarkup:
     """Build referral screen keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("📤 Share Link", switch_inline_query=referral_link),
+            InlineKeyboardButton("📤 Share Link with Friends", switch_inline_query=referral_link),
         ],
         [
             InlineKeyboardButton("🔙 Back", callback_data="dashboard"),
@@ -147,8 +110,8 @@ def get_back_home_keyboard() -> InlineKeyboardMarkup:
     """Simple back and home keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("🔙 Back", callback_data="dashboard"),
-            InlineKeyboardButton("🏠 Home", callback_data="home"),
+            InlineKeyboardButton("🔙 Go Back", callback_data="dashboard"),
+            InlineKeyboardButton("🏠 Main Menu", callback_data="home"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -158,7 +121,7 @@ def get_home_keyboard() -> InlineKeyboardMarkup:
     """Just home button."""
     keyboard = [
         [
-            InlineKeyboardButton("🏠 Home", callback_data="home"),
+            InlineKeyboardButton("🏠 Main Menu", callback_data="home"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -168,18 +131,18 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
     """Build admin panel keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("📊 Stats", callback_data="admin_stats"),
-            InlineKeyboardButton("👥 Users", callback_data="admin_users"),
+            InlineKeyboardButton("📊 Live Stats", callback_data="admin_stats"),
+            InlineKeyboardButton("📢 Global Blast", callback_data="admin_broadcast"),
         ],
         [
-            InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
+            InlineKeyboardButton("🎟 Give 1 Week", callback_data="gen_code:week"),
+            InlineKeyboardButton("🎟 Give 1 Month", callback_data="gen_code:month"),
         ],
         [
-            InlineKeyboardButton("🎟 Gen Week Code", callback_data="gen_code:week"),
-            InlineKeyboardButton("🎟 Gen Month Code", callback_data="gen_code:month"),
+            InlineKeyboardButton("👥 User Database", callback_data="admin_users"),
         ],
         [
-            InlineKeyboardButton("🏠 Home", callback_data="home"),
+            InlineKeyboardButton("🏠 Main Menu", callback_data="home"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -190,14 +153,14 @@ def get_broadcast_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton("📢 All Users", callback_data="broadcast:all"),
-            InlineKeyboardButton("🔗 Connected", callback_data="broadcast:connected"),
+            InlineKeyboardButton("🔗 Active APIs", callback_data="broadcast:connected"),
         ],
         [
-            InlineKeyboardButton("🏅 Trial", callback_data="broadcast:trial"),
-            InlineKeyboardButton("💎 Paid", callback_data="broadcast:paid"),
+            InlineKeyboardButton("🎁 Trial Group", callback_data="broadcast:trial"),
+            InlineKeyboardButton("💎 Premium Base", callback_data="broadcast:paid"),
         ],
         [
-            InlineKeyboardButton("🔙 Back", callback_data="admin"),
+            InlineKeyboardButton("🔙 Back to Tools", callback_data="admin"),
             InlineKeyboardButton("🏠 Home", callback_data="home"),
         ],
     ]
@@ -208,7 +171,7 @@ def get_manage_account_keyboard(phone: str) -> InlineKeyboardMarkup:
     """Build manage account keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("🔌 Disconnect Account", callback_data=f"disconnect_account:{phone}"),
+            InlineKeyboardButton("🔌 Disconnect Session", callback_data=f"disconnect_account:{phone}"),
         ],
         [
             InlineKeyboardButton("🔙 Back", callback_data="accounts_list"),
@@ -222,8 +185,10 @@ def get_confirm_disconnect_keyboard(phone: str) -> InlineKeyboardMarkup:
     """Build disconnect confirmation keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("✅ Yes, Disconnect", callback_data=f"confirm_disconnect:{phone}"),
-            InlineKeyboardButton("❌ Cancel", callback_data=f"manage_account:{phone}"),
+            InlineKeyboardButton("✅ CONFIRM: WIPE IT", callback_data=f"confirm_disconnect:{phone}"),
+        ],
+        [
+            InlineKeyboardButton("❌ CANCEL", callback_data=f"manage_account:{phone}"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
