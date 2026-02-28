@@ -205,11 +205,36 @@ class WorkerManager:
         self._shutdown_event.set()
 
 
-async def main():
-    """Main entry point."""
+async def wait_for_network():
+    """Wait until Telegram API is reachable before starting."""
+    import httpx
+
+    url = "https://api.telegram.org"
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, timeout=10)
+                if resp.status_code in (200, 404):
+                    logger.info("Network is ready (Telegram API reachable).")
+                    return
+        except Exception as e:
+            logger.warning(
+                f"Network not ready (attempt {attempt}): {e}. "
+                "Retrying in 5s..."
+            )
+            await asyncio.sleep(5)
+
+
+async def run_worker():
+    """Run the worker manager with graceful shutdown."""
     logger.info("=" * 50)
-    logger.info("Group Message Scheduler - Worker Service V3.0")
+    logger.info("Group Message Scheduler - Worker Service V3.1")
     logger.info("=" * 50)
+    
+    # Wait for network
+    await wait_for_network()
     
     manager = WorkerManager()
     
@@ -221,5 +246,28 @@ async def main():
         await manager.stop_all()
 
 
+async def main():
+    """Auto-restart wrapper: keeps the worker alive on crashes."""
+    restart_delay = 5
+    max_delay = 60
+
+    while True:
+        try:
+            await run_worker()
+            break  # Clean exit (signal received)
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            logger.error(
+                f"Worker crashed (unexpected): {e}. "
+                f"Restarting in {restart_delay}s..."
+            )
+            await asyncio.sleep(restart_delay)
+            restart_delay = min(restart_delay * 2, max_delay)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
