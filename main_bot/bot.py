@@ -108,14 +108,10 @@ def create_application() -> Application:
         pool_timeout=POOL_TIMEOUT,
     )
 
-    application = (
+    return (
         Application.builder()
         .token(MAIN_BOT_TOKEN)
         .request(request)
-        .connect_timeout(CONNECT_TIMEOUT)
-        .read_timeout(READ_TIMEOUT)
-        .write_timeout(WRITE_TIMEOUT)
-        .pool_timeout(POOL_TIMEOUT)
         .build()
     )
 
