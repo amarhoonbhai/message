@@ -30,9 +30,6 @@ def get_database() -> AsyncIOMotorDatabase:
     return _db
 
 
-# Convenience accessor
-db = get_database()
-
 
 async def init_database() -> AsyncIOMotorDatabase:
     """Initialize database connection and ensure all indexes exist."""

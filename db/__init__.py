@@ -1,5 +1,6 @@
-"""Database package for Group Message Scheduler."""
+"""
+Database module initialization.
+"""
+from .database import get_database, init_indexes, init_database
 
-from .database import db, get_database, init_indexes, init_database
-
-__all__ = ["db", "get_database", "init_indexes", "init_database"]
+__all__ = ["get_database", "init_indexes", "init_database"]
