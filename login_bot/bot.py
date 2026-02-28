@@ -4,6 +4,7 @@ Login Bot entry point for Group Message Scheduler.
 
 import logging
 import asyncio
+import signal
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -99,20 +100,43 @@ def create_application() -> Application:
 
     return application
 
-def main():
+async def main():
     """Start the bot."""
     logger.info("=" * 50)
-    logger.info("Group Message Scheduler - Login Bot V3.2")
+    logger.info("Group Message Scheduler - Login Bot V3.3")
     logger.info("=" * 50)
 
-    # Initialize database
-    asyncio.run(init_database())
+    # Initialize database within the same loop
+    await init_database()
 
-    # Build and run application
+    # Build application
     application = create_application()
     
-    logger.info("Login Bot is running (Polling)...")
-    application.run_polling(drop_pending_updates=True)
+    # Setup stop event for graceful shutdown
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: stop_event.set())
+        except NotImplementedError:
+            pass
+
+    async with application:
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(drop_pending_updates=True)
+        
+        logger.info("Login Bot is running (Async Polling)...")
+        
+        # Wait for shutdown signal
+        await stop_event.wait()
+        
+        logger.info("Login Bot is stopping...")
+        await application.updater.stop()
+        await application.stop()
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
