@@ -22,7 +22,16 @@ def get_welcome_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📖 Help", callback_data="help"),
         ],
         [
-            InlineKeyboardButton("📌 Join @PHilobots", url=f"https://t.me/{CHANNEL_USERNAME}"),
+            InlineKeyboardButton(
+                "👨‍💻 Developer @spinify",
+                url="https://t.me/spinify",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📌 Join @PHilobots",
+                url=f"https://t.me/{CHANNEL_USERNAME}",
+            ),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
