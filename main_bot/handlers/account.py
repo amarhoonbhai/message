@@ -13,6 +13,7 @@ from main_bot.utils.keyboards import (
     get_confirm_disconnect_keyboard,
     get_back_home_keyboard
 )
+from main_bot.utils.helpers import escape_markdown
 
 def format_date(dt: datetime) -> str:
     if not dt:
@@ -87,13 +88,14 @@ async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_
     success_rate = stats.get("success_rate", 0)
     last_active = format_date(stats.get("last_active"))
     
+    escaped_phone = escape_markdown(phone)
     text = f"""
 📱 *ACCOUNT PROFILE*
 
 {status_icon} *STATUS:* {status_text}
 
 👤 *DETAILS*
-📞 *Phone:* `{phone}`
+📞 *Phone:* `{escaped_phone}`
 🔗 *Linked On:* {connected_date}
 
 📊 *LIFETIME STATS*
@@ -119,10 +121,11 @@ async def disconnect_account_callback(update: Update, context: ContextTypes.DEFA
     
     phone = query.data.split(":")[1]
     
+    escaped_phone = escape_markdown(phone)
     text = f"""
 ⚠️ *CRITICAL ACTION*
 
-📱 *Target:* `{phone}`
+📱 *Target:* `{escaped_phone}`
 
 ❗ *Are you absolutely sure you want to disconnect?*
 
@@ -152,10 +155,11 @@ async def confirm_disconnect_callback(update: Update, context: ContextTypes.DEFA
     # Disconnect session in database for specific phone
     await disconnect_session(user_id, phone)
     
+    escaped_phone = escape_markdown(phone)
     text = f"""
 ✅ *SUCCESSFULLY DISCONNECTED*
 
-📱 *Account:* `{phone}`
+📱 *Account:* `{escaped_phone}`
 
 Your session has been securely wiped and forwarding has immediately halted.
 

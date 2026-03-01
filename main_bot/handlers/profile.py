@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 
 from db.models import get_user_profile_data, get_plan
 from main_bot.utils.keyboards import get_profile_keyboard
+from main_bot.utils.helpers import escape_markdown
 import datetime
 
 
@@ -20,8 +21,8 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     first_name = user.first_name or "User"
     last_name = user.last_name or ""
-    username = f"@{user.username}" if user.username else "Not set"
-    full_name = f"{first_name} {last_name}".strip()
+    username = escape_markdown(f"@{user.username}" if user.username else "Not set")
+    full_name = escape_markdown(f"{first_name} {last_name}".strip())
 
     # Fetch aggregated profile data
     data = await get_user_profile_data(user_id)

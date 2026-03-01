@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from db.models import get_admin_stats, generate_redeem_code, get_all_users_for_broadcast
 from main_bot.utils.keyboards import get_admin_keyboard, get_broadcast_keyboard, get_back_home_keyboard
 from config import OWNER_ID
+from main_bot.utils.helpers import escape_markdown
 
 
 # Conversation states
@@ -337,6 +338,7 @@ async def gen_code_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     plan_type = query.data.split(":")[1]
     
     code = await generate_redeem_code(plan_type)
+    escaped_code = escape_markdown(code)
     
     await query.answer()
     
@@ -347,12 +349,12 @@ async def gen_code_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ✅ *Payload ready for distribution.*
 
-📋 *Access Code:* `{code}`
+📋 *Access Code:* `{escaped_code}`
 📦 *Tier:* {plan_type.upper()} PRO
 📅 *Duration:* {days} Days Lifetime
 🔒 *Scope:* Single-use only
 
-*Instructions:* User must post `/redeem {code}`
+*Instructions:* User must post `/redeem {escaped_code}`
 """
     
     await query.edit_message_text(
@@ -384,11 +386,12 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     code = await generate_redeem_code(plan_type)
+    escaped_code = escape_markdown(code)
     days = 7 if plan_type == "week" else 30
     
     await update.message.reply_text(
         f"🎟 *NEW PROMO CODE GENERATED*\n\n"
-        f"📋 *Access Code:* `{code}`\n"
+        f"📋 *Access Code:* `{escaped_code}`\n"
         f"📦 *Tier:* {plan_type.upper()} PRO\n"
         f"📅 *Duration:* {days} Days",
         parse_mode="Markdown",

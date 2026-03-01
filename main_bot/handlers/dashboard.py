@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 from db.models import get_all_user_sessions, get_plan, get_user_config, get_group_count, get_account_stats
 from main_bot.utils.keyboards import get_dashboard_keyboard, get_add_account_keyboard
 from config import MIN_INTERVAL_MINUTES
+from main_bot.utils.helpers import escape_markdown
 import datetime
 
 
@@ -39,7 +40,7 @@ def format_expiry_date(dt: datetime.datetime) -> str:
 async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show the main dashboard."""
     user_id = update.effective_user.id
-    user_name = update.effective_user.first_name or "User"
+    user_name = escape_markdown(update.effective_user.first_name or "User")
     
     # Get user data
     sessions = await get_all_user_sessions(user_id)
@@ -61,7 +62,8 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sends = stats.get("total_sent", 0)
             total_sends += sends
             
-            account_section += f"  {status_icon} `{phone}`\n"
+            escaped_phone = escape_markdown(phone)
+            account_section += f"  {status_icon} `{escaped_phone}`\n"
             account_section += f"     ├─ 📊 Sent: {sends} ▪ Rate: {rate}%\n"
             account_section += f"     └─ ⏱️ Active: {last_active}\n"
     else:
@@ -111,7 +113,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     shuffle_icon = "🟢" if config.get("shuffle_mode") else "⚫"
     responder_icon = "🟢" if config.get("auto_reply_enabled") else "⚫"
     reply_text = config.get("auto_reply_text", "")
-    reply_preview = reply_text[:25] + "..." if len(reply_text) > 25 else reply_text
+    reply_preview = escape_markdown(reply_text[:25] + "..." if len(reply_text) > 25 else reply_text)
     
     dashboard_text = f"""
 📊 *DASHBOARD* — {user_name}

@@ -28,7 +28,7 @@ from telethon.tl.functions.account import UpdateProfileRequest
 
 from config import (
     GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES,
-    TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL, OWNER_ID
+    MIN_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL, OWNER_ID
 )
 from db.models import (
     get_session, get_user_groups, get_user_config,
@@ -116,6 +116,11 @@ class UserSender:
                         continue
                     return
             
+            # 1. Initial Smart Delay: Randomize startup to avoid multiple sessions bursting at once
+            startup_delay = random.randint(10, 60)
+            self.logger.info(f"[User {self.user_id}] 🏁 Session authorized. Waiting {startup_delay}s (anti-burst) before starting loop...")
+            await asyncio.sleep(startup_delay)
+
             # Handler 1: Outgoing messages from self (commands + new ads in Saved Messages)
             @self.client.on(events.NewMessage(outgoing=True))
             async def outgoing_handler(event):
@@ -311,15 +316,21 @@ class UserSender:
                 if shuffle_mode:
                     random.shuffle(pairs)
                 
-                # 5. Get current step (resilient state saving)
-                current_step = config.get("current_msg_index", 0)
+                # 5. Get current step (resilient state saving) - Per-Account Index!
+                current_session = await get_session(self.user_id, self.phone)
+                current_step = current_session.get("current_msg_index", 0)
                 
                 if current_step >= len(pairs) or current_step < 0:
                     # CYCLE COMPLETE
                     user_interval_minutes = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
-                    self.logger.info(f"[User {self.user_id}] 🔄 Loop cycle complete! Waiting {user_interval_minutes} minutes before restarting...")
                     
-                    cycle_wait_seconds = user_interval_minutes * 60
+                    # Apply random variance: subtract 0-5 minutes
+                    variance_mins = random.randint(0, 5)
+                    actual_interval = max(user_interval_minutes - variance_mins, MIN_INTERVAL_MINUTES - 5)
+                    
+                    self.logger.info(f"[User {self.user_id}] 🔄 Loop complete! Set: {user_interval_minutes}m | Actual: {actual_interval}m (-{variance_mins}m variance)")
+                    
+                    cycle_wait_seconds = actual_interval * 60
                     elapsed = 0
                     while elapsed < cycle_wait_seconds and self.running:
                         if is_night_mode():
@@ -332,7 +343,7 @@ class UserSender:
                     
                     self.logger.info(f"[User {self.user_id}] ▶️ Cycle interval complete! Restarting...")
                     current_step = 0
-                    await update_current_msg_index(self.user_id, 0)
+                    await update_current_msg_index(self.user_id, self.phone, 0)
                     continue # Re-fetch groups and messages for the new cycle
                 
                 # 6. Get the pair to send
@@ -351,7 +362,7 @@ class UserSender:
                 
                 # 8. Increment and save state! Resilient crash-proof state!
                 current_step += 1
-                await update_current_msg_index(self.user_id, current_step)
+                await update_current_msg_index(self.user_id, self.phone, current_step)
                 
                 # 9. Smart Interval Delay!
                 if current_step < len(pairs):
@@ -361,14 +372,17 @@ class UserSender:
                     
                     if is_batch_end:
                         base_gap = MESSAGE_GAP_SECONDS
-                        gap_type = "MESSAGE_GAP"
+                        gap_type = "BATCH_END_GAP"
+                        # Longer jitter for batch ends to break patterns
+                        jitter_min = int(base_gap * 0.9)
+                        jitter_max = int(base_gap * 1.3)
                     else:
                         base_gap = GROUP_GAP_SECONDS
                         gap_type = "GROUP_GAP"
+                        # Moderate jitter for standard group gaps
+                        jitter_min = int(base_gap * 0.8)
+                        jitter_max = int(base_gap * 1.5)
                     
-                    # Apply anti-spam jitter
-                    jitter_min = int(base_gap * 0.8)
-                    jitter_max = int(base_gap * 1.5)
                     wait_time = random.randint(max(5, jitter_min), jitter_max)
                     
                     self.logger.info(f"[User {self.user_id}] ⏳ Waiting {wait_time}s ({gap_type} + Jitter) before next step...")

@@ -9,12 +9,15 @@ from db.models import create_user, get_user, get_plan, get_all_user_sessions
 from main_bot.utils.keyboards import get_welcome_keyboard
 
 
+from main_bot.utils.helpers import escape_markdown
+
+
 async def build_welcome_text(user) -> str:
     """Build personalized welcome text with user profile info."""
     first_name = user.first_name or "User"
     last_name = user.last_name or ""
-    full_name = f"{first_name} {last_name}".strip()
-    username = f"@{user.username}" if user.username else "Not set"
+    full_name = escape_markdown(f"{first_name} {last_name}".strip())
+    username = escape_markdown(f"@{user.username}" if user.username else "Not set")
     user_id = user.id
 
     # Get account and plan info

@@ -210,11 +210,11 @@ async def update_last_saved_id(user_id: int, last_saved_id: int):
     )
 
 
-async def update_current_msg_index(user_id: int, index: int):
-    """Update current message index for continuous loop forwarding."""
+async def update_current_msg_index(user_id: int, phone: str, index: int):
+    """Update current message index for a specific account (phone)."""
     db = get_database()
-    await db.config.update_one(
-        {"user_id": user_id},
+    await db.sessions.update_one(
+        {"user_id": user_id, "phone": phone},
         {"$set": {"current_msg_index": index, "updated_at": datetime.utcnow()}},
         upsert=True
     )

@@ -9,6 +9,7 @@ from telethon.errors import PasswordHashInvalidError, FloodWaitError
 
 from login_bot.handlers.otp import _login_clients
 from login_bot.utils.keyboards import get_2fa_keyboard, get_cancel_keyboard, get_success_keyboard
+from login_bot.utils.helpers import escape_markdown
 from db.models import create_session, create_user
 from config import MAIN_BOT_USERNAME
 
@@ -103,8 +104,9 @@ Invite 3 friends to get +7 days more!
         
     except Exception as e:
         logger.error(f"2FA error: {e}")
+        escaped_e = escape_markdown(str(e))
         await verifying_msg.edit_text(
-            f"❌ *Error*\n\n{str(e)}",
+            f"❌ *Error*\n\n{escaped_e}",
             parse_mode="Markdown",
             reply_markup=get_cancel_keyboard(),
         )
