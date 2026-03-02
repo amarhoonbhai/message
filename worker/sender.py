@@ -28,13 +28,14 @@ from telethon.tl.functions.account import UpdateProfileRequest
 
 from config import (
     GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES,
-    MIN_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL, OWNER_ID
+    MIN_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL, OWNER_ID,
+    MAX_GROUPS_PER_USER
 )
 from db.models import (
     get_session, get_user_groups, get_user_config,
     update_last_saved_id, update_current_msg_index,
     is_plan_active, log_send, remove_group, update_session_activity,
-    is_trial_user
+    is_trial_user, get_all_user_sessions
 )
 from worker.utils import (
     is_night_mode, seconds_until_morning, format_time_remaining,
@@ -58,7 +59,22 @@ class UserSender:
         self.logger = UserLogAdapter(logger, {'user_id': user_id, 'phone': phone})
         self.wake_up_event = asyncio.Event()
         self.responder_cache = {}  # Cache: {sender_id: timestamp} to avoid double-replies
+        self.status = "Initializing"
+        self.message_counter = 0  # Track total sends in this session
     
+    async def update_status(self, status: str):
+        """Update worker status in database for the current account."""
+        self.status = status
+        try:
+            from db.database import get_database
+            db = get_database()
+            await db.sessions.update_one(
+                {"user_id": self.user_id, "phone": self.phone},
+                {"$set": {"worker_status": status, "status_updated_at": datetime.utcnow()}}
+            )
+        except Exception:
+            pass
+
     async def start(self):
         """Start the sender loop."""
         self.running = True
@@ -289,17 +305,48 @@ class UserSender:
                     continue
                 
                 # 3. Get groups and messages
-                groups = await get_user_groups(self.user_id, enabled_only=True, phone=self.phone)
-                if not groups:
+                all_raw_groups = await get_user_groups(self.user_id, enabled_only=True)
+                if not all_raw_groups:
+                    await self.update_status("Sleeping (No groups)")
                     self.logger.debug(f"[User {self.user_id}][{self.phone}] No groups yet, waiting...")
                     await asyncio.sleep(300)
                     continue
                 
+                # DISTRIBUTED LOAD BALANCING
+                # Get all active sessions for this user
+                all_sessions = await get_all_user_sessions(self.user_id)
+                all_sessions.sort(key=lambda s: s["phone"]) # Stable sort
+                session_phones = [s["phone"] for s in all_sessions]
+                num_accounts = len(session_phones)
+                
+                # STABLE SORT groups
+                all_raw_groups.sort(key=lambda x: x.get('chat_id', 0))
+                
+                # Assign groups to THIS account based on index (Modulo assignment)
+                if num_accounts > 1:
+                    try:
+                        my_idx = session_phones.index(self.phone)
+                        groups = [g for i, g in enumerate(all_raw_groups) if i % num_accounts == my_idx]
+                        self.logger.info(f"[User {self.user_id}] ⚖️ Balancing: Account {my_idx+1}/{num_accounts} taking {len(groups)}/{len(all_raw_groups)} groups.")
+                    except ValueError:
+                        groups = all_raw_groups # Fallback
+                else:
+                    groups = all_raw_groups
+
+                if not groups:
+                    await self.update_status("Sleeping (No assigned groups)")
+                    await asyncio.sleep(300)
+                    continue
+
                 all_messages = await self.get_all_saved_messages()
                 if not all_messages:
+                    await self.update_status("Sleeping (No ads)")
                     self.logger.debug(f"[User {self.user_id}][{self.phone}] No messages yet, waiting...")
                     await asyncio.sleep(300)
                     continue
+                
+                # STABLE SORT messages
+                all_messages.sort(key=lambda x: x.id)
                 
                 # 4. Build proper smart rotation pairs
                 config = await get_user_config(self.user_id)
@@ -308,13 +355,14 @@ class UserSender:
                 
                 pairs = []
                 for j in range(len(groups)):
+                    # FORWARD ALL SAVED MESSAGES to this group before moving to next group
+                    # This is better for "sessions" where people focus on one group at a time
                     for i in range(len(all_messages)):
-                        # Proper rotation: group index shifts so we don't spam same group continuously
-                        grp_idx = (j + i) % len(groups)
-                        pairs.append((all_messages[i], groups[grp_idx]))
+                        pairs.append((all_messages[i], groups[j]))
                 
                 if shuffle_mode:
-                    random.shuffle(pairs)
+                    seed = f"{self.user_id}_{datetime.utcnow().strftime('%Y%m%d')}"
+                    random.Random(seed).shuffle(pairs)
                 
                 # 5. Get current step (resilient state saving) - Per-Account Index!
                 current_session = await get_session(self.user_id, self.phone)
@@ -337,6 +385,10 @@ class UserSender:
                             wait_seconds = seconds_until_morning()
                             await asyncio.sleep(min(wait_seconds, 3600))
                             continue
+                        
+                        rem_min = int((cycle_wait_seconds - elapsed) / 60)
+                        await self.update_status(f"Waiting Cycle ({rem_min}m left)")
+                        
                         sleep_chunk = min(60, cycle_wait_seconds - elapsed)
                         await asyncio.sleep(sleep_chunk)
                         elapsed += sleep_chunk
@@ -350,11 +402,46 @@ class UserSender:
                 msg, group = pairs[current_step]
                 total_steps = len(pairs)
                 
-                self.logger.info(f"[User {self.user_id}] 📤 (Step {current_step + 1}/{total_steps}) Forwarding msg {msg.id} to {group.get('chat_title')}...")
+                chat_title = group.get('chat_title', 'Unknown')
+                chat_id = group.get('chat_id')
+
+                # DOUBLE-SEND PROTECTION: Check logs for last 1 hour
+                try:
+                    from db.database import get_database
+                    db = get_database()
+                    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+                    recent_send = await db.send_logs.find_one({
+                        "user_id": self.user_id,
+                        "phone": self.phone,
+                        "chat_id": chat_id,
+                        "saved_msg_id": msg.id,
+                        "sent_at": {"$gte": one_hour_ago},
+                        "status": "success"
+                    })
+                    if recent_send:
+                        self.logger.warning(f"[User {self.user_id}] 🛡 Anti-Duplicate: Msg {msg.id} already sent to {chat_title} recently. Skipping step.")
+                        current_step += 1
+                        await update_current_msg_index(self.user_id, self.phone, current_step)
+                        continue
+                except Exception as e:
+                    self.logger.error(f"Error checking recent sends: {e}")
+
+                self.logger.info(f"[User {self.user_id}] 📤 (Step {current_step + 1}/{total_steps}) Forwarding msg {msg.id} to {chat_title}...")
+                await self.update_status(f"Sending to {chat_title}")
                 
+                # TYPING INDICATOR (Human-like)
+                try:
+                    async with self.client.action(chat_id, 'typing'):
+                        await asyncio.sleep(random.randint(2, 5))
+                except Exception:
+                    pass
+
                 # 7. Send the single message
                 flood_triggered, flood_wait = await self.forward_single_message(msg, group, copy_mode=copy_mode)
                 
+                if not flood_triggered:
+                    self.message_counter += 1
+
                 if flood_triggered:
                     self.logger.warning(f"[User {self.user_id}] ⚠️ Flood detected, sleeping {flood_wait}s (supersedes all logic)...")
                     await asyncio.sleep(flood_wait)
@@ -368,23 +455,31 @@ class UserSender:
                 if current_step < len(pairs):
                     # Every time we complete `len(groups)` amount of sends, we apply the MESSAGE_GAP.
                     # Otherwise, use the GROUP_GAP.
+                    # Adaptive Burst Logic for 1 Account
+                    is_burst_end = (num_accounts == 1 and current_step % 5 == 0)
                     is_batch_end = (current_step % len(groups) == 0)
                     
-                    if is_batch_end:
+                    if is_burst_end:
+                        wait_time = random.randint(900, 1200) # 15-20 min cool down
+                        gap_type = "BURST_COOLDOWN"
+                    elif is_batch_end:
                         base_gap = MESSAGE_GAP_SECONDS
                         gap_type = "BATCH_END_GAP"
-                        # Longer jitter for batch ends to break patterns
                         jitter_min = int(base_gap * 0.9)
                         jitter_max = int(base_gap * 1.3)
                     else:
-                        base_gap = GROUP_GAP_SECONDS
+                        # Smart Speed up for multi-accounts (Distributed Gap)
+                        base_gap = GROUP_GAP_SECONDS if num_accounts == 1 else max(60, GROUP_GAP_SECONDS // num_accounts)
                         gap_type = "GROUP_GAP"
-                        # Moderate jitter for standard group gaps
                         jitter_min = int(base_gap * 0.8)
                         jitter_max = int(base_gap * 1.5)
                     
-                    wait_time = random.randint(max(5, jitter_min), jitter_max)
-                    
+                    if gap_type != "BURST_COOLDOWN":
+                        wait_time = random.randint(max(5, jitter_min), jitter_max)
+                        # Ensure 5-min gap compliance if set in config and on 1 account
+                        if base_gap >= 300 and num_accounts == 1:
+                            wait_time = random.randint(max(290, jitter_min), max(310, jitter_max))
+
                     self.logger.info(f"[User {self.user_id}] ⏳ Waiting {wait_time}s ({gap_type} + Jitter) before next step...")
                     
                     elapsed = 0
@@ -394,12 +489,31 @@ class UserSender:
                             self.logger.info(f"[User {self.user_id}] 🌙 Night mode forced, pausing {format_time_remaining(wait_seconds)}...")
                             await asyncio.sleep(min(wait_seconds, 3600))
                             continue
+                        
+                        rem_sec = wait_time - elapsed
+                        if rem_sec > 60:
+                            await self.update_status(f"Waiting {int(rem_sec/60)}m {rem_sec%60}s")
+                        else:
+                            await self.update_status(f"Sending in {rem_sec}s")
+
                         sleep_chunk = min(30, wait_time - elapsed)
                         await asyncio.sleep(sleep_chunk)
                         elapsed += sleep_chunk
                 else:
                     self.logger.info(f"[User {self.user_id}] ✅ Last step in cycle forwarded (no gap wait)")
                 
+                # 10. Human-like Long Break (Every 50 messages)
+                if self.message_counter > 0 and self.message_counter % 50 == 0:
+                    break_time = random.randint(600, 900)  # 10-15 minutes
+                    self.logger.info(f"[User {self.user_id}] 😴 Taking a long human break ({break_time/60}m) after {self.message_counter} sends...")
+                    
+                    elapsed = 0
+                    while elapsed < break_time and self.running:
+                        await self.update_status(f"Human Break ({int((break_time-elapsed)/60)}m left)")
+                        sleep_chunk = min(60, break_time - elapsed)
+                        await asyncio.sleep(sleep_chunk)
+                        elapsed += sleep_chunk
+
             except asyncio.CancelledError:
                 self.logger.info(f"[User {self.user_id}] Loop cancelled (shutdown)")
                 break
