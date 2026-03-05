@@ -20,10 +20,9 @@ Welcome to the standalone authentication bot for the Group Message Scheduler.
 ✅ Sessions encrypted using AES-256
 ✅ Complete control over your data
 
-To connect your account, you need:
+To connect your account, you just need:
 1️⃣ Your Phone Number
-2️⃣ Your Telegram API Hash
-3️⃣ Your Telegram API ID
+2️⃣ The OTP sent to your Telegram
 
 👇 *Tap below to start the connection process*
 """
@@ -41,34 +40,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         greeting + WELCOME_TEXT,
-        parse_mode="Markdown",
-        reply_markup=get_login_welcome_keyboard(),
-    )
-
-
-async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show help for login format."""
-    query = update.callback_query
-    await query.answer()
-    
-    help_text = """
-ℹ️ *HOW TO GET API ID & HASH*
-──────────────────────────────
-
-1️⃣ Go to https://my.telegram.org in your browser
-2️⃣ Log in with your Telegram number
-3️⃣ Tap on **"API development tools"**
-4️⃣ Fill out the basic form (any name/app)
-5️⃣ Copy the **API ID** and **API HASH**
-
-*Why do we need this?*
-Telegram requires every automation app to
-use its own unique API connection. This keeps
-your account completely safe from mass bans.
-"""
-    
-    await query.edit_message_text(
-        help_text,
         parse_mode="Markdown",
         reply_markup=get_login_welcome_keyboard(),
     )

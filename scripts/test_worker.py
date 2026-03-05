@@ -8,6 +8,7 @@ import logging
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from db.models import get_session
+from config import API_ID, API_HASH
 from worker.commands import process_command
 
 # Configure logging
@@ -22,8 +23,8 @@ async def test_events(user_id: int):
         return
         
     session_string = session_data.get("session_string")
-    api_id = session_data.get("api_id")
-    api_hash = session_data.get("api_hash")
+    api_id = session_data.get("api_id") or API_ID
+    api_hash = session_data.get("api_hash") or API_HASH
     
     print(f"🔄 Connecting to account for User {user_id}...")
     

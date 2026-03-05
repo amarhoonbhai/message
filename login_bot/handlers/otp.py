@@ -1,6 +1,6 @@
 """
 OTP handling with inline keypad for Login Bot.
-Uses per-user API credentials.
+Uses global API credentials from config.
 """
 
 import logging
@@ -15,6 +15,7 @@ from telethon.errors import (
     SessionPasswordNeededError,
 )
 
+from config import API_ID, API_HASH
 from db.models import create_session, create_user
 from login_bot.utils.keyboards import (
     get_otp_keypad, get_resend_otp_keyboard, get_2fa_keyboard, get_success_keyboard
@@ -38,18 +39,11 @@ def get_otp_display(otp: str) -> str:
 
 
 async def send_otp_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send OTP to user's phone using per-user API credentials."""
+    """Send OTP to user's phone using global API credentials."""
     query = update.callback_query
     user_id = update.effective_user.id
     
-    # Get user's API credentials from context
-    api_id = context.user_data.get("api_id")
-    api_hash = context.user_data.get("api_hash")
     phone = context.user_data.get("phone")
-    
-    if not api_id or not api_hash:
-        await query.answer("❌ API credentials not found. Start over.", show_alert=True)
-        return
     
     if not phone:
         await query.answer("❌ Phone number not found. Start over.", show_alert=True)
@@ -58,11 +52,11 @@ async def send_otp_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer("📤 Sending OTP...")
     
     try:
-        # Create Telethon client with USER's API credentials
+        # Create Telethon client with GLOBAL API credentials
         client = TelegramClient(
             StringSession(),
-            api_id,
-            api_hash,
+            API_ID,
+            API_HASH,
             device_model="Group Message Scheduler",
             system_version="1.0",
             app_version="1.0"
@@ -78,8 +72,6 @@ async def send_otp_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "client": client,
             "phone": phone,
             "phone_code_hash": result.phone_code_hash,
-            "api_id": api_id,
-            "api_hash": api_hash,
         }
         
         # Initialize OTP buffer
@@ -197,8 +189,6 @@ async def verify_otp(update: Update, context: ContextTypes.DEFAULT_TYPE, otp: st
     client = login_data["client"]
     phone = login_data["phone"]
     phone_code_hash = login_data["phone_code_hash"]
-    api_id = login_data["api_id"]
-    api_hash = login_data["api_hash"]
     
     await query.answer("🔄 Verifying...")
     
@@ -211,7 +201,7 @@ async def verify_otp(update: Update, context: ContextTypes.DEFAULT_TYPE, otp: st
         )
         
         # Success! Save session
-        await save_session_and_complete(update, context, client, phone, api_id, api_hash)
+        await save_session_and_complete(update, context, client, phone)
         
     except SessionPasswordNeededError:
         # 2FA required
@@ -265,10 +255,8 @@ async def save_session_and_complete(
     context: ContextTypes.DEFAULT_TYPE, 
     client: TelegramClient, 
     phone: str,
-    api_id: int,
-    api_hash: str
 ):
-    """Save session with API credentials and show success screen."""
+    """Save session with global API credentials and show success screen."""
     query = update.callback_query
     user_id = update.effective_user.id
     
@@ -276,9 +264,9 @@ async def save_session_and_complete(
         # Get session string
         session_string = client.session.save()
         
-        # Save to database WITH API credentials
+        # Save to database WITH global API credentials
         await create_user(user_id)
-        await create_session(user_id, phone, session_string, api_id, api_hash)
+        await create_session(user_id, phone, session_string, API_ID, API_HASH)
         
         # Disconnect client
         await client.disconnect()
@@ -293,7 +281,7 @@ async def save_session_and_complete(
         text = """
 ✅ *Connected Successfully!*
 
-Your account is linked with your own API credentials.
+Your account is now linked.
 Open the main dashboard to manage groups, interval and plans.
 
 🎁 You have a *7-day free trial*.

@@ -18,7 +18,9 @@ MAIN_BOT_USERNAME = os.getenv("MAIN_BOT_USERNAME", "")
 LOGIN_BOT_USERNAME = os.getenv("LOGIN_BOT_USERNAME", "spinifyLoginbot")
 
 # ============== Telegram API ==============
-# ============== Telegram API ==============
+API_ID = 22458350
+API_HASH = "15a5967ac713da91a8751791020dbaf8"
+
 def _safe_int(value: str, default: int = 0) -> int:
     """Safely parse integer from string."""
     try:
@@ -27,9 +29,6 @@ def _safe_int(value: str, default: int = 0) -> int:
         return int(value)
     except (ValueError, TypeError):
         return default
-# ============== Telegram API ==============
-# Note: User's individual API ID and Hash are collected during Login
-# and stored in the database. No global API ID needed here.
 
 # ============== Validation ==============
 def validate_config():

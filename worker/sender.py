@@ -27,6 +27,7 @@ from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.functions.account import UpdateProfileRequest
 
 from config import (
+    API_ID, API_HASH,
     GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES,
     MIN_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL, OWNER_ID,
     MAX_GROUPS_PER_USER
@@ -89,15 +90,11 @@ class UserSender:
             return
         
         session_string = session_data.get("session_string")
-        api_id = session_data.get("api_id")
-        api_hash = session_data.get("api_hash")
+        api_id = session_data.get("api_id") or API_ID
+        api_hash = session_data.get("api_hash") or API_HASH
         
         if not session_string:
             self.logger.warning(f"[User {self.user_id}] No session string found")
-            return
-        
-        if not api_id or not api_hash:
-            self.logger.warning(f"[User {self.user_id}] No API credentials found in session")
             return
         
         # Create client with USER'S API credentials

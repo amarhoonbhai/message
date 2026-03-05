@@ -1,5 +1,6 @@
 """
 Two-Factor Authentication handler for Login Bot.
+Uses global API credentials from config.
 """
 
 import logging
@@ -7,11 +8,11 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telethon.errors import PasswordHashInvalidError, FloodWaitError
 
+from config import API_ID, API_HASH, MAIN_BOT_USERNAME
 from login_bot.handlers.otp import _login_clients
 from login_bot.utils.keyboards import get_2fa_keyboard, get_cancel_keyboard, get_success_keyboard
 from login_bot.utils.helpers import escape_markdown
 from db.models import create_session, create_user
-from config import MAIN_BOT_USERNAME
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,6 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
     
     client = login_data["client"]
     phone = login_data["phone"]
-    api_id = login_data.get("api_id")
-    api_hash = login_data.get("api_hash")
     
     # Delete the password message for security
     try:
@@ -56,9 +55,9 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
         # Success! Get session string
         session_string = client.session.save()
         
-        # Save to database WITH API credentials
+        # Save to database WITH global API credentials
         await create_user(user_id)
-        await create_session(user_id, phone, session_string, api_id, api_hash)
+        await create_session(user_id, phone, session_string, API_ID, API_HASH)
         
         # Disconnect client
         await client.disconnect()
@@ -73,7 +72,7 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
         success_text = """
 ✅ *Connected Successfully!*
 
-Your account is linked with your own API credentials.
+Your account is now linked.
 Open the main dashboard to manage groups, interval and plans.
 
 🎁 You have a *7-day free trial*.

@@ -18,14 +18,12 @@ from config import LOGIN_BOT_TOKEN
 from db.database import init_database
 
 # Import handlers
-from login_bot.handlers.start import start_handler, help_callback
+from login_bot.handlers.start import start_handler
 from login_bot.handlers.phone import (
     add_account_callback,
     receive_phone_number,
     edit_phone_callback,
     cancel_callback,
-    receive_api_id,
-    receive_api_hash,
 )
 from login_bot.handlers.otp import (
     send_otp_callback,
@@ -73,7 +71,6 @@ def create_application() -> Application:
         ("^send_otp$", send_otp_callback),
         ("^resend_otp$", resend_otp_callback),
         ("^otp:", otp_keypad_callback),
-        ("^help$", help_callback),
     ]
     
     for pattern, callback in patterns:
@@ -87,11 +84,7 @@ def create_application() -> Application:
 
         state = context.user_data.get("state")
 
-        if state == "waiting_api_id":
-            await receive_api_id(update, context)
-        elif state == "waiting_api_hash":
-            await receive_api_hash(update, context)
-        elif state == "waiting_phone":
+        if state == "waiting_phone":
             await receive_phone_number(update, context)
         elif state == "waiting_2fa":
             await receive_2fa_password(update, context)
