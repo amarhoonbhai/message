@@ -190,7 +190,7 @@ class WorkerManager:
 async def run_worker():
     """Run the worker manager."""
     logger.info("=" * 50)
-    logger.info("Group Message Scheduler - Worker Service V3.2")
+    logger.info("Group Message Scheduler - Worker Service V3.3")
     logger.info("=" * 50)
     
     manager = WorkerManager()

@@ -63,8 +63,8 @@ CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "PHilobots")
 MAX_GROUPS_PER_USER = 100
 GROUP_GAP_SECONDS = 300          # Delay between groups (5 minutes - As requested)
 MESSAGE_GAP_SECONDS = 300       # Delay between messages (5 minutes - As requested)
-MIN_INTERVAL_MINUTES = 20       # Minimum user interval
-DEFAULT_INTERVAL_MINUTES = 20   # Default interval (if user doesn't set .interval)
+MIN_INTERVAL_MINUTES = 15       # Minimum user interval
+DEFAULT_INTERVAL_MINUTES = 15   # Default interval (if user doesn't set .interval)
 
 # ============== Night Mode (IST) ==============
 NIGHT_MODE_START_HOUR = 0       # 00:00 IST

@@ -1,4 +1,4 @@
-# Group Message Scheduler V3.0
+# Group Message Scheduler V3.3
 
 A premium Telegram system that auto-forwards Saved Messages to up to 15 groups with safe delays and fixed night mode.
 
@@ -70,8 +70,8 @@ python -m worker.worker
 | Max groups per user | 15 |
 | Group gap | 10 seconds |
 | Message gap | 120 seconds |
-| Min user interval | 20 minutes |
-| Default interval | 23 minutes |
+| Min user interval | 15 minutes |
+| Default interval | 15 minutes |
 | Night mode | 00:00–06:00 IST (fixed) |
 
 ## License

@@ -42,7 +42,7 @@ async def build_welcome_text(user) -> str:
     text = f"""
 ⚡ *GROUP MESSAGE SCHEDULER* ⚡
 
-*★ V3.0 — PRO ENGINE ★*
+*★ V3.3 — PRO ENGINE ★*
 
 *Welcome, {full_name}!*
 *Username:* {username}

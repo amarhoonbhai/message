@@ -11,7 +11,7 @@ from login_bot.utils.keyboards import get_login_welcome_keyboard
 
 WELCOME_TEXT = """
 🔐 *SECURE LOGIN PORTAL*
-*★ V3.0 — PRO LOGIN ★*
+*★ V3.3 — PRO LOGIN ★*
 
 Welcome to the standalone authentication bot for the Group Message Scheduler.
 
