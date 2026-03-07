@@ -35,8 +35,8 @@ from config import (
 from db.models import (
     get_session, get_user_groups, get_user_config,
     update_last_saved_id, update_current_msg_index,
-    is_plan_active, log_send, remove_group, update_session_activity,
-    is_trial_user, get_all_user_sessions
+    is_plan_active, log_send, remove_group, toggle_group,
+    update_session_activity, is_trial_user, get_all_user_sessions
 )
 from worker.utils import (
     is_night_mode, seconds_until_morning, format_time_remaining,
@@ -94,6 +94,7 @@ class UserSender:
         self.adaptive_msg_gap = AdaptiveDelayController(MESSAGE_GAP_SECONDS)
         self.last_heartbeat = None
         self.error_streak = 0
+        self.first_run = True  # Flag for staggered first cycle
     
     async def update_status(self, status: str):
         """Update worker status in database for the current account."""
@@ -353,6 +354,15 @@ class UserSender:
                 self.logger.info(f"Current cycle checking config...")
                 asyncio.create_task(update_session_activity(self.user_id, self.phone))
                 
+                # HUMAN-LIKE BEHAVIOR: First-run staggered start 
+                # (Prevents multiple accounts from hitting Telegram API at once after a bot reboot)
+                if self.first_run:
+                    stagger_delay = random.uniform(30, 120)  # 30s to 2min
+                    self.logger.info(f"⏳ First-run stagger: waiting {stagger_delay:.1f}s before starting...")
+                    await self.update_status(f"Staggering ({int(stagger_delay)}s)")
+                    await asyncio.sleep(stagger_delay)
+                    self.first_run = False
+                
                 # 1. Check plan validity
                 if not await self._cached_is_plan_active():
                     self.logger.info(f"Plan expired or inactive, sleeping 5 min...")
@@ -450,7 +460,7 @@ class UserSender:
                             continue
                         
                         rem_min = int((cycle_wait_seconds - elapsed) / 60)
-                        await self.update_status(f"Waiting Cycle ({rem_min}m left)")
+                        await self.update_status(f"Next check in {rem_min}m")
                         
                         sleep_chunk = min(60, cycle_wait_seconds - elapsed)
                         await asyncio.sleep(sleep_chunk)
@@ -591,6 +601,13 @@ class UserSender:
         chat_title = group.get("chat_title", "Unknown")
         
         try:
+            # HUMAN-LIKE BEHAVIOR: Typing indicator
+            # Randomized duration (3-8s) and 10% chance to skip typing completely
+            if random.random() > 0.1:
+                typing_duration = random.uniform(3, 8)
+                async with self.client.action(chat_id, 'typing'):
+                    await asyncio.sleep(typing_duration)
+            
             if copy_mode:
                 await self.client.send_message(
                     entity=chat_id,
@@ -636,10 +653,17 @@ class UserSender:
             # We don't want to stop the whole loop, just wait a bit and maybe skip this group next time
             return (True, 300) # 5 min cooling
             
-        except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
-            self.logger.warning(f"Removing group {chat_title}: {type(e).__name__}")
+        except (ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError) as e:
+            self.logger.warning(f"❌ Removing invalid/expired group {chat_title}: {type(e).__name__}")
             asyncio.create_task(remove_group(self.user_id, chat_id))
-            asyncio.create_task(log_send(self.user_id, chat_id, message.id, "removed", str(e), phone=self.phone))
+            asyncio.create_task(log_send(self.user_id, chat_id, message.id, "removed", f"Invalid/Expired: {type(e).__name__}", phone=self.phone))
+            return (False, 0)
+
+        except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
+            reason = type(e).__name__
+            self.logger.warning(f"⚠️ Pausing restricted group {chat_title}: {reason}")
+            asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=reason))
+            asyncio.create_task(log_send(self.user_id, chat_id, message.id, "auto_paused", f"Auto-Paused: {reason}", phone=self.phone))
             return (False, 0)
             
         except InputUserDeactivatedError:
@@ -651,9 +675,16 @@ class UserSender:
         except RPCError as e:
             self.error_streak += 1
             error_msg = str(e).upper()
+            
+            # Smart RPC categorization
             if any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN", "USER_BANNED_IN_CHANNEL"]):
-                self.logger.warning(f"Removing group {chat_title} due to RPC error: {e}")
+                self.logger.warning(f"⚠️ Auto-pausing group {chat_title} due to RPC error: {e}")
+                asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=f"RPC Error: {error_msg}"))
+                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "auto_paused", f"RPC: {error_msg}", phone=self.phone))
+            elif any(x in error_msg for x in ["CHANNEL_INVALID", "USERNAME_NOT_OCCUPIED", "USERNAME_INVALID", "INVITE_HASH_EXPIRED"]):
+                self.logger.warning(f"❌ Removing group {chat_title} due to fatal RPC error: {e}")
                 asyncio.create_task(remove_group(self.user_id, chat_id))
+                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "removed", f"Fatal RPC: {error_msg}", phone=self.phone))
             else:
                 self.logger.error(f"RPC Error forwarding to {chat_title}: {e}")
                 asyncio.create_task(log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone))
@@ -666,12 +697,21 @@ class UserSender:
             return (False, 0)
 
     async def _connection_watchdog(self):
-        """Background heartbeat to keep connection alive and healthy."""
+        """Background heartbeat with smart authorization check."""
         while self.running:
             try:
-                await asyncio.sleep(300) # Every 5 minutes
+                await asyncio.sleep(600) # Every 10 minutes
                 if self.client and self.client.is_connected():
-                    await self.client.get_me() # Actual ping
+                    # 1. Network Ping
+                    await self.client.get_me()
+                    
+                    # 2. Authorization Check (Prevents ghost runs)
+                    if not await self.client.is_user_authorized():
+                        self.logger.error("Session revoked or unauthorized. Stopping sender.")
+                        self.running = False
+                        await self.update_status("🔴 Session Revoked")
+                        return
+
                     self.last_heartbeat = datetime.utcnow()
                 elif self.running:
                     self.logger.warning("Watchdog detected disconnected client. Reconnecting...")

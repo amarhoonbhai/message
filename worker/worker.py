@@ -8,6 +8,7 @@ import logging
 import asyncio
 from typing import Dict
 import signal
+import random
 
 from db.database import init_database
 from db.models import get_all_connected_sessions
@@ -101,14 +102,23 @@ class WorkerManager:
             logger.error(f"Error syncing senders: {e}")
     
     async def start_sender(self, user_id: int, phone: str):
-        """Start a sender for a specific account."""
+        """Start a sender for a specific account with a random burst stagger delay."""
         key = (user_id, phone)
         if key in self.senders:
             return
         
+        # Smart burst staggering: 1-15s delay to prevent simultaneous starts
+        delay = random.uniform(1, 15)
+        logger.info(f"Staggering start for {phone} (User {user_id}) by {delay:.1f}s...")
+        
         sender = UserSender(user_id, phone)
         self.senders[key] = sender
-        task = asyncio.create_task(sender.start())
+        
+        async def delayed_start():
+            await asyncio.sleep(delay)
+            await sender.start()
+
+        task = asyncio.create_task(delayed_start())
         self.tasks[key] = task
         task.add_done_callback(lambda t: self._on_task_done(key, t))
     

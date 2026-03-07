@@ -270,12 +270,21 @@ async def remove_group(user_id: int, chat_id: int):
     await db.groups.delete_one({"user_id": user_id, "chat_id": chat_id})
 
 
-async def toggle_group(user_id: int, chat_id: int, enabled: bool):
-    """Enable or disable a group."""
+async def toggle_group(user_id: int, chat_id: int, enabled: bool, reason: str = None):
+    """Enable or disable a group, optionally storing a reason."""
     db = get_database()
+    update_data = {"enabled": enabled}
+    if not enabled and reason:
+        update_data["pause_reason"] = reason
+        update_data["paused_at"] = datetime.utcnow()
+    elif enabled:
+        # Clear reason when re-enabling
+        update_data["pause_reason"] = None
+        update_data["paused_at"] = None
+
     await db.groups.update_one(
         {"user_id": user_id, "chat_id": chat_id},
-        {"$set": {"enabled": enabled}}
+        {"$set": update_data}
     )
 
 
@@ -545,10 +554,10 @@ async def get_admin_stats() -> Dict[str, Any]:
     # Send stats
     send_stats = await get_send_stats(24)
     
-    # Groups removed (from logs)
-    groups_removed = await db.send_logs.count_documents({
+    # Groups paused (from logs)
+    groups_paused = await db.send_logs.count_documents({
         "sent_at": {"$gte": now - timedelta(hours=24)},
-        "status": "removed"
+        "status": "auto_paused"
     })
     
     return {
@@ -560,7 +569,7 @@ async def get_admin_stats() -> Dict[str, Any]:
         "sends_24h": send_stats["total"],
         "success_24h": send_stats["success"],
         "failed_24h": send_stats["failed"],
-        "groups_removed_24h": groups_removed,
+        "groups_paused_24h": groups_paused,
     }
 
 

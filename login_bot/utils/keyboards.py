@@ -13,6 +13,9 @@ def get_login_welcome_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("➕ Add Account / Connect", callback_data="add_account"),
         ],
         [
+            InlineKeyboardButton("📱 Manage Connected Accounts", callback_data="manage_accounts"),
+        ],
+        [
             InlineKeyboardButton("🔙 Back to Main Bot", url=f"https://t.me/{MAIN_BOT_USERNAME}"),
         ],
     ]
@@ -124,6 +127,49 @@ def get_success_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("📌 Join Community", url=f"https://t.me/{CHANNEL_USERNAME}"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_manage_accounts_keyboard(accounts: list) -> InlineKeyboardMarkup:
+    """Build list of accounts with buttons."""
+    keyboard = []
+    for acc in accounts:
+        phone = acc.get("phone", "Unknown")
+        status = "🟢" if acc.get("connected") else "🔴"
+        keyboard.append([
+            InlineKeyboardButton(f"{status} {phone}", callback_data=f"manage_acc:{phone}")
+        ])
+    
+    keyboard.append([InlineKeyboardButton("➕ Add New Account", callback_data="add_account")])
+    keyboard.append([InlineKeyboardButton("🔙 Back to Home", callback_data="login_home")])
+    
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_account_options_keyboard(phone: str) -> InlineKeyboardMarkup:
+    """Options for a specific account."""
+    keyboard = [
+        [
+            InlineKeyboardButton("🔄 Re-login / Refresh", callback_data="add_account"),
+            InlineKeyboardButton("🗑️ Disconnect", callback_data=f"disconnect_acc:{phone}"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to List", callback_data="manage_accounts"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_disconnect_confirm_keyboard(phone: str) -> InlineKeyboardMarkup:
+    """Confirmation for disconnection."""
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Yes, Disconnect", callback_data=f"confirm_disc_acc:{phone}"),
+        ],
+        [
+            InlineKeyboardButton("❌ Cancel", callback_data=f"manage_acc:{phone}"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)

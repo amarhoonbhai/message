@@ -31,6 +31,13 @@ from login_bot.handlers.otp import (
     otp_keypad_callback,
 )
 from login_bot.handlers.twofa import receive_2fa_password
+from login_bot.handlers.manage import (
+    manage_accounts_callback,
+    manage_acc_details_callback,
+    disconnect_acc_callback,
+    confirm_disconnect_acc_callback,
+    login_home_callback
+)
 
 # Configure logging
 logging.basicConfig(
@@ -71,6 +78,11 @@ def create_application() -> Application:
         ("^send_otp$", send_otp_callback),
         ("^resend_otp$", resend_otp_callback),
         ("^otp:", otp_keypad_callback),
+        ("^manage_accounts$", manage_accounts_callback),
+        ("^manage_acc:", manage_acc_details_callback),
+        ("^disconnect_acc:", disconnect_acc_callback),
+        ("^confirm_disc_acc:", confirm_disconnect_acc_callback),
+        ("^login_home$", login_home_callback),
     ]
     
     for pattern, callback in patterns:

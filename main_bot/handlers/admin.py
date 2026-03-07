@@ -97,7 +97,7 @@ async def get_stats_text():
 ├ Messages Delivered: {success}
 ├ Success Rate: {success_rate}%
 ├ Failures: {stats['failed_24h']}
-└ Groups Auto-Removed: {stats['groups_removed_24h']}
+└ Groups Auto-Paused: {stats['groups_paused_24h']}
 
 _Data is live and accurate as of now._
 """

@@ -211,8 +211,17 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
     
     for i, group in enumerate(groups, 1):
         title = group.get("chat_title", "Unknown")
-        icon = "🟢" if group.get("enabled", True) else "🔴"
-        text += f"  {i}. {icon} {title}\n"
+        enabled = group.get("enabled", True)
+        reason = group.get("pause_reason")
+        
+        if enabled:
+            icon = "🟢"
+            status_suffix = ""
+        else:
+            icon = "🔴"
+            status_suffix = f" (Paused: {reason})" if reason else " (Paused)"
+            
+        text += f"  {i}. {icon} {title}{status_suffix}\n"
     
     text += f"\n══════════════════════════\n"
     text += "💡 .rmgroup <number> to remove."

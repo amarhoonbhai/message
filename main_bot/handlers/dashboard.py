@@ -10,6 +10,7 @@ from main_bot.utils.keyboards import get_dashboard_keyboard, get_add_account_key
 from config import MIN_INTERVAL_MINUTES
 from main_bot.utils.helpers import escape_markdown
 import datetime
+from db.models import get_user_groups
 
 
 def format_last_active(dt: datetime.datetime) -> str:
@@ -28,6 +29,24 @@ def format_last_active(dt: datetime.datetime) -> str:
         return f"{int(diff.total_seconds() // 3600)}h ago"
     
     return f"{diff.days}d ago"
+
+
+async def get_group_status_summary(user_id: int) -> str:
+    """Consise summary of group health: 🟢 5 Active ▪ 🔴 2 Paused"""
+    groups = await get_user_groups(user_id)
+    if not groups:
+        return "No groups found"
+    
+    active = len([g for g in groups if g.get("enabled", True)])
+    paused = len(groups) - active
+    
+    parts = []
+    if active > 0:
+        parts.append(f"🟢 {active} Active")
+    if paused > 0:
+        parts.append(f"🔴 {paused} Paused")
+        
+    return " ▪ ".join(parts)
 
 
 def format_expiry_date(dt: datetime.datetime) -> str:
@@ -127,6 +146,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 📤 *FORWARDING:* {fwd_status}
   ➤ Groups: {group_count} ▪ Total Sent: {total_sends}
+  ➤ Status: {await get_group_status_summary(user_id)}
   ➤ Interval: {interval} min ▪ Night: 12-6 AM
 
 ⚙️ *SETTINGS*
