@@ -5,8 +5,14 @@ Admin/Owner panel handler for Main Bot.
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
 
-from db.models import get_admin_stats, generate_redeem_code, get_all_users_for_broadcast
-from main_bot.utils.keyboards import get_admin_keyboard, get_broadcast_keyboard, get_back_home_keyboard
+from db.models import (
+    get_admin_stats, generate_redeem_code, get_all_users_for_broadcast,
+    get_global_settings, update_global_settings
+)
+from main_bot.utils.keyboards import (
+    get_admin_keyboard, get_broadcast_keyboard, get_back_home_keyboard,
+    get_night_mode_settings_keyboard
+)
 from config import OWNER_ID
 from main_bot.utils.helpers import escape_markdown
 
@@ -429,4 +435,81 @@ _Pro Tip: Use the Broadcast system to target specific segments._
         text,
         parse_mode="Markdown",
         reply_markup=get_admin_keyboard(),
+    )
+async def admin_nightmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show global night mode settings."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        await query.answer("⛔ Access denied", show_alert=True)
+        return
+    
+    await query.answer()
+    
+    settings = await get_global_settings()
+    current = settings.get("night_mode_force", "auto").upper()
+    
+    text = f"""
+🌙 *GLOBAL NIGHT MODE CONTROL*
+══════════════════════════════
+
+*Current State:* `{current}`
+
+Select a mode button below to override the system-wide night mode behavior:
+
+🔴 *FORCE ON:* Pauses all bots immediately.
+🟢 *FORCE OFF:* Disables night mode pause entirely.
+⏳ *AUTO (Schedule):* Resumes 00:00-06:00 IST logic.
+
+_This change affects all accounts globally._
+"""
+    
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_night_mode_settings_keyboard(),
+    )
+
+
+async def set_nightmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Update global night mode setting via callback."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        await query.answer("⛔ Access denied", show_alert=True)
+        return
+    
+    mode = query.data.split(":")[1]
+    await update_global_settings(night_mode_force=mode)
+    
+    await query.answer(f"✅ Night Mode updated to {mode.upper()}", show_alert=True)
+    await admin_nightmode_callback(update, context)
+
+
+async def nightmode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /nightmode command from owner."""
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        await update.message.reply_text("⛔ Access denied")
+        return
+    
+    settings = await get_global_settings()
+    current = settings.get("night_mode_force", "auto").upper()
+    
+    text = f"""
+🌙 *GLOBAL NIGHT MODE CONTROL*
+══════════════════════════════
+
+*Current State:* `{current}`
+
+Select a mode button below to override the system-wide night mode behavior.
+"""
+    
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_night_mode_settings_keyboard(),
     )

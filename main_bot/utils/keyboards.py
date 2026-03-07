@@ -140,6 +140,7 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("👥 User Database", callback_data="admin_users"),
+            InlineKeyboardButton("🌙 Night Mode", callback_data="admin_nightmode"),
         ],
         [
             InlineKeyboardButton("🏠 Main Menu", callback_data="home"),
@@ -210,3 +211,18 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
+def get_night_mode_settings_keyboard() -> InlineKeyboardMarkup:
+    """Build keyboard for global night mode settings."""
+    keyboard = [
+        [
+            InlineKeyboardButton("🔴 FORCE ON", callback_data="set_nightmode:on"),
+            InlineKeyboardButton("🟢 FORCE OFF", callback_data="set_nightmode:off"),
+        ],
+        [
+            InlineKeyboardButton("⏳ AUTO (Schedule)", callback_data="set_nightmode:auto"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_stats"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)

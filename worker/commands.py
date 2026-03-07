@@ -74,6 +74,9 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".stats":
             await handle_status(client, user_id, message)
             return True
+        elif cmd == ".nightmode":
+            await handle_nightmode(client, user_id, message, text)
+            return True
     except Exception as e:
         logger.error(f"[User {user_id}] Command error: {e}")
         await reply_to_command(client, message, f"Error: {str(e)}")
@@ -102,8 +105,9 @@ async def handle_help(client: TelegramClient, user_id: int, message):
         "🔸 `.responder <msg>` — Set auto-reply for DMs\n"
         "🔸 `.responder off` — Disable auto-reply\n\n"
         "⚡ *DIAGNOSTICS*\n"
-        "🔸 `.status` — Check live worker stats\n"
         "🔸 `.ping` — Check if worker is alive\n\n"
+        "👑 *OWNER COMMANDS*\n"
+        "🔸 `.nightmode on/off/auto` — Global control\n\n"
         "💡 *PRO TIP:* You can add multiple groups at once!\n"
         "Example: `.addgroup @group1 @group2`"
     ).format(min=MIN_INTERVAL_MINUTES)
@@ -177,7 +181,7 @@ async def handle_status(client: TelegramClient, user_id: int, message):
 ├ Shuffle: {"🟢 ON" if config.get("shuffle_mode") else "⚫ OFF"}
 ├ Copy Mode: {"🟢 ON" if config.get("copy_mode") else "⚫ OFF"}
 ├ Auto-Responder: {"🟢 ON" if config.get("auto_reply_enabled") else "⚫ OFF"}
-└ Night Mode: Active (12AM-6AM IST)
+└ Night Mode: {await get_night_mode_label()}
 
 👥 *GROUPS ({enabled_groups}/{total_groups})*
 
@@ -587,3 +591,53 @@ def parse_group_input(input_str: str) -> str:
         return f"@{input_str}"
     
     return None
+async def handle_nightmode(client: TelegramClient, user_id: int, message, text: str):
+    """Handle .nightmode on/off/auto command (Owner only)."""
+    from config import OWNER_ID
+    if user_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ This command is restricted to the BOT OWNER.")
+        return
+        
+    parts = text.split()
+    if len(parts) < 2:
+        from db.models import get_global_settings
+        settings = await get_global_settings()
+        current = settings.get("night_mode_force", "auto").upper()
+        await reply_to_command(client, message, 
+            f"🌙 GLOBAL NIGHT MODE\n\n"
+            f"➤ Current: {current}\n\n"
+            f"Usage: .nightmode <on/off/auto>\n"
+            f"  ◦ `on`: Force night mode NOW\n"
+            f"  ◦ `off`: Disable night mode NOW\n"
+            f"  ◦ `auto`: Use standard 00:00-06:00 IST"
+        )
+        return
+        
+    val = parts[1].lower()
+    if val not in ["on", "off", "auto"]:
+        await reply_to_command(client, message, "❌ Use: .nightmode on/off/auto")
+        return
+        
+    from db.models import update_global_settings
+    await update_global_settings(night_mode_force=val)
+    
+    await reply_to_command(client, message, 
+        f"✅ GLOBAL NIGHT MODE updated to: *{val.upper()}*\n\n"
+        f"This change affects all accounts globally."
+    )
+
+async def get_night_mode_label() -> str:
+    """Helper to get a human-friendly night mode status label."""
+    from db.models import get_global_settings
+    from worker.utils import is_night_mode
+    
+    settings = await get_global_settings()
+    force = settings.get("night_mode_force", "auto")
+    active = await is_night_mode()
+    
+    if force == "on":
+        return "🔴 FORCED ON"
+    if force == "off":
+         return "🟢 FORCED OFF"
+    
+    return "🌙 Active (00-06 IST)" if active else "☀️ Inactive (Daytime)"

@@ -10,11 +10,24 @@ from config import TIMEZONE, NIGHT_MODE_START_HOUR, NIGHT_MODE_END_HOUR
 IST = pytz.timezone(TIMEZONE)
 
 
-def is_night_mode() -> bool:
+async def is_night_mode() -> bool:
     """
     Check if current time is within night mode hours.
     Night mode: 00:00 - 06:00 IST
+    Overrides based on global settings:
+    - force=on: always true
+    - force=off: always false
+    - force=auto: time-based
     """
+    from db.models import get_global_settings
+    settings = await get_global_settings()
+    force = settings.get("night_mode_force", "auto")
+    
+    if force == "on":
+        return True
+    if force == "off":
+        return False
+        
     now_ist = datetime.now(IST)
     current_hour = now_ist.hour
     

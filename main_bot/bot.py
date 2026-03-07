@@ -44,6 +44,9 @@ from main_bot.handlers.admin import (
     gen_code_callback,
     generate_command,
     admin_users_callback,
+    admin_nightmode_callback,
+    set_nightmode_callback,
+    nightmode_command,
     WAITING_BROADCAST_MESSAGE,
 )
 from main_bot.handlers.help import help_callback, help_command
@@ -91,6 +94,7 @@ def create_application() -> Application:
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("generate", generate_command))
+    application.add_handler(CommandHandler("nightmode", nightmode_command))
 
     # ============== Conversation Handlers ==============
     redeem_conv = ConversationHandler(
@@ -141,6 +145,8 @@ def create_application() -> Application:
         ("^manage_account:", manage_account_callback),
         ("^disconnect_account:", disconnect_account_callback),
         ("^confirm_disconnect:", confirm_disconnect_callback),
+        ("^admin_nightmode$", admin_nightmode_callback),
+        ("^set_nightmode:", set_nightmode_callback),
     ]
     
     for pattern, callback in patterns:

@@ -44,6 +44,7 @@ async def ensure_indexes(db: AsyncIOMotorDatabase):
         ("redeem_codes", "used_by", {}),
         
         # Send logs
+        ("send_logs", [("user_id", 1), ("phone", 1), ("chat_id", 1), ("saved_msg_id", 1), ("sent_at", -1)], {"name": "idx_anti_duplicate"}),
         ("send_logs", [("user_id", 1), ("sent_at", -1)], {}),
         ("send_logs", "sent_at", {}),
     ]

@@ -632,3 +632,30 @@ async def get_all_users_for_broadcast(filter_type: str = "all") -> List[int]:
         cursor = db.users.find({}, {"user_id": 1})
     
     return [u["user_id"] async for u in cursor]
+# ==================== GLOBAL SETTINGS ====================
+
+async def get_global_settings() -> Dict[str, Any]:
+    """Get global system settings, creating default if not exists."""
+    db = get_database()
+    settings = await db.settings.find_one({"key": "global"})
+    
+    if not settings:
+        settings = {
+            "key": "global",
+            "night_mode_force": "auto",  # auto, on, off
+            "updated_at": datetime.utcnow()
+        }
+        await db.settings.insert_one(settings)
+    
+    return settings
+
+
+async def update_global_settings(**kwargs):
+    """Update global system settings."""
+    db = get_database()
+    kwargs["updated_at"] = datetime.utcnow()
+    await db.settings.update_one(
+        {"key": "global"},
+        {"$set": kwargs},
+        upsert=True
+    )
