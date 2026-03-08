@@ -176,6 +176,7 @@ async def get_user_config(user_id: int) -> Dict[str, Any]:
             "last_saved_id": 0,
             "shuffle_mode": False,
             "copy_mode": False,
+            "send_mode": "sequential",
             "auto_reply_enabled": False,
             "auto_reply_text": "Hello! Thanks for your interest. Please check our official channel for more details: [YOUR_CHANNEL_HERE]",
             "updated_at": datetime.utcnow(),

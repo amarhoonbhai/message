@@ -54,6 +54,9 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📘 Commands Map", callback_data="help"),
         ],
         [
+            InlineKeyboardButton("🔄 Toggle Send Mode", callback_data="toggle_send_mode"),
+        ],
+        [
             InlineKeyboardButton("🏠 Back to Home", callback_data="home"),
         ],
     ]

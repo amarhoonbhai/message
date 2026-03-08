@@ -65,6 +65,9 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".copymode":
             await handle_copymode(client, user_id, message, text)
             return True
+        elif cmd == ".sendmode":
+            await handle_sendmode(client, user_id, message, text)
+            return True
         elif cmd == ".responder":
             await handle_responder(client, user_id, message, text)
             return True
@@ -102,6 +105,7 @@ async def handle_help(client: TelegramClient, user_id: int, message):
         "🔸 `.interval <min>` — Set loop delay (min: {min}m)\n"
         "🔸 `.shuffle on/off` — Randomize loop order\n"
         "🔸 `.copymode on/off` — Send as fresh message\n"
+        "🔸 `.sendmode <seq/rot/rand>` — Message distribution\n"
         "🔸 `.responder <msg>` — Set auto-reply for DMs\n"
         "🔸 `.responder off` — Disable auto-reply\n\n"
         "⚡ *DIAGNOSTICS*\n"
@@ -164,6 +168,7 @@ async def handle_status(client: TelegramClient, user_id: int, message):
     # Setting indicators
     copy_icon = "🟢 ON" if config.get("copy_mode") else "⚫ OFF"
     shuffle_icon = "🟢 ON" if config.get("shuffle_mode") else "⚫ OFF"
+    send_mode = config.get("send_mode", "sequential").title()
     responder_icon = "🟢 ON" if config.get("auto_reply_enabled") else "⚫ OFF"
     
     text = f"""📊 *WORKER DIAGNOSTICS* 📊
@@ -178,6 +183,7 @@ async def handle_status(client: TelegramClient, user_id: int, message):
 
 ⚡ *LIVE SETTINGS*
 ├ Interval: {interval}m
+├ Send Mode: {send_mode}
 ├ Shuffle: {"🟢 ON" if config.get("shuffle_mode") else "⚫ OFF"}
 ├ Copy Mode: {"🟢 ON" if config.get("copy_mode") else "⚫ OFF"}
 ├ Auto-Responder: {"🟢 ON" if config.get("auto_reply_enabled") else "⚫ OFF"}
@@ -517,6 +523,42 @@ async def handle_copymode(client: TelegramClient, user_id: int, message, text: s
     await reply_to_command(client, message,
         f"■ Copy Mode {status_text}\n\n"
         f"Messages will now be {'sent as new copies' if enable else 'forwarded normally'}."
+    )
+
+
+async def handle_sendmode(client: TelegramClient, user_id: int, message, text: str):
+    """Handle .sendmode <sequential/rotate/random> command."""
+    parts = text.split(maxsplit=1)
+    config = await get_user_config(user_id)
+    current = config.get("send_mode", "sequential")
+    
+    if len(parts) < 2:
+        await reply_to_command(client, message,
+            f"➤ Send Mode: {current.title()}\n\n"
+            f"Usage: .sendmode <mode>\n"
+            f"Modes:\n"
+            f"  ◦ sequential: Ad 1 to all groups, then Ad 2...\n"
+            f"  ◦ rotate: Grp 1 gets Ad 1, Grp 2 gets Ad 2...\n"
+            f"  ◦ random: Random ad sent to each group"
+        )
+        return
+    
+    val = parts[1].strip().lower()
+    if val in ["seq", "sequential"]:
+        val = "sequential"
+    elif val in ["rot", "rotate"]:
+        val = "rotate"
+    elif val in ["rand", "random"]:
+        val = "random"
+    else:
+        await reply_to_command(client, message, "○ Invalid mode! Choose: sequential, rotate, or random.")
+        return
+    
+    await update_user_config(user_id, send_mode=val)
+    
+    await reply_to_command(client, message,
+        f"■ Send Mode Updated: {val.title()} ●\n\n"
+        f"Message distribution pattern changed."
     )
 
 

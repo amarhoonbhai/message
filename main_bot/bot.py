@@ -23,6 +23,7 @@ from main_bot.handlers.start import start_handler, home_callback
 from main_bot.handlers.dashboard import (
     dashboard_callback,
     add_account_callback,
+    toggle_send_mode_callback,
 )
 from main_bot.handlers.plans import my_plan_callback
 from main_bot.handlers.referral import referral_callback
@@ -131,6 +132,7 @@ def create_application() -> Application:
     patterns = [
         ("^home$", home_callback),
         ("^dashboard$", dashboard_callback),
+        ("^toggle_send_mode$", toggle_send_mode_callback),
         ("^add_account$", add_account_callback),
         ("^help$", help_callback),
         ("^my_plan$", my_plan_callback),

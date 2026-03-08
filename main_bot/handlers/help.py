@@ -29,6 +29,7 @@ HELP_TEXT = """
 🔸 `.interval <min>` — Set delay between loops
 🔸 `.shuffle on/off` — Randomize group sending order
 🔸 `.copymode on/off` — Send as new message (hides "Forwarded from")
+🔸 `.sendmode <seq/rot/rand>` — Change message distribution pattern
 🔸 `.responder <msg>` — Set auto-reply for incoming DMs
 🔸 `.status` — Check your live worker status
 

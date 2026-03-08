@@ -426,12 +426,29 @@ class UserSender:
                 config = await self._get_cached_config()
                 shuffle_mode = config.get("shuffle_mode", False)
                 copy_mode = config.get("copy_mode", False)
+                send_mode = config.get("send_mode", "sequential")
                 
                 pairs = []
-                for j in range(len(groups)):
-                    # FORWARD ALL SAVED MESSAGES to this group before moving to next group
-                    for i in range(len(all_messages)):
-                        pairs.append((all_messages[i], groups[j]))
+                if send_mode == "sequential":
+                    # Ad 1 to all groups, then Ad 2 to all groups
+                    for msg in all_messages:
+                        for group in groups:
+                            pairs.append((msg, group))
+                elif send_mode == "rotate":
+                    # Ad 1 to Group 1, Ad 2 to Group 2... Only 1 ad per group
+                    for j, group in enumerate(groups):
+                        msg = all_messages[j % len(all_messages)]
+                        pairs.append((msg, group))
+                elif send_mode == "random":
+                    # Random Ad to each group
+                    for group in groups:
+                        msg = random.choice(all_messages)
+                        pairs.append((msg, group))
+                else:
+                    # Fallback
+                    for msg in all_messages:
+                        for group in groups:
+                            pairs.append((msg, group))
                 
                 if shuffle_mode:
                     seed = f"{self.user_id}_{datetime.utcnow().strftime('%Y%m%d')}"

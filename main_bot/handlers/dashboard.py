@@ -5,7 +5,7 @@ Dashboard handler for Main Bot.
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from db.models import get_all_user_sessions, get_plan, get_user_config, get_group_count, get_account_stats
+from db.models import get_all_user_sessions, get_plan, get_user_config, get_group_count, get_account_stats, update_user_config
 from main_bot.utils.keyboards import get_dashboard_keyboard, get_add_account_keyboard
 from config import MIN_INTERVAL_MINUTES
 from main_bot.utils.helpers import escape_markdown
@@ -130,6 +130,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ═══ Settings section ═══
     copy_icon = "🟢" if config.get("copy_mode") else "⚫"
     shuffle_icon = "🟢" if config.get("shuffle_mode") else "⚫"
+    send_mode = config.get("send_mode", "sequential").title()
     responder_icon = "🟢" if config.get("auto_reply_enabled") else "⚫"
     reply_text = config.get("auto_reply_text", "")
     reply_preview = escape_markdown(reply_text[:25] + "..." if len(reply_text) > 25 else reply_text)
@@ -151,6 +152,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ⚙️ *SETTINGS*
   {copy_icon} Copy Mode ▪ {shuffle_icon} Shuffle
+  🔄 Send Mode: {send_mode}
   {responder_icon} Responder: _{reply_preview}_
 
 💡 *TIP:* Send `.addgroup <url>` in Saved Messages!
@@ -200,3 +202,26 @@ to start auto-forwarding messages.
         parse_mode="Markdown",
         reply_markup=get_add_account_keyboard(),
     )
+async def toggle_send_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Toggle between send modes (sequential -> rotate -> random -> sequential)."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    config = await get_user_config(user_id)
+    current_mode = config.get("send_mode", "sequential")
+    
+    # Define rotation
+    mode_rotation = {
+        "sequential": "rotate",
+        "rotate": "random",
+        "random": "sequential"
+    }
+    
+    next_mode = mode_rotation.get(current_mode, "sequential")
+    
+    # Update config
+    await update_user_config(user_id, send_mode=next_mode)
+    
+    # Refresh dashboard
+    await query.answer(f"Send Mode changed to: {next_mode.title()}")
+    await show_dashboard(update, context)
