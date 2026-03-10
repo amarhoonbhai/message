@@ -40,7 +40,8 @@ from db.models import (
     get_session, get_user_groups, get_user_config,
     update_last_saved_id, update_current_msg_index,
     is_plan_active, log_send, remove_group, toggle_group,
-    update_session_activity, is_trial_user, get_all_user_sessions
+    update_session_activity, is_trial_user, get_all_user_sessions,
+    mark_session_auth_failed, mark_session_disabled, reset_session_auth_fails
 )
 from worker.utils import (
     is_night_mode, seconds_until_morning, format_time_remaining,
@@ -53,6 +54,8 @@ logger = logging.getLogger(__name__)
 
 class AdaptiveDelayController:
     """Dynamically adjusts gaps based on FloodWait and success rates."""
+    MAX_MULTIPLIER = 10.0  # Hard cap — prevents runaway wait times
+
     def __init__(self, base_gap: int):
         self.base_gap = base_gap
         self.multiplier = 1.0
@@ -64,8 +67,8 @@ class AdaptiveDelayController:
 
     def on_flood(self, wait_seconds: int):
         self.last_flood_at = datetime.utcnow()
-        # Increase multiplier based on wait time, with a minimum jump
-        self.multiplier = max(self.multiplier * 1.5, (wait_seconds / self.base_gap) * 1.1)
+        new_mult = max(self.multiplier * 1.5, (wait_seconds / self.base_gap) * 1.1)
+        self.multiplier = min(new_mult, self.MAX_MULTIPLIER)  # cap applied
         self.success_streak = 0
 
     def on_success(self):
@@ -79,11 +82,16 @@ class AdaptiveDelayController:
 class UserSender:
     """Handles message sending for a single user using their own API credentials."""
     
-    def __init__(self, user_id: int, phone: str):
+    # After this many consecutive auth failures, the session is permanently disabled
+    MAX_AUTH_FAILURES = 3
+
+    def __init__(self, user_id: int, phone: str, semaphore: asyncio.Semaphore = None):
         self.user_id = user_id
         self.phone = phone
         self.client = None
         self.running = False
+        # Semaphore shared across all senders — caps simultaneous Telethon connections
+        self._semaphore = semaphore or asyncio.Semaphore(1)
         
         # Professional Logging with Adapter
         self.logger = UserLogAdapter(logger, {'user_id': user_id, 'phone': phone})
@@ -145,26 +153,33 @@ class UserSender:
         return active
 
     async def start(self):
-        """Start the sender loop."""
+        """Start the sender loop — acquires semaphore slot before connecting."""
         self.running = True
-        
-        self.logger.info(f"[User {self.user_id}][{self.phone}] Starting sender...")
-        
-        # Load session with per-user API credentials
+        self.logger.info("Starting sender...")
+
+        # ── Pre-flight: validate session record exists ───────────────────────
         session_data = await get_session(self.user_id, self.phone)
-        
         if not session_data or not session_data.get("connected"):
-            self.logger.warning(f"[User {self.user_id}][{self.phone}] No connected session found")
+            self.logger.warning("No connected session record found — aborting")
             return
-        
-        session_string = session_data.get("session_string")
+
+        session_string = session_data.get("session_string", "")
+        if len(session_string) < 50:  # Valid Telethon StringSession strings are very long
+            self.logger.warning("Session string missing or too short — disabling")
+            await mark_session_disabled(self.user_id, self.phone, "invalid_session_string")
+            return
+
         api_id = session_data.get("api_id") or API_ID
         api_hash = session_data.get("api_hash") or API_HASH
-        
-        if not session_string:
-            self.logger.warning(f"[User {self.user_id}] No session string found")
-            return
-        
+
+        # ── Acquire semaphore slot ─────────────────────────────────────────
+        # Blocks here if MAX_CONCURRENT_CONNECTIONS slots are all taken.
+        # This ensures we never hammer Telegram with hundreds of connects at once.
+        async with self._semaphore:
+            await self._connect_and_run(session_string, api_id, api_hash)
+
+    async def _connect_and_run(self, session_string: str, api_id: int, api_hash: str):
+        """Internal: create client, connect once, validate auth, then run."""
         # Create client with USER'S API credentials
         self.client = TelegramClient(
             StringSession(session_string),
@@ -174,32 +189,40 @@ class UserSender:
             system_version="1.0",
             app_version="1.0"
         )
-        self.client.phone = self.phone  # Attach phone for commands to access it
-        
+        self.client.phone = self.phone
+
         try:
-            # Retry connection up to 3 times with exponential backoff
-            max_retries = 3
-            for attempt in range(1, max_retries + 1):
-                try:
-                    await self.client.connect()
-                    if await self.client.is_user_authorized():
-                        break
-                    else:
-                        self.logger.warning(f"[User {self.user_id}] Session not authorized (attempt {attempt}/{max_retries})")
-                        if attempt < max_retries:
-                            await asyncio.sleep(5 * (2 ** (attempt - 1)))  # 5s, 10s, 20s
-                            continue
-                        return
-                except (ConnectionError, OSError) as conn_err:
-                    self.logger.warning(f"[User {self.user_id}] Connection failed (attempt {attempt}/{max_retries}): {conn_err}")
-                    if attempt < max_retries:
-                        await asyncio.sleep(5 * (2 ** (attempt - 1)))
-                        continue
-                    return
-            
-            # 1. Initial Smart Delay: Randomize startup to avoid multiple sessions bursting at once
+            # ── Connect ONCE (no retry loops — avoids log spam) ─────────────────
+            try:
+                await self.client.connect()
+            except (ConnectionError, OSError) as conn_err:
+                self.logger.warning(f"Network connection failed: {conn_err}")
+                return  # WorkerManager will restart with backoff if needed
+
+            # ── Auth check: fail fast, track in DB ─────────────────────────
+            if not await self.client.is_user_authorized():
+                fail_count = await mark_session_auth_failed(self.user_id, self.phone)
+                if fail_count >= self.MAX_AUTH_FAILURES:
+                    self.logger.error(
+                        f"Session unauthorized — {fail_count} failures. "
+                        f"Permanently disabling (will not retry)."
+                    )
+                    await mark_session_disabled(
+                        self.user_id, self.phone, f"auth_failed_{fail_count}x"
+                    )
+                else:
+                    self.logger.warning(
+                        f"Session unauthorized (failure {fail_count}/{self.MAX_AUTH_FAILURES}). "
+                        f"Will retry after {6}h cooldown."
+                    )
+                return
+
+            # ── Authorized! Reset failure counters ────────────────────────────
+            await reset_session_auth_fails(self.user_id, self.phone)
+
+            # 1. Initial Smart Delay
             startup_delay = random.randint(10, 60)
-            self.logger.info(f"[User {self.user_id}] 🏁 Session authorized. Waiting {startup_delay}s (anti-burst) before starting loop...")
+            self.logger.info(f"🏁 Authorized. Waiting {startup_delay}s (anti-burst) before loop...")
             await asyncio.sleep(startup_delay)
 
             # Handler 1: Outgoing messages from self (commands + new ads in Saved Messages)

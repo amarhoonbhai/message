@@ -9,24 +9,36 @@ import asyncio
 from typing import Dict
 import signal
 import random
+from datetime import datetime, timedelta
 
 from db.database import init_database
 from db.models import get_all_connected_sessions
 from worker.sender import UserSender
 
-# Configure logging
+# ── Logging configuration ──────────────────────────────────────────────────
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Silence noisy third-party loggers — keeps logs clean in production
+logging.getLogger("telethon").setLevel(logging.ERROR)
+logging.getLogger("telethon.network").setLevel(logging.ERROR)
+logging.getLogger("telethon.crypto").setLevel(logging.ERROR)
+logging.getLogger("telethon.extensions").setLevel(logging.ERROR)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 class WorkerManager:
     """Manages all account sender tasks with graceful shutdown support."""
     
     MAX_RESTART_ATTEMPTS = 3
-    
+    # Max simultaneous Telethon connections — prevents CPU/RAM spikes on large pools
+    MAX_CONCURRENT_CONNECTIONS = 50
+    # How long to wait before retrying a recently-failed session (circuit breaker)
+    AUTH_FAIL_COOLDOWN_HOURS = 6
+
     def __init__(self):
         # Keys are (user_id, phone) tuples
         self.senders: Dict[tuple, UserSender] = {}
@@ -34,6 +46,8 @@ class WorkerManager:
         self.restart_counts: Dict[tuple, int] = {}  # Track restart attempts
         self.running = False
         self._shutdown_event = asyncio.Event()
+        # Semaphore caps simultaneous Telethon connects to avoid network/RAM spikes
+        self._connection_semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CONNECTIONS)
     
     async def start(self):
         """Start the worker manager."""
@@ -79,11 +93,32 @@ class WorkerManager:
             active_keys = {(s["user_id"], s["phone"]) for s in sessions}
             
             started_count = 0
+            skipped_disabled = 0
+            skipped_cooldown = 0
+
             for session in sessions:
                 user_id = session["user_id"]
                 phone = session["phone"]
                 key = (user_id, phone)
-                
+
+                # ── Skip 1: Permanently disabled sessions ─────────────────
+                if session.get("worker_disabled"):
+                    skipped_disabled += 1
+                    continue
+
+                # ── Skip 2: Circuit breaker — failed recently ──────────────
+                last_fail = session.get("last_auth_fail")
+                if last_fail and isinstance(last_fail, datetime):
+                    cooldown = timedelta(hours=self.AUTH_FAIL_COOLDOWN_HOURS)
+                    if datetime.utcnow() - last_fail < cooldown:
+                        remaining = cooldown - (datetime.utcnow() - last_fail)
+                        remaining_h = int(remaining.total_seconds() // 3600)
+                        logger.debug(
+                            f"Skipping {phone} — auth cooldown ({remaining_h}h remaining)"
+                        )
+                        skipped_cooldown += 1
+                        continue
+
                 if key not in self.senders:
                     await self.start_sender(user_id, phone)
                     started_count += 1
@@ -95,8 +130,11 @@ class WorkerManager:
                     await self.stop_sender(key)
                     stopped_count += 1
             
-            if started_count > 0 or stopped_count > 0:
-                logger.info(f"Sync complete: +{started_count} | -{stopped_count} account(s)")
+            if started_count > 0 or stopped_count > 0 or skipped_disabled > 0:
+                logger.info(
+                    f"Sync: +{started_count} started | -{stopped_count} stopped "
+                    f"| {skipped_disabled} disabled | {skipped_cooldown} in cooldown"
+                )
             
         except Exception as e:
             logger.error(f"Error syncing senders: {e}")
@@ -111,7 +149,8 @@ class WorkerManager:
         delay = random.uniform(1, 15)
         logger.info(f"Staggering start for {phone} (User {user_id}) by {delay:.1f}s...")
         
-        sender = UserSender(user_id, phone)
+        # Pass semaphore so all senders share the same concurrency cap
+        sender = UserSender(user_id, phone, semaphore=self._connection_semaphore)
         self.senders[key] = sender
         
         async def delayed_start():

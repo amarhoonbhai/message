@@ -160,6 +160,53 @@ async def is_account_active(user_id: int, phone: str) -> bool:
     return session is not None and session.get("connected", False)
 
 
+async def mark_session_auth_failed(user_id: int, phone: str) -> int:
+    """
+    Record a failed authorization attempt.
+    Returns the new total fail count so the caller can decide to disable.
+    """
+    db = get_database()
+    await db.sessions.update_one(
+        {"user_id": user_id, "phone": phone},
+        {
+            "$set": {"last_auth_fail": datetime.utcnow()},
+            "$inc": {"auth_fail_count": 1},
+        }
+    )
+    session = await get_session(user_id, phone)
+    return session.get("auth_fail_count", 1) if session else 1
+
+
+async def mark_session_disabled(user_id: int, phone: str, reason: str):
+    """
+    Permanently disable a dead/unauthorized session.
+    The WorkerManager will skip it on all future sync cycles.
+    """
+    db = get_database()
+    await db.sessions.update_one(
+        {"user_id": user_id, "phone": phone},
+        {"$set": {
+            "connected": False,
+            "worker_disabled": True,
+            "disabled_reason": reason,
+            "disabled_at": datetime.utcnow(),
+        }}
+    )
+
+
+async def reset_session_auth_fails(user_id: int, phone: str):
+    """Clear the auth-failure counter after a successful connection."""
+    db = get_database()
+    await db.sessions.update_one(
+        {"user_id": user_id, "phone": phone},
+        {"$set": {
+            "auth_fail_count": 0,
+            "last_auth_fail": None,
+            "worker_disabled": False,
+            "disabled_reason": None,
+        }}
+    )
+
 
 # ==================== CONFIG ====================
 
