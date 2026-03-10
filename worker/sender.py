@@ -153,11 +153,11 @@ class UserSender:
         return active
 
     async def start(self):
-        """Start the sender loop — acquires semaphore slot before connecting."""
+        """Start the sender loop — semaphore only guards the short connect+auth phase."""
         self.running = True
         self.logger.info("Starting sender...")
 
-        # ── Pre-flight: validate session record exists ───────────────────────
+        # ── Pre-flight: validate session record exists ─────────────────────
         session_data = await get_session(self.user_id, self.phone)
         if not session_data or not session_data.get("connected"):
             self.logger.warning("No connected session record found — aborting")
@@ -172,15 +172,7 @@ class UserSender:
         api_id = session_data.get("api_id") or API_ID
         api_hash = session_data.get("api_hash") or API_HASH
 
-        # ── Acquire semaphore slot ─────────────────────────────────────────
-        # Blocks here if MAX_CONCURRENT_CONNECTIONS slots are all taken.
-        # This ensures we never hammer Telegram with hundreds of connects at once.
-        async with self._semaphore:
-            await self._connect_and_run(session_string, api_id, api_hash)
-
-    async def _connect_and_run(self, session_string: str, api_id: int, api_hash: str):
-        """Internal: create client, connect once, validate auth, then run."""
-        # Create client with USER'S API credentials
+        # Build the client first (no network yet)
         self.client = TelegramClient(
             StringSession(session_string),
             api_id,
@@ -191,40 +183,66 @@ class UserSender:
         )
         self.client.phone = self.phone
 
+        # ── Phase 1: Connect + Auth (semaphore caps simultaneous connects) ──
+        # The semaphore is released as soon as auth succeeds or fails.
+        # It does NOT hold during the long-running send loop.
+        authorized = False
+        async with self._semaphore:
+            authorized = await self._connect_and_authenticate()
+
+        if not authorized:
+            if self.client:
+                await self.client.disconnect()
+            return
+
+        # ── Phase 2: Run session (no semaphore — slot is already freed) ─────
+        await self._run_session()
+
+    async def _connect_and_authenticate(self) -> bool:
+        """
+        Connect to Telegram and verify authorization.
+        Returns True if authorized, False otherwise.
+        Semaphore is held only during this short phase.
+        """
         try:
-            # ── Connect ONCE (no retry loops — avoids log spam) ─────────────────
-            try:
-                await self.client.connect()
-            except (ConnectionError, OSError) as conn_err:
-                self.logger.warning(f"Network connection failed: {conn_err}")
-                return  # WorkerManager will restart with backoff if needed
+            await self.client.connect()
+        except (ConnectionError, OSError) as conn_err:
+            self.logger.warning(f"Network connection failed: {conn_err}")
+            return False
 
-            # ── Auth check: fail fast, track in DB ─────────────────────────
-            if not await self.client.is_user_authorized():
-                fail_count = await mark_session_auth_failed(self.user_id, self.phone)
-                if fail_count >= self.MAX_AUTH_FAILURES:
-                    self.logger.error(
-                        f"Session unauthorized — {fail_count} failures. "
-                        f"Permanently disabling (will not retry)."
-                    )
-                    await mark_session_disabled(
-                        self.user_id, self.phone, f"auth_failed_{fail_count}x"
-                    )
-                else:
-                    self.logger.warning(
-                        f"Session unauthorized (failure {fail_count}/{self.MAX_AUTH_FAILURES}). "
-                        f"Will retry after {6}h cooldown."
-                    )
-                return
+        if not await self.client.is_user_authorized():
+            fail_count = await mark_session_auth_failed(self.user_id, self.phone)
+            if fail_count >= self.MAX_AUTH_FAILURES:
+                self.logger.error(
+                    f"Session unauthorized — {fail_count} failures. "
+                    f"Permanently disabling."
+                )
+                await mark_session_disabled(
+                    self.user_id, self.phone, f"auth_failed_{fail_count}x"
+                )
+            else:
+                self.logger.warning(
+                    f"Session unauthorized (failure {fail_count}/{self.MAX_AUTH_FAILURES}). "
+                    f"Will retry after 6h cooldown."
+                )
+            return False
 
-            # ── Authorized! Reset failure counters ────────────────────────────
-            await reset_session_auth_fails(self.user_id, self.phone)
+        # Authorized — reset any previous failure counts
+        await reset_session_auth_fails(self.user_id, self.phone)
+        self.logger.info("✅ Authorized successfully")
+        return True
 
-            # 1. Initial Smart Delay
-            startup_delay = random.randint(10, 60)
-            self.logger.info(f"🏁 Authorized. Waiting {startup_delay}s (anti-burst) before loop...")
-            await asyncio.sleep(startup_delay)
+    async def _run_session(self):
+        """
+        Register event handlers, run background tasks, and enter the send loop.
+        Called AFTER the semaphore is released — runs for the entire session lifetime.
+        """
+        # Initial Smart Delay: stagger startups to avoid simultaneous API bursts
+        startup_delay = random.randint(10, 60)
+        self.logger.info(f"🏁 Waiting {startup_delay}s (anti-burst) before loop...")
+        await asyncio.sleep(startup_delay)
 
+        try:
             # Handler 1: Outgoing messages from self (commands + new ads in Saved Messages)
             @self.client.on(events.NewMessage(outgoing=True))
             async def outgoing_handler(event):
@@ -237,7 +255,7 @@ class UserSender:
                     
                     # 1. Handle Commands (dot commands)
                     if text.startswith("."):
-                        self.logger.info(f"[User {self.user_id}] Received command: {text.split()[0]}")
+                        self.logger.info(f"Received command: {text.split()[0]}")
                         await process_command(self.client, self.user_id, event.message)
                         return
 
@@ -252,13 +270,13 @@ class UserSender:
                             pass
                     
                     if is_saved:
-                        self.logger.info(f"[User {self.user_id}][{self.phone}] New ad detected! Waking up worker...")
+                        self.logger.info("New ad detected! Waking up worker...")
                         self.wake_up_event.set()
                         await asyncio.sleep(0.1)
                         self.wake_up_event.clear()
 
                 except Exception as e:
-                    self.logger.error(f"[User {self.user_id}][{self.phone}] Outgoing handler error: {e}")
+                    self.logger.error(f"Outgoing handler error: {e}")
 
             # Handler 2: Incoming messages (auto-responder + remote commands)
             @self.client.on(events.NewMessage(incoming=True))
@@ -273,7 +291,7 @@ class UserSender:
                     
                     # 1. Handle Commands (Incoming from owner)
                     if text.startswith(".") and (sender_id == self.user_id or sender_id == OWNER_ID):
-                        self.logger.info(f"[User {self.user_id}] Received remote command: {text.split()[0]}")
+                        self.logger.info(f"Received remote command: {text.split()[0]}")
                         await process_command(self.client, self.user_id, event.message)
                         return
 
@@ -282,7 +300,7 @@ class UserSender:
                         await self.handle_auto_reply(event)
 
                 except Exception as e:
-                    self.logger.error(f"[User {self.user_id}][{self.phone}] Incoming handler error: {e}")
+                    self.logger.error(f"Incoming handler error: {e}")
             
             # Check bio on startup (for trial users)
             await self.check_and_enforce_bio()
@@ -291,19 +309,19 @@ class UserSender:
             watchdog_task = asyncio.create_task(self._connection_watchdog())
             bio_task = asyncio.create_task(self.bio_monitor_loop())
             
-            # Run the main loop
+            # Run the main send loop
             await self.run_loop()
             
             # Cancel tasks when main loop ends
             bio_task.cancel()
             watchdog_task.cancel()
-            
+
         except Exception as e:
-            self.logger.error(f"Error in sender lifecycle: {e}")
+            self.logger.error(f"Error in session lifecycle: {e}")
         finally:
             if self.client:
                 await self.client.disconnect()
-    
+
     async def stop(self):
         """Stop the sender."""
         self.running = False
