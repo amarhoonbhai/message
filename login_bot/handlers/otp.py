@@ -276,16 +276,63 @@ async def save_session_and_complete(
             del _login_clients[user_id]
         
         context.user_data.clear()
-        
-        # Show success
-        text = """
+
+        # Fetch the user's current plan to show the correct message
+        from db.models import get_plan
+        from datetime import datetime
+        plan = await get_plan(user_id)
+
+        if plan and plan.get("status") == "active" and plan.get("expires_at", datetime.min) > datetime.utcnow():
+            plan_type = plan.get("plan_type", "trial")
+            expires_at = plan["expires_at"]
+            days_left = (expires_at - datetime.utcnow()).days
+            hours_left = (expires_at - datetime.utcnow()).seconds // 3600
+
+            if plan_type == "trial":
+                # Trial user
+                if days_left > 0:
+                    time_left = f"{days_left}d {hours_left}h"
+                else:
+                    time_left = f"{hours_left}h"
+                text = f"""
 ✅ *Connected Successfully!*
 
-Your account is now linked.
-Open the main dashboard to manage groups, interval and plans.
+📱 `{phone}` is now linked to your account.
 
-🎁 You have a *7-day free trial*.
-Invite 3 friends to get +7 days more!
+🏅 *Plan:* Free Trial
+⏳ *Time Left:* {time_left}
+
+💡 Invite *3 friends* to earn +7 bonus days!
+Open the dashboard to add groups and start sending.
+"""
+            else:
+                # Paid/premium user
+                plan_label = plan_type.upper()
+                if days_left > 0:
+                    time_left = f"{days_left}d {hours_left}h"
+                else:
+                    time_left = f"{hours_left}h"
+                text = f"""
+✅ *Connected Successfully!*
+
+📱 `{phone}` is now linked to your account.
+
+💎 *Plan:* {plan_label} Premium
+⏳ *Remaining:* {time_left}
+
+🚀 Your premium plan is active. Open the dashboard to configure groups and intervals.
+"""
+        else:
+            # No active plan (expired or missing)
+            text = f"""
+✅ *Connected Successfully!*
+
+📱 `{phone}` is now linked to your account.
+
+⚠️ *No Active Plan Found*
+Your plan may have expired or wasn't assigned yet.
+
+🎁 Redeem a code or contact support to activate your plan.
 """
         
         await query.edit_message_text(
