@@ -131,8 +131,8 @@ async def handle_status(client: TelegramClient, user_id: int, message):
     # Get config (User-wide)
     config = await get_user_config(user_id)
     
-    # Get groups specifically for THIS account
-    groups = await get_user_groups(user_id, phone=phone)
+    # Get groups (all groups for this user)
+    groups = await get_user_groups(user_id)
     total_groups = len(groups)
     enabled_groups = len([g for g in groups if g.get("enabled", True)])
     
@@ -199,7 +199,7 @@ Type `.help` for available commands
 async def handle_groups(client: TelegramClient, user_id: int, message):
     """Handle .groups command - list groups for THIS account."""
     phone = getattr(client, 'phone', None)
-    groups = await get_user_groups(user_id, phone=phone)
+    groups = await get_user_groups(user_id)
     
     if not groups:
         await reply_to_command(client, message, 

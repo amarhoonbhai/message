@@ -20,7 +20,11 @@ from telethon.errors import (
     UserBannedInChannelError,
     InputUserDeactivatedError,
     RPCError,
-    MultiError
+    MultiError,
+    ChannelInvalidError,
+    UsernameNotOccupiedError,
+    UsernameInvalidError,
+    InviteHashExpiredError
 )
 from telethon.tl.types import InputPeerSelf, InputUserSelf, MessageService
 from telethon.tl.functions.users import GetFullUserRequest
@@ -470,11 +474,12 @@ class UserSender:
                     
                     cycle_wait_seconds = actual_interval * 60
                     elapsed = 0
+                    night_interrupted = False
                     while elapsed < cycle_wait_seconds and self.running:
                         if await is_night_mode():
-                            wait_seconds = seconds_until_morning()
-                            await asyncio.sleep(min(wait_seconds, 3600))
-                            continue
+                            # Break inner loop so outer loop can handle night mode cleanly
+                            night_interrupted = True
+                            break
                         
                         rem_min = int((cycle_wait_seconds - elapsed) / 60)
                         await self.update_status(f"Next check in {rem_min}m")
@@ -482,6 +487,10 @@ class UserSender:
                         sleep_chunk = min(60, cycle_wait_seconds - elapsed)
                         await asyncio.sleep(sleep_chunk)
                         elapsed += sleep_chunk
+                    
+                    if night_interrupted:
+                        # Night mode kicked in mid-wait — go back to outer loop to handle it
+                        continue
                     
                     self.logger.info(f"▶️ Cycle interval complete! Restarting...")
                     current_step = 0
@@ -518,13 +527,6 @@ class UserSender:
 
                 self.logger.info(f"📤 (Step {current_step + 1}/{total_steps}) Forwarding msg {msg.id} to {chat_title}...")
                 await self.update_status(f"Sending to {chat_title}")
-                
-                # TYPING INDICATOR
-                try:
-                    async with self.client.action(chat_id, 'typing'):
-                        await asyncio.sleep(random.randint(2, 5))
-                except Exception:
-                    pass
 
                 # 7. Send the single message
                 flood_triggered, flood_wait = await self.forward_single_message(msg, group, copy_mode=copy_mode)
@@ -541,31 +543,34 @@ class UserSender:
                 current_step += 1
                 await update_current_msg_index(self.user_id, self.phone, current_step)
                 
-                # 9. Adaptive Interval Delay!
+                # 9. Adaptive Interval Delay between groups!
                 if current_step < len(pairs):
-                    is_batch_end = (current_step % len(groups) == 0)
-                    
-                    if is_batch_end:
+                    # Always use group gap between steps within a cycle.
+                    # For sequential mode: also add a larger batch gap when
+                    # all groups have been visited for the current message.
+                    is_sequential = (send_mode == "sequential")
+                    is_msg_boundary = is_sequential and len(groups) > 0 and (current_step % len(groups) == 0)
+
+                    if is_msg_boundary:
                         base_gap = self.adaptive_msg_gap.get_gap()
-                        gap_type = "ADAPTIVE_BATCH_GAP"
+                        gap_type = "ADAPTIVE_MSG_GAP"
                     else:
                         base_gap = self.adaptive_group_gap.get_gap()
                         gap_type = "ADAPTIVE_GROUP_GAP"
-                    
-                    # Distribute across accounts
-                    if num_accounts > 1 and not is_batch_end:
-                         base_gap = max(30, base_gap // num_accounts)
+                        # Divide gap across parallel accounts so total rate stays constant
+                        if num_accounts > 1:
+                            base_gap = max(30, base_gap // num_accounts)
 
                     wait_time = random.randint(int(base_gap * 0.9), int(base_gap * 1.1))
                     self.logger.info(f"⏳ Waiting {wait_time}s ({gap_type}) before next step...")
-                    
+
                     elapsed = 0
+                    night_gap_interrupted = False
                     while elapsed < wait_time and self.running:
                         if await is_night_mode():
-                            wait_seconds = seconds_until_morning()
-                            await asyncio.sleep(min(wait_seconds, 3600))
-                            continue
-                        
+                            night_gap_interrupted = True
+                            break
+
                         rem_sec = wait_time - elapsed
                         status_msg = f"Next in {rem_sec}s" if rem_sec < 60 else f"Next in {int(rem_sec/60)}m"
                         await self.update_status(status_msg)
@@ -573,6 +578,10 @@ class UserSender:
                         sleep_chunk = min(30, wait_time - elapsed)
                         await asyncio.sleep(sleep_chunk)
                         elapsed += sleep_chunk
+
+                    if night_gap_interrupted:
+                        # Night mode hit mid-gap — save step and let outer loop handle it
+                        continue
                 else:
                     self.logger.info(f"✅ Last step in cycle forwarded")
                 
@@ -628,7 +637,7 @@ class UserSender:
             if copy_mode:
                 await self.client.send_message(
                     entity=chat_id,
-                    message=message.message,
+                    message=message.text or "",
                     file=message.media,
                     formatting_entities=message.entities
                 )
