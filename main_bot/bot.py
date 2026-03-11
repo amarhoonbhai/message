@@ -45,9 +45,9 @@ from main_bot.handlers.admin import (
     gen_code_callback,
     generate_command,
     admin_users_callback,
-    admin_nightmode_callback,
     set_nightmode_callback,
     nightmode_command,
+    admin_health_callback,
     WAITING_BROADCAST_MESSAGE,
 )
 from main_bot.handlers.help import help_callback, help_command
@@ -149,6 +149,7 @@ def create_application() -> Application:
         ("^confirm_disconnect:", confirm_disconnect_callback),
         ("^admin_nightmode$", admin_nightmode_callback),
         ("^set_nightmode:", set_nightmode_callback),
+        ("^admin_health$", admin_health_callback),
     ]
     
     for pattern, callback in patterns:

@@ -161,6 +161,45 @@ async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_markup=get_admin_keyboard(),
     )
 
+async def admin_health_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show session health overview."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        await query.answer("⛔ Access denied", show_alert=True)
+        return
+    
+    await query.answer()
+    
+    from db.models import get_all_connected_sessions
+    sessions = await get_all_connected_sessions()
+    
+    text = "🩺 *SESSION HEALTH MONITOR*\n\n"
+    
+    if not sessions:
+        text += "_No active sessions found._"
+    else:
+        for s in sessions:
+            phone = s.get("phone", "Unknown")
+            status = s.get("worker_status", "Off")
+            streak = s.get("error_streak", 0)
+            
+            icon = "🟢"
+            if streak > 5: icon = "🔴"
+            elif streak > 0: icon = "🟡"
+            
+            text += f"{icon} `{phone}` | {status} | Errors: {streak}\n"
+    
+    text += "\n*Status Legend:*\n🟢 Healthy | 🟡 Unstable | 🔴 Critical"
+    
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_admin_keyboard(),
+    )
+
+
 
 async def admin_broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show broadcast options."""
