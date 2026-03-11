@@ -681,26 +681,41 @@ class UserSender:
         chat_title = group.get("chat_title", "Unknown")
         
         try:
-            # HUMAN-LIKE BEHAVIOR: Typing indicator
-            # Randomized duration (3-8s) and 10% chance to skip typing completely
+            # ── STEP 1: Pre-validate entity (PREVENTS most errors) ──────────
+            entity = None
+            try:
+                entity = await self.client.get_entity(chat_id)
+            except (ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError) as e:
+                # Group is dead — remove it immediately, don't even try to send
+                self.logger.warning(f"❌ Pre-check failed: {chat_title} is invalid ({type(e).__name__}). Removing.")
+                asyncio.create_task(remove_group(self.user_id, chat_id))
+                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "removed", f"Pre-check: {type(e).__name__}", phone=self.phone))
+                return (False, 0)
+            except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
+                # Group is restricted — auto-pause, don't waste an API call
+                self.logger.warning(f"⚠️ Pre-check: {chat_title} is restricted ({type(e).__name__}). Auto-pausing.")
+                asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=f"Pre-check: {type(e).__name__}"))
+                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "auto_paused", f"Pre-check: {type(e).__name__}", phone=self.phone))
+                return (False, 0)
+            except Exception as e:
+                self.logger.warning(f"Could not resolve entity for {chat_id}: {e}")
+                # Don't proceed if we can't even find the group
+                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "failed", f"Entity error: {e}", phone=self.phone))
+                return (False, 0)
+            
+            # ── STEP 2: Human-like typing (safe — errors are swallowed) ─────
             if random.random() > 0.1:
                 try:
                     typing_duration = random.uniform(3, 8)
-                    async with self.client.action(chat_id, 'typing'):
+                    async with self.client.action(entity, 'typing'):
                         await asyncio.sleep(typing_duration)
-                except Exception as e:
-                    self.logger.debug(f"Could not show typing indicator for {chat_id}: {e}")
+                except Exception:
+                    pass  # Typing failure is harmless, never let it crash
 
-            # ENSURE ENTITY IS RESOLVED (Fixes PeerUser errors)
-            try:
-                entity = await self.client.get_entity(chat_id)
-            except Exception as e:
-                self.logger.warning(f"Could not resolve entity for {chat_id}, trying to proceed anyway: {e}")
-                entity = chat_id
-            
-            # HUMAN-LIKE: Random delay between typing and sending (0.5s - 2.5s)
+            # ── STEP 3: Random micro-delay before sending ───────────────────
             await asyncio.sleep(random.uniform(0.5, 2.5))
 
+            # ── STEP 4: Send the message ────────────────────────────────────
             if copy_mode:
                 await self.client.send_message(
                     entity=entity,
