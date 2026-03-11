@@ -149,7 +149,7 @@ class UserSender:
                 return val
         
         active = await is_plan_active(self.user_id)
-        self.config_cache[cache_key] = (active, datetime.utcnow() + timedelta(minutes=10))
+        self.config_cache[cache_key] = (active, datetime.utcnow() + timedelta(minutes=1))
         return active
 
     async def start(self):
