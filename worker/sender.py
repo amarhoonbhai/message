@@ -399,6 +399,16 @@ class UserSender:
                 self.logger.info(f"Current cycle checking config...")
                 asyncio.create_task(update_session_activity(self.user_id, self.phone))
                 
+                # AUTO-RECOVERY: If error streak is dangerously high, take a long cooldown
+                if self.error_streak >= 20:
+                    cooldown = min(self.error_streak * 30, 1800)  # Max 30 min
+                    self.logger.warning(f"🛑 High error streak ({self.error_streak}). Cooling down for {cooldown//60}m...")
+                    await self.update_status(f"Cooldown ({cooldown//60}m)")
+                    await asyncio.sleep(cooldown)
+                    # Reset streak after cooldown to give the account a fresh start
+                    self.error_streak = 0
+                    self.config_cache.clear()  # Force fresh data from DB
+                
                 # HUMAN-LIKE BEHAVIOR: First-run staggered start 
                 # (Prevents multiple accounts from hitting Telegram API at once after a bot reboot)
                 if self.first_run:
@@ -412,6 +422,7 @@ class UserSender:
                 if not await self._cached_is_plan_active():
                     self.logger.info(f"Plan expired or inactive, sleeping 5 min...")
                     await self.update_status("Inactive Plan")
+                    self.error_streak = 0  # Not an error, just no plan
                     await asyncio.sleep(300)
                     continue
                 
@@ -640,9 +651,12 @@ class UserSender:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self.logger.error(f"Loop error: {e} - retrying in 60s...")
+                self.error_streak += 1
+                self.logger.error(f"Loop error (streak {self.error_streak}): {e}")
                 await self.update_status("Error (Retrying)")
-                await asyncio.sleep(60)
+                # Exponential backoff: 60s, 120s, 180s... capped at 600s
+                backoff = min(60 * self.error_streak, 600)
+                await asyncio.sleep(backoff)
     
     async def get_all_saved_messages(self) -> list:
         """Fetch ALL Saved Messages (excluding command messages)."""
