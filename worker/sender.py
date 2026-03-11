@@ -740,11 +740,13 @@ class UserSender:
             return (True, int(e.seconds * 1.1) + 5)
             
         except PeerFloodError:
-            self.logger.error(f"PeerFlood error on {chat_title}")
+            self.error_streak += 1
+            self.logger.error(f"🚨 PeerFlood on {chat_title} — account is restricted by Telegram!")
             asyncio.create_task(log_send(self.user_id, chat_id, message.id, "peer_flood", "PeerFlood", phone=self.phone))
-            # PeerFlood usually means the account is restricted for this specific group/action
-            # We don't want to stop the whole loop, just wait a bit and maybe skip this group next time
-            return (True, 300) # 5 min cooling
+            # PeerFlood is account-wide — retrying other groups will only make it worse.
+            # Sleep for 2 hours to let the restriction lift naturally.
+            await self.update_status("🚨 PeerFlood (2h cooldown)")
+            return (True, 7200)  # 2 hour cooling
             
         except (ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError) as e:
             self.logger.warning(f"❌ Removing invalid/expired group {chat_title}: {type(e).__name__}")
