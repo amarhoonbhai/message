@@ -1,6 +1,6 @@
 """
 Two-Factor Authentication handler for Login Bot.
-Uses global API credentials from config.
+Uses per-user API credentials collected during login.
 """
 
 import logging
@@ -11,7 +11,7 @@ from telethon.errors import PasswordHashInvalidError, FloodWaitError
 from config import MAIN_BOT_USERNAME
 from login_bot.handlers.otp import _login_clients
 from login_bot.utils.keyboards import get_2fa_keyboard, get_cancel_keyboard, get_success_keyboard
-from login_bot.utils.helpers import escape_markdown
+from shared.utils import escape_markdown, build_connection_success_text
 from db.models import create_session, create_user
 
 logger = logging.getLogger(__name__)
@@ -72,19 +72,14 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
         
         context.user_data.clear()
         
-        # Edit the verifying message to show success
-        success_text = """
-✅ *Connected Successfully!*
-
-Your account is now linked.
-Open the main dashboard to manage groups, interval and plans.
-
-🎁 You have a *7-day free trial*.
-Invite 3 friends to get +7 days more!
-"""
+        # Fetch the user's current plan and build success text
+        from db.models import get_plan
+        from shared.utils import build_connection_success_text
+        plan = await get_plan(user_id)
+        text = build_connection_success_text(phone, plan)
         
         await verifying_msg.edit_text(
-            success_text,
+            text,
             parse_mode="Markdown",
             reply_markup=get_success_keyboard(),
         )

@@ -13,7 +13,7 @@ from main_bot.utils.keyboards import (
     get_confirm_disconnect_keyboard,
     get_back_home_keyboard
 )
-from main_bot.utils.helpers import escape_markdown
+from shared.utils import escape_markdown
 
 def format_date(dt: datetime) -> str:
     if not dt:

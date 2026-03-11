@@ -4,7 +4,6 @@ Login Bot entry point for Group Message Scheduler.
 
 import logging
 import asyncio
-import signal
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -12,10 +11,9 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-from telegram.request import HTTPXRequest
 
 from config import LOGIN_BOT_TOKEN
-from db.database import init_database
+from shared.bot_init import setup_logging, create_base_application, run_bot_gracefully
 
 # Import handlers
 from login_bot.handlers.start import start_handler
@@ -42,32 +40,11 @@ from login_bot.handlers.manage import (
 )
 
 # Configure logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
-logger = logging.getLogger(__name__)
-logging.getLogger("httpx").setLevel(logging.WARNING)
+logger = setup_logging()
 
 def create_application() -> Application:
     """Create and configure the bot application."""
-    if not LOGIN_BOT_TOKEN:
-        raise ValueError("LOGIN_BOT_TOKEN is not set in environment")
-
-    # Hardened timeouts for stability
-    request = HTTPXRequest(
-        connect_timeout=30,
-        read_timeout=60,
-        write_timeout=60,
-        pool_timeout=60,
-    )
-
-    application = (
-        Application.builder()
-        .token(LOGIN_BOT_TOKEN)
-        .request(request)
-        .build()
-    )
+    application = create_base_application(LOGIN_BOT_TOKEN)
 
     # ============== Command Handlers ==============
     application.add_handler(CommandHandler("start", start_handler))
@@ -113,38 +90,12 @@ def create_application() -> Application:
 
 async def main():
     """Start the bot."""
-    logger.info("=" * 50)
-    logger.info("Group Message Scheduler - Login Bot V3.3")
-    logger.info("=" * 50)
+    print("=" * 50)
+    print("Group Message Scheduler - Login Bot V3.3")
+    print("=" * 50)
 
-    # Initialize database within the same loop
-    await init_database()
-
-    # Build application
     application = create_application()
-    
-    # Setup stop event for graceful shutdown
-    stop_event = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, lambda: stop_event.set())
-        except NotImplementedError:
-            pass
-
-    async with application:
-        await application.initialize()
-        await application.start()
-        await application.updater.start_polling(drop_pending_updates=True)
-        
-        logger.info("Login Bot is running (Async Polling)...")
-        
-        # Wait for shutdown signal
-        await stop_event.wait()
-        
-        logger.info("Login Bot is stopping...")
-        await application.updater.stop()
-        await application.stop()
+    await run_bot_gracefully(application, "Login Bot")
 
 if __name__ == "__main__":
     try:

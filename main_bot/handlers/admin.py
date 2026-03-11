@@ -14,7 +14,7 @@ from main_bot.utils.keyboards import (
     get_night_mode_settings_keyboard
 )
 from config import OWNER_ID
-from main_bot.utils.helpers import escape_markdown
+from shared.utils import escape_markdown
 
 
 # Conversation states

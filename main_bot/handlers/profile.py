@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 
 from db.models import get_user_profile_data, get_plan
 from main_bot.utils.keyboards import get_profile_keyboard
-from main_bot.utils.helpers import escape_markdown
+from shared.utils import escape_markdown
 import datetime
 
 

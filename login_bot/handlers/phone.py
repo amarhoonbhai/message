@@ -1,6 +1,6 @@
 """
 Phone number input handler for Login Bot.
-Uses global API credentials from config.
+Uses per-user API credentials collected during login.
 """
 
 import re

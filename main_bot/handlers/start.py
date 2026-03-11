@@ -9,7 +9,7 @@ from db.models import create_user, get_user, get_plan, get_all_user_sessions
 from main_bot.utils.keyboards import get_welcome_keyboard
 
 
-from main_bot.utils.helpers import escape_markdown
+from shared.utils import escape_markdown
 
 
 async def build_welcome_text(user) -> str:

@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 from db.models import get_all_user_sessions, get_plan, get_user_config, get_group_count, get_account_stats, update_user_config
 from main_bot.utils.keyboards import get_dashboard_keyboard, get_add_account_keyboard
 from config import MIN_INTERVAL_MINUTES
-from main_bot.utils.helpers import escape_markdown
+from shared.utils import escape_markdown
 import datetime
 from db.models import get_user_groups
 
