@@ -7,31 +7,92 @@ import re
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from login_bot.utils.keyboards import get_phone_input_keyboard, get_confirm_phone_keyboard, get_cancel_keyboard
+from login_bot.utils.keyboards import get_phone_input_keyboard, get_confirm_phone_keyboard, get_cancel_keyboard, get_api_input_keyboard
 
 
 async def add_account_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start add account flow - ask for phone number directly."""
+    """Start add account flow - ask for API ID first."""
     query = update.callback_query
     await query.answer()
     
     text = """
-📱 *Enter Your Phone Number*
+⚙️ *Step 1: Enter Telegram API ID*
 
-Enter your phone number with country code.
-Example: `+91XXXXXXXXXX`
-
-Make sure to include the + sign.
+Please enter your **API ID** from [my.telegram.org](https://my.telegram.org).
+It should be a numeric value.
 """
     
     await query.edit_message_text(
         text,
         parse_mode="Markdown",
-        reply_markup=get_phone_input_keyboard(),
+        reply_markup=get_api_input_keyboard(),
+        disable_web_page_preview=True
     )
     
-    # Set state - go directly to phone input
+    context.user_data["state"] = "waiting_api_id"
+
+
+async def receive_api_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process received API ID."""
+    state = context.user_data.get("state")
+    if state != "waiting_api_id":
+        return
+
+    api_id_text = update.message.text.strip()
+    
+    if not api_id_text.isdigit():
+        await update.message.reply_text(
+            "❌ *Invalid API ID*\n\nAPI ID must be a number. Please enter it again:",
+            parse_mode="Markdown",
+            reply_markup=get_api_input_keyboard()
+        )
+        return
+
+    context.user_data["api_id"] = int(api_id_text)
+    context.user_data["state"] = "waiting_api_hash"
+
+    text = """
+🔑 *Step 2: Enter Telegram API Hash*
+
+Now please enter your **API Hash** from [my.telegram.org](https://my.telegram.org).
+"""
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_api_input_keyboard()
+    )
+
+
+async def receive_api_hash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process received API Hash."""
+    state = context.user_data.get("state")
+    if state != "waiting_api_hash":
+        return
+
+    api_hash = update.message.text.strip()
+    
+    if len(api_hash) < 10: # Basic validation
+        await update.message.reply_text(
+            "❌ *Invalid API Hash*\n\nPlease enter a valid API Hash:",
+            parse_mode="Markdown",
+            reply_markup=get_api_input_keyboard()
+        )
+        return
+
+    context.user_data["api_hash"] = api_hash
     context.user_data["state"] = "waiting_phone"
+
+    text = """
+📱 *Step 3: Enter Phone Number*
+
+Finally, enter your phone number with country code.
+Example: `+91XXXXXXXXXX`
+"""
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_phone_input_keyboard()
+    )
 
 
 async def receive_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE):

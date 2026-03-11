@@ -31,7 +31,6 @@ from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.functions.account import UpdateProfileRequest
 
 from config import (
-    API_ID, API_HASH,
     GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES,
     MIN_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL, OWNER_ID,
     MAX_GROUPS_PER_USER
@@ -169,8 +168,13 @@ class UserSender:
             await mark_session_disabled(self.user_id, self.phone, "invalid_session_string")
             return
 
-        api_id = session_data.get("api_id") or API_ID
-        api_hash = session_data.get("api_hash") or API_HASH
+        api_id = session_data.get("api_id")
+        api_hash = session_data.get("api_hash")
+
+        if not api_id or not api_hash:
+            self.logger.error("API ID or Hash missing from session document — disabling")
+            await mark_session_disabled(self.user_id, self.phone, "missing_api_credentials")
+            return
 
         # Build the client first (no network yet)
         self.client = TelegramClient(

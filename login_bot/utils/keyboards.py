@@ -32,6 +32,16 @@ def get_phone_input_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def get_api_input_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard shown during API ID/Hash input."""
+    keyboard = [
+        [
+            InlineKeyboardButton("❌ Cancel Process", callback_data="cancel"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
 
 
 

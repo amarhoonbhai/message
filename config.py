@@ -17,10 +17,6 @@ LOGIN_BOT_TOKEN = os.getenv("LOGIN_BOT_TOKEN", "")
 MAIN_BOT_USERNAME = os.getenv("MAIN_BOT_USERNAME", "")
 LOGIN_BOT_USERNAME = os.getenv("LOGIN_BOT_USERNAME", "spinifyLoginbot")
 
-# ============== Telegram API ==============
-API_ID = 22458350
-API_HASH = "15a5967ac713da91a8751791020dbaf8"
-
 def _safe_int(value: str, default: int = 0) -> int:
     """Safely parse integer from string."""
     try:

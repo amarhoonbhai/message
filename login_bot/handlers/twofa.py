@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telethon.errors import PasswordHashInvalidError, FloodWaitError
 
-from config import API_ID, API_HASH, MAIN_BOT_USERNAME
+from config import MAIN_BOT_USERNAME
 from login_bot.handlers.otp import _login_clients
 from login_bot.utils.keyboards import get_2fa_keyboard, get_cancel_keyboard, get_success_keyboard
 from login_bot.utils.helpers import escape_markdown
@@ -55,9 +55,13 @@ async def receive_2fa_password(update: Update, context: ContextTypes.DEFAULT_TYP
         # Success! Get session string
         session_string = client.session.save()
         
-        # Save to database WITH global API credentials
+        # Get API credentials from context
+        api_id = context.user_data.get("api_id")
+        api_hash = context.user_data.get("api_hash")
+        
+        # Save to database WITH per-user API credentials
         await create_user(user_id)
-        await create_session(user_id, phone, session_string, API_ID, API_HASH)
+        await create_session(user_id, phone, session_string, api_id, api_hash)
         
         # Disconnect client
         await client.disconnect()

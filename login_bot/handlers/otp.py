@@ -15,7 +15,7 @@ from telethon.errors import (
     SessionPasswordNeededError,
 )
 
-from config import API_ID, API_HASH
+
 from db.models import create_session, create_user
 from login_bot.utils.keyboards import (
     get_otp_keypad, get_resend_otp_keyboard, get_2fa_keyboard, get_success_keyboard
@@ -51,12 +51,19 @@ async def send_otp_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.answer("📤 Sending OTP...")
     
+    api_id = context.user_data.get("api_id")
+    api_hash = context.user_data.get("api_hash")
+    
+    if not api_id or not api_hash:
+        await query.answer("❌ API Credentials not found. Start over.", show_alert=True)
+        return
+
     try:
-        # Create Telethon client with GLOBAL API credentials
+        # Create Telethon client with PER-USER API credentials
         client = TelegramClient(
             StringSession(),
-            API_ID,
-            API_HASH,
+            api_id,
+            api_hash,
             device_model="Group Message Scheduler",
             system_version="1.0",
             app_version="1.0"
@@ -264,9 +271,13 @@ async def save_session_and_complete(
         # Get session string
         session_string = client.session.save()
         
-        # Save to database WITH global API credentials
+        # Get API credentials from context
+        api_id = context.user_data.get("api_id")
+        api_hash = context.user_data.get("api_hash")
+        
+        # Save to database WITH per-user API credentials
         await create_user(user_id)
-        await create_session(user_id, phone, session_string, API_ID, API_HASH)
+        await create_session(user_id, phone, session_string, api_id, api_hash)
         
         # Disconnect client
         await client.disconnect()

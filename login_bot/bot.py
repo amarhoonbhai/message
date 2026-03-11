@@ -22,6 +22,8 @@ from login_bot.handlers.start import start_handler
 from login_bot.handlers.phone import (
     add_account_callback,
     receive_phone_number,
+    receive_api_id,
+    receive_api_hash,
     edit_phone_callback,
     cancel_callback,
 )
@@ -96,7 +98,11 @@ def create_application() -> Application:
 
         state = context.user_data.get("state")
 
-        if state == "waiting_phone":
+        if state == "waiting_api_id":
+            await receive_api_id(update, context)
+        elif state == "waiting_api_hash":
+            await receive_api_hash(update, context)
+        elif state == "waiting_phone":
             await receive_phone_number(update, context)
         elif state == "waiting_2fa":
             await receive_2fa_password(update, context)

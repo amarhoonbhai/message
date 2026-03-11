@@ -20,9 +20,10 @@ Welcome to the standalone authentication bot for the Group Message Scheduler.
 ✅ Sessions encrypted using AES-256
 ✅ Complete control over your data
 
-To connect your account, you just need:
-1️⃣ Your Phone Number
-2️⃣ The OTP sent to your Telegram
+To connect your account, you will need:
+1️⃣ Your **API ID** & **API Hash** (from [my.telegram.org](https://my.telegram.org))
+2️⃣ Your **Phone Number**
+3️⃣ The **OTP** sent to your Telegram
 
 👇 *Tap below to start the connection process*
 """
