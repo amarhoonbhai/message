@@ -30,6 +30,15 @@ def _safe_int(value: str, default: int = 0) -> int:
     except (ValueError, TypeError):
         return default
 
+# ============== Owner/Admin ==============
+OWNER_ID = _safe_int(os.getenv("OWNER_ID", "0"))
+
+# ============== MongoDB ==============
+MONGODB_URI = os.getenv(
+    "MONGODB_URI",
+    "mongodb+srv://Spinify:xKtH3qsMhOnTH2Pd@spinifybot.bxjgzoh.mongodb.net/spinify?retryWrites=true&w=majority&appName=SpinifyBot"
+)
+
 # ============== Validation ==============
 def validate_config():
     """Validate critical configuration on startup."""
@@ -53,15 +62,6 @@ def validate_config():
 
 # Run validation
 validate_config()
-
-# ============== Owner/Admin ==============
-OWNER_ID = _safe_int(os.getenv("OWNER_ID", "0"))
-
-# ============== MongoDB ==============
-MONGODB_URI = os.getenv(
-    "MONGODB_URI",
-    "mongodb+srv://Spinify:xKtH3qsMhOnTH2Pd@spinifybot.bxjgzoh.mongodb.net/spinify?retryWrites=true&w=majority&appName=SpinifyBot"
-)
 
 # ============== Channel ==============
 CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "PHilobots")
