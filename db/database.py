@@ -17,15 +17,21 @@ def get_database() -> AsyncIOMotorDatabase:
     global _client, _db
     
     if _db is None:
-        # Configure SSL/TLS for MongoDB Atlas
-        # Use certifi's certificate bundle for proper SSL verification
-        _client = AsyncIOMotorClient(
-            MONGODB_URI,
-            tlsCAFile=certifi.where(),
-            serverSelectionTimeoutMS=30000,
-            connectTimeoutMS=30000,
-        )
-        _db = _client.spinify
+        try:
+            # Configure SSL/TLS for MongoDB Atlas
+            # Use certifi's certificate bundle for proper SSL verification
+            _client = AsyncIOMotorClient(
+                MONGODB_URI,
+                tlsCAFile=certifi.where(),
+                serverSelectionTimeoutMS=30000,
+                connectTimeoutMS=30000,
+            )
+            # Access a property to trigger client creation (idempotent)
+            _db = _client.spinify
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to connect to MongoDB: {e}")
+            raise
     
     return _db
 

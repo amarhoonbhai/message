@@ -34,12 +34,19 @@ def _safe_int(value: str, default: int = 0) -> int:
 def validate_config():
     """Validate critical configuration on startup."""
     missing = []
-    if not MAIN_BOT_TOKEN: missing.append("MAIN_BOT_TOKEN")
-    if not LOGIN_BOT_TOKEN: missing.append("LOGIN_BOT_TOKEN")
+    if not MAIN_BOT_TOKEN or "main_bot_token" in MAIN_BOT_TOKEN.lower(): 
+        missing.append("MAIN_BOT_TOKEN")
+    if not LOGIN_BOT_TOKEN or "login_bot_token" in LOGIN_BOT_TOKEN.lower(): 
+        missing.append("LOGIN_BOT_TOKEN")
+    
+    # Check for placeholder MongoDB URI
+    if "username:password" in MONGODB_URI:
+        missing.append("MONGODB_URI (Current value looks like a placeholder)")
+        
     if missing:
         import sys
         print("\n" + "!"*50)
-        print(f"CRITICAL ERROR: Missing configuration keys:\n{', '.join(missing)}")
+        print(f"CRITICAL ERROR: Missing or placeholder configuration keys:\n{', '.join(missing)}")
         print("Please check your .env file.")
         print("!"*50 + "\n")
         sys.exit(1)

@@ -47,6 +47,8 @@ async def ensure_indexes(db: AsyncIOMotorDatabase):
         ("send_logs", [("user_id", 1), ("phone", 1), ("chat_id", 1), ("saved_msg_id", 1), ("sent_at", -1)], {"name": "idx_anti_duplicate"}),
         ("send_logs", [("user_id", 1), ("sent_at", -1)], {}),
         ("send_logs", "sent_at", {}),
+        # TTL Index: Automatically delete logs after 30 days (2,592,000 seconds)
+        ("send_logs", "sent_at", {"name": "idx_logs_ttl", "expireAfterSeconds": 2592000}),
     ]
 
     for coll_name, keys, options in index_definitions:

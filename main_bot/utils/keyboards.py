@@ -134,7 +134,10 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
     """Build admin panel keyboard."""
     keyboard = [
         [
+            InlineKeyboardButton("🩺 Health Monitor", callback_data="admin_health"),
             InlineKeyboardButton("📊 Live Stats", callback_data="admin_stats"),
+        ],
+        [
             InlineKeyboardButton("📢 Global Blast", callback_data="admin_broadcast"),
         ],
         [

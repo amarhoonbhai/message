@@ -432,7 +432,7 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         config = await get_user_config(user_id)
-        current = config.get("interval_min", 30)
+        current = config.get("interval_min", MIN_INTERVAL_MINUTES)
         await reply_to_command(client, message,
             f"➤ Current Interval: {current} minutes\n\n"
             f"Usage: .interval <minutes>\n"

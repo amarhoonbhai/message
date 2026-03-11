@@ -238,7 +238,7 @@ class UserSender:
         Called AFTER the semaphore is released — runs for the entire session lifetime.
         """
         # Initial Smart Delay: stagger startups to avoid simultaneous API bursts
-        startup_delay = random.randint(10, 60)
+        startup_delay = random.randint(5, 15)
         self.logger.info(f"🏁 Waiting {startup_delay}s (anti-burst) before loop...")
         await asyncio.sleep(startup_delay)
 
@@ -402,7 +402,7 @@ class UserSender:
                 # HUMAN-LIKE BEHAVIOR: First-run staggered start 
                 # (Prevents multiple accounts from hitting Telegram API at once after a bot reboot)
                 if self.first_run:
-                    stagger_delay = random.uniform(30, 120)  # 30s to 2min
+                    stagger_delay = random.uniform(5, 30)  # 5s to 30s
                     self.logger.info(f"⏳ First-run stagger: waiting {stagger_delay:.1f}s before starting...")
                     await self.update_status(f"Staggering ({int(stagger_delay)}s)")
                     await asyncio.sleep(stagger_delay)
@@ -598,9 +598,8 @@ class UserSender:
                     else:
                         base_gap = self.adaptive_group_gap.get_gap()
                         gap_type = "ADAPTIVE_GROUP_GAP"
-                        # Divide gap across parallel accounts so total rate stays constant
-                        if num_accounts > 1:
-                            base_gap = max(30, base_gap // num_accounts)
+                        # Gap is applied per-account for safety. 
+                        # Multi-account distribution already provides global speedup.
 
                     wait_time = random.randint(int(base_gap * 0.9), int(base_gap * 1.1))
                     self.logger.info(f"⏳ Waiting {wait_time}s ({gap_type}) before next step...")
@@ -671,13 +670,26 @@ class UserSender:
             # HUMAN-LIKE BEHAVIOR: Typing indicator
             # Randomized duration (3-8s) and 10% chance to skip typing completely
             if random.random() > 0.1:
-                typing_duration = random.uniform(3, 8)
-                async with self.client.action(chat_id, 'typing'):
-                    await asyncio.sleep(typing_duration)
+                try:
+                    typing_duration = random.uniform(3, 8)
+                    async with self.client.action(chat_id, 'typing'):
+                        await asyncio.sleep(typing_duration)
+                except Exception as e:
+                    self.logger.debug(f"Could not show typing indicator for {chat_id}: {e}")
+
+            # ENSURE ENTITY IS RESOLVED (Fixes PeerUser errors)
+            try:
+                entity = await self.client.get_entity(chat_id)
+            except Exception as e:
+                self.logger.warning(f"Could not resolve entity for {chat_id}, trying to proceed anyway: {e}")
+                entity = chat_id
             
+            # HUMAN-LIKE: Random delay between typing and sending (0.5s - 2.5s)
+            await asyncio.sleep(random.uniform(0.5, 2.5))
+
             if copy_mode:
                 await self.client.send_message(
-                    entity=chat_id,
+                    entity=entity,
                     message=message.text or "",
                     file=message.media,
                     formatting_entities=message.entities
@@ -685,7 +697,7 @@ class UserSender:
                 log_action = "Copied"
             else:
                 await self.client.forward_messages(
-                    entity=chat_id,
+                    entity=entity,
                     messages=message.id,
                     from_peer=InputPeerSelf()
                 )
@@ -734,7 +746,9 @@ class UserSender:
             return (False, 0)
             
         except InputUserDeactivatedError:
-            self.logger.error(f"User account deactivated!")
+            self.logger.error(f"🛑 Account {self.phone} is deactivated by Telegram!")
+            from db.models import mark_session_disabled, log_send
+            asyncio.create_task(mark_session_disabled(self.user_id, self.phone, reason="User Deactivated"))
             asyncio.create_task(log_send(self.user_id, chat_id, message.id, "failed", "UserDeactivated", phone=self.phone))
             self.running = False
             return (False, 0)
