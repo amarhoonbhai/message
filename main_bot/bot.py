@@ -45,6 +45,7 @@ from main_bot.handlers.admin import (
     gen_code_callback,
     generate_command,
     admin_users_callback,
+    admin_nightmode_callback,
     set_nightmode_callback,
     nightmode_command,
     admin_health_callback,
