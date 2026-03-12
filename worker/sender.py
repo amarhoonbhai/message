@@ -327,10 +327,15 @@ class UserSender:
                 await self.client.disconnect()
 
     async def stop(self):
-        """Stop the sender."""
+        """Stop the sender safely and cleanly close the connection."""
         self.running = False
         if self.client:
-            await self.client.disconnect()
+            try:
+                # Disconnect politely
+                if self.client.is_connected():
+                    await self.client.disconnect()
+            except Exception as e:
+                self.logger.error(f"Error disconnecting client on stop: {e}")
     
     async def check_and_enforce_bio(self):
         """Check and enforce bio for trial users."""
