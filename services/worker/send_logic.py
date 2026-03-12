@@ -162,29 +162,58 @@ async def send_message_to_group(
                             "failed", "UserDeactivated")
         return ("deactivated", 0)
 
+    except ValueError as e:
+        # Happens when "Could not find the input entity for PeerUser/PeerChannel"
+        logger.warning(f"Entity not found for {group_id}: {e}")
+        asyncio.create_task(toggle_group(user_id, group_id, enabled=False, reason="Entity Not Found / Not Cached"))
+        await log_job_event(job_id, user_id, phone, group_id, message_id,
+                            "paused", "Entity Not Found")
+        return ("paused", 0)
+
     except RPCError as e:
         error_msg = str(e).upper()
-        if any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN",
-                                          "USER_BANNED_IN_CHANNEL"]):
-            asyncio.create_task(toggle_group(user_id, group_id, enabled=False,
-                                             reason=f"RPC: {error_msg}"))
+        
+        # 1. MESSAGE_ID_INVALID: The ad message was deleted from Saved Messages
+        if "MESSAGE_ID_INVALID" in error_msg or "OPERATION ON SUCH MESSAGE" in error_msg:
+            logger.warning(f"Message ID invalid or deleted (msg {message_id})")
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "paused", f"RPC: {error_msg}")
+                                "skipped", "Message deleted/invalid")
+            # Don't pause the group, just skip this message
+            return ("failed", 0)
+
+        # 2. TOPIC_CLOSED or Join Required: Auto-pause the group
+        elif any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN",
+                                          "USER_BANNED_IN_CHANNEL", "TOPIC_CLOSED", "JOIN THE DISCUSSION GROUP",
+                                          "SEND_MESSAGES_FORBIDDEN"]):
+            asyncio.create_task(toggle_group(user_id, group_id, enabled=False,
+                                             reason=f"Restricted: {error_msg[:40]}"))
+            await log_job_event(job_id, user_id, phone, group_id, message_id,
+                                "paused", f"Restricted: {error_msg[:40]}")
             return ("paused", 0)
+            
+        # 3. CHANNEL_INVALID or Not Occupied: Remove the group
         elif any(x in error_msg for x in ["CHANNEL_INVALID", "USERNAME_NOT_OCCUPIED",
                                             "USERNAME_INVALID", "INVITE_HASH_EXPIRED"]):
             asyncio.create_task(remove_group(user_id, group_id))
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "removed", f"RPC: {error_msg}")
+                                "removed", f"Invalid: {error_msg[:20]}")
             return ("removed", 0)
+            
+        # 4. Message Empty: User tried to copy a totally empty URL preview or similar unsupported media
+        elif "MESSAGE CANNOT BE EMPTY" in error_msg:
+            logger.warning(f"Empty message content for copying (msg {message_id})")
+            await log_job_event(job_id, user_id, phone, group_id, message_id,
+                                "skipped", "Empty message or unsupported media")
+            return ("failed", 0)
+            
         else:
             logger.error(f"RPCError on group {group_id}: {e}")
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "failed", str(e))
+                                "failed", error_msg[:50])
             return ("failed", 0)
 
     except Exception as e:
         logger.error(f"Unexpected error on group {group_id}: {e}")
         await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "failed", str(e))
+                            "failed", str(e)[:50])
         return ("failed", 0)
