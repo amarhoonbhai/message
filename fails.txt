@@ -1,0 +1,5 @@
+2350 occurrences: The specified message ID is invalid or you can't do that operation on such message (caused by ForwardMessagesRequest)
+586 occurrences: RPCError 400: TOPIC_CLOSED (caused by ForwardMessagesRequest)
+448 occurrences: Could not find the input entity for PeerUser(user_id=2424072993) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+217 occurrences: You join the discussion group before commenting, see [here](/api/discussion#requiring-users-to-join-the-group) for more info (caused by SendMessageRequest)
+214 occurrences: The message cannot be empty unless a file is provided

@@ -75,6 +75,23 @@ async def send_message_to_group(
                                 "paused", f"Pre-check: {type(e).__name__}")
             return ("paused", 0)
 
+        except ValueError as e:
+            logger.info(f"Entity not in cache for {group_id}, trying to fetch from dialogs...")
+            try:
+                # Fetch recent dialogs to populate cache
+                async for dialog in client.iter_dialogs(limit=200):
+                    if dialog.id == group_id:
+                        entity = dialog.entity
+                        break
+                if not entity:
+                    raise ValueError(f"Could not find entity {group_id} in dialogs either.")
+            except Exception as dialog_e:
+                logger.warning(f"Entity not found for {group_id} despite dialogs fallback: {dialog_e}")
+                asyncio.create_task(toggle_group(user_id, group_id, enabled=False, reason="Entity Not Found / Not Cached"))
+                await log_job_event(job_id, user_id, phone, group_id, message_id,
+                                    "paused", "Entity Not Found")
+                return ("paused", 0)
+
         except Exception as e:
             logger.warning(f"Entity resolve error for {group_id}: {e}")
             await log_job_event(job_id, user_id, phone, group_id, message_id,
@@ -109,9 +126,9 @@ async def send_message_to_group(
 
             await client.send_message(
                 entity=entity,
-                message=saved_msg.text or "",
+                message=saved_msg.text or None,
                 file=saved_msg.media,
-                formatting_entities=saved_msg.entities,
+                formatting_entities=saved_msg.entities if saved_msg.text else None,
             )
         else:
             await client.forward_messages(
@@ -162,13 +179,6 @@ async def send_message_to_group(
                             "failed", "UserDeactivated")
         return ("deactivated", 0)
 
-    except ValueError as e:
-        # Happens when "Could not find the input entity for PeerUser/PeerChannel"
-        logger.warning(f"Entity not found for {group_id}: {e}")
-        asyncio.create_task(toggle_group(user_id, group_id, enabled=False, reason="Entity Not Found / Not Cached"))
-        await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "paused", "Entity Not Found")
-        return ("paused", 0)
 
     except RPCError as e:
         error_msg = str(e).upper()

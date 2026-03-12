@@ -120,6 +120,7 @@ async def mark_session_disabled(user_id: int, phone: str, reason: str):
     await db.sessions.update_one(
         {"user_id": user_id, "phone": phone},
         {"$set": {
+            "connected": False,
             "worker_disabled": True,
             "disabled_reason": reason,
             "disabled_at": datetime.utcnow(),

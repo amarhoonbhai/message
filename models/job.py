@@ -91,7 +91,7 @@ async def claim_job(job_id: str, worker_id: str) -> Optional[dict]:
     """
     db = get_database()
     return await db.scheduled_jobs.find_one_and_update(
-        {"job_id": job_id, "status": "queued"},
+        {"job_id": job_id, "status": {"$in": ["queued", "pending"]}},
         {"$set": {
             "status": "processing",
             "worker_id": worker_id,

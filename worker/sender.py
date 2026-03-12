@@ -479,9 +479,10 @@ class UserSender:
                 copy_mode = config.get("copy_mode", False)
                 interval_minutes = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
                 
-                # Prime dialog cache to prevent "Could not find entity" errors
+                # Prime dialog cache to prevent "Could not find entity" errors for private groups
                 try:
-                    await self.client.get_dialogs(limit=100)
+                    async for _ in self.client.iter_dialogs(limit=300):
+                        pass
                 except Exception as e:
                     self.logger.warning(f"Error priming dialogs: {e}")
 
@@ -538,11 +539,18 @@ class UserSender:
                 await asyncio.sleep(backoff)
     
     async def get_all_saved_messages(self) -> list:
-        """Fetch ALL Saved Messages (excluding command messages)."""
+        """Fetch ALL Saved Messages (excluding command messages and service messages)."""
         try:
             messages = []
             async for msg in self.client.iter_messages('me', limit=100):
+                # Skip command messages
                 if msg.text and msg.text.strip().startswith("."):
+                    continue
+                # Skip MessageService (calls, pins, joins — cannot be forwarded)
+                if hasattr(msg, 'action') and msg.action is not None:
+                    continue
+                # Skip messages with no content at all
+                if not msg.text and not msg.media:
                     continue
                 messages.append(msg)
             messages.reverse()
@@ -576,6 +584,22 @@ class UserSender:
                 asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=f"Pre-check: {type(e).__name__}"))
                 asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "auto_paused", f"Pre-check: {type(e).__name__}", phone=self.phone))
                 return (False, 0)
+            except ValueError as e:
+                # Private group not in Telethon's entity cache — scan dialogs to find it
+                self.logger.info(f"Entity not cached for {chat_id}, scanning dialogs...")
+                try:
+                    async for dialog in self.client.iter_dialogs(limit=300):
+                        if dialog.id == chat_id:
+                            entity = dialog.entity
+                            break
+                    if not entity:
+                        raise ValueError(f"Not found in dialogs either")
+                except Exception as dial_e:
+                    self.logger.warning(f"Could not resolve entity for {chat_id}: {dial_e}")
+                    asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason="Entity Not Found / Not Cached"))
+                    asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", f"Entity error: {dial_e}", phone=self.phone))
+                    return (False, 0)
+
             except Exception as e:
                 self.logger.warning(f"Could not resolve entity for {chat_id}: {e}")
                 # Don't proceed if we can't even find the group
@@ -603,9 +627,9 @@ class UserSender:
 
                 await self.client.send_message(
                     entity=entity,
-                    message=message.text or "",
+                    message=message.text or None,
                     file=message.media,
-                    formatting_entities=message.entities
+                    formatting_entities=message.entities if message.text else None
                 )
                 log_action = "Copied"
             else:
@@ -680,6 +704,14 @@ class UserSender:
                 self.logger.warning(f"❌ Removing group {chat_title} due to fatal RPC error: {e}")
                 asyncio.create_task(remove_group(self.user_id, chat_id))
                 asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "removed", f"Fatal RPC: {error_msg}", phone=self.phone))
+            elif "TOPIC_CLOSED" in error_msg:
+                # Topic is closed but group itself may be valid — just skip, don't pause
+                self.logger.warning(f"⚠️ Topic closed in {chat_title} — skipping (not pausing)")
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "skipped", "Topic closed", phone=self.phone))
+            elif "MESSAGE_ID_INVALID" in error_msg or "OPERATION ON SUCH MESSAGE" in error_msg:
+                # Stale message ID — skip silently, don't pause group
+                self.logger.warning(f"⚠️ Message ID invalid for msg {message.id} — skipping")
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "skipped", "Message ID invalid", phone=self.phone))
             else:
                 self.logger.error(f"RPC Error forwarding to {chat_title}: {e}")
                 asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone))
