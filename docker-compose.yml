@@ -1,0 +1,90 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Docker Compose — Group Message Scheduler (Distributed Architecture)
+#
+# Usage:
+#   docker compose up -d                    # Start all services
+#   docker compose up --scale worker=20     # Scale workers
+#   docker compose logs -f scheduler        # View scheduler logs
+#   docker compose down                     # Stop everything
+# ══════════════════════════════════════════════════════════════════════════════
+
+version: "3.9"
+
+services:
+  # ── Infrastructure ────────────────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Bot Services ──────────────────────────────────────────────────────────
+
+  bot:
+    build:
+      context: .
+      dockerfile: services/bot/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+
+  login_bot:
+    build:
+      context: .
+      dockerfile: services/login_service/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+
+  # ── Scheduler (single instance) ──────────────────────────────────────────
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: services/scheduler/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+
+  # ── Workers (horizontally scalable) ──────────────────────────────────────
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    deploy:
+      replicas: 5
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  redis_data:

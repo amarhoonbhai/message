@@ -5,3 +5,5 @@ pymongo==4.6.1
 python-dotenv==1.0.0
 pytz==2024.1
 certifi>=2023.0.0
+arq>=0.26
+redis>=5.0

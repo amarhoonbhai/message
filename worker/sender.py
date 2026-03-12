@@ -38,7 +38,7 @@ from config import (
 from db.models import (
     get_session, get_user_groups, get_user_config,
     update_last_saved_id, update_current_msg_index,
-    is_plan_active, log_send, remove_group, toggle_group,
+    is_plan_active, log_send as db_log_send, remove_group, toggle_group,
     update_session_activity, is_trial_user, get_all_user_sessions,
     mark_session_auth_failed, mark_session_disabled, reset_session_auth_fails
 )
@@ -693,18 +693,18 @@ class UserSender:
                 # Group is dead — remove it immediately, don't even try to send
                 self.logger.warning(f"❌ Pre-check failed: {chat_title} is invalid ({type(e).__name__}). Removing.")
                 asyncio.create_task(remove_group(self.user_id, chat_id))
-                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "removed", f"Pre-check: {type(e).__name__}", phone=self.phone))
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "removed", f"Pre-check: {type(e).__name__}", phone=self.phone))
                 return (False, 0)
             except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
                 # Group is restricted — auto-pause, don't waste an API call
                 self.logger.warning(f"⚠️ Pre-check: {chat_title} is restricted ({type(e).__name__}). Auto-pausing.")
                 asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=f"Pre-check: {type(e).__name__}"))
-                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "auto_paused", f"Pre-check: {type(e).__name__}", phone=self.phone))
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "auto_paused", f"Pre-check: {type(e).__name__}", phone=self.phone))
                 return (False, 0)
             except Exception as e:
                 self.logger.warning(f"Could not resolve entity for {chat_id}: {e}")
                 # Don't proceed if we can't even find the group
-                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "failed", f"Entity error: {e}", phone=self.phone))
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", f"Entity error: {e}", phone=self.phone))
                 return (False, 0)
             
             # ── STEP 2: Human-like typing (safe — errors are swallowed) ─────
@@ -721,6 +721,11 @@ class UserSender:
 
             # ── STEP 4: Send the message ────────────────────────────────────
             if copy_mode:
+                # Safeguard: skip empty messages (no text and no media)
+                if not message.text and not message.media:
+                    self.logger.warning("Skipping empty message")
+                    return (False, 0)
+
                 await self.client.send_message(
                     entity=entity,
                     message=message.text or "",
@@ -742,7 +747,7 @@ class UserSender:
             self.error_streak = 0
             
             # Log in background to not block the main sender loop
-            asyncio.create_task(log_send(
+            asyncio.create_task(db_log_send(
                 user_id=self.user_id,
                 chat_id=chat_id,
                 saved_msg_id=message.id,
@@ -755,13 +760,13 @@ class UserSender:
             self.logger.warning(f"FloodWait: {e.seconds}s on {chat_title}")
             self.adaptive_group_gap.on_flood(e.seconds)
             self.adaptive_msg_gap.on_flood(e.seconds)
-            asyncio.create_task(log_send(self.user_id, chat_id, message.id, "flood_wait", f"FloodWait {e.seconds}s", phone=self.phone))
+            asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "flood_wait", f"FloodWait {e.seconds}s", phone=self.phone))
             return (True, int(e.seconds * 1.1) + 5)
             
         except PeerFloodError:
             self.error_streak += 1
             self.logger.error(f"🚨 PeerFlood on {chat_title} — account is restricted by Telegram!")
-            asyncio.create_task(log_send(self.user_id, chat_id, message.id, "peer_flood", "PeerFlood", phone=self.phone))
+            asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "peer_flood", "PeerFlood", phone=self.phone))
             # PeerFlood is account-wide — retrying other groups will only make it worse.
             # Sleep for 2 hours to let the restriction lift naturally.
             await self.update_status("🚨 PeerFlood (2h cooldown)")
@@ -770,21 +775,20 @@ class UserSender:
         except (ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError) as e:
             self.logger.warning(f"❌ Removing invalid/expired group {chat_title}: {type(e).__name__}")
             asyncio.create_task(remove_group(self.user_id, chat_id))
-            asyncio.create_task(log_send(self.user_id, chat_id, message.id, "removed", f"Invalid/Expired: {type(e).__name__}", phone=self.phone))
+            asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "removed", f"Invalid/Expired: {type(e).__name__}", phone=self.phone))
             return (False, 0)
 
         except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
             reason = type(e).__name__
             self.logger.warning(f"⚠️ Pausing restricted group {chat_title}: {reason}")
             asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=reason))
-            asyncio.create_task(log_send(self.user_id, chat_id, message.id, "auto_paused", f"Auto-Paused: {reason}", phone=self.phone))
+            asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "auto_paused", f"Auto-Paused: {reason}", phone=self.phone))
             return (False, 0)
             
         except InputUserDeactivatedError:
             self.logger.error(f"🛑 Account {self.phone} is deactivated by Telegram!")
-            from db.models import mark_session_disabled, log_send
             asyncio.create_task(mark_session_disabled(self.user_id, self.phone, reason="User Deactivated"))
-            asyncio.create_task(log_send(self.user_id, chat_id, message.id, "failed", "UserDeactivated", phone=self.phone))
+            asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", "UserDeactivated", phone=self.phone))
             self.running = False
             return (False, 0)
             
@@ -796,20 +800,20 @@ class UserSender:
             if any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN", "USER_BANNED_IN_CHANNEL"]):
                 self.logger.warning(f"⚠️ Auto-pausing group {chat_title} due to RPC error: {e}")
                 asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=f"RPC Error: {error_msg}"))
-                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "auto_paused", f"RPC: {error_msg}", phone=self.phone))
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "auto_paused", f"RPC: {error_msg}", phone=self.phone))
             elif any(x in error_msg for x in ["CHANNEL_INVALID", "USERNAME_NOT_OCCUPIED", "USERNAME_INVALID", "INVITE_HASH_EXPIRED"]):
                 self.logger.warning(f"❌ Removing group {chat_title} due to fatal RPC error: {e}")
                 asyncio.create_task(remove_group(self.user_id, chat_id))
-                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "removed", f"Fatal RPC: {error_msg}", phone=self.phone))
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "removed", f"Fatal RPC: {error_msg}", phone=self.phone))
             else:
                 self.logger.error(f"RPC Error forwarding to {chat_title}: {e}")
-                asyncio.create_task(log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone))
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone))
             return (False, 0)
             
         except Exception as e:
             self.error_streak += 1
             self.logger.error(f"Error forwarding to {chat_title}: {e}")
-            asyncio.create_task(log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone))
+            asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone))
             return (False, 0)
 
     async def _connection_watchdog(self):
