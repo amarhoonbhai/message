@@ -172,15 +172,23 @@ async def admin_health_callback(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.answer()
     
-    from db.models import get_all_connected_sessions
+    from db.models import get_all_connected_sessions, get_plan
     sessions = await get_all_connected_sessions()
     
     text = "🩺 *SESSION HEALTH MONITOR*\n\n"
     
-    if not sessions:
-        text += "_No active sessions found._"
-    else:
+    active_sessions_count = 0
+    if sessions:
         for s in sessions:
+            user_id = s.get("user_id")
+            if not user_id: continue
+            
+            # Only show users with an active plan
+            plan = await get_plan(user_id)
+            if not plan or plan.get("status") != "active":
+                continue
+                
+            active_sessions_count += 1
             phone = s.get("phone", "Unknown")
             status = s.get("worker_status", "Off")
             streak = s.get("error_streak", 0)
@@ -190,6 +198,9 @@ async def admin_health_callback(update: Update, context: ContextTypes.DEFAULT_TY
             elif streak > 0: icon = "🟡"
             
             text += f"{icon} `{phone}` | {status} | Errors: {streak}\n"
+            
+    if active_sessions_count == 0:
+        text += "_No active sessions found._"
     
     text += "\n*Status Legend:*\n🟢 Healthy | 🟡 Unstable | 🔴 Critical"
     

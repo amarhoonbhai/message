@@ -15,12 +15,22 @@ async def get_health_summary():
     db = get_database()
     sessions = await db.sessions.find({"connected": True}).to_list(length=100)
     
+    from db.models import get_plan
+    
     table_data = []
     headers = ["Phone", "Status", "Errors", "Last Active", "Health State"]
     
     now = datetime.utcnow()
     
     for s in sessions:
+        user_id = s.get("user_id")
+        if not user_id: continue
+        
+        # Only show users with an active plan
+        plan = await get_plan(user_id)
+        if not plan or plan.get("status") != "active":
+            continue
+            
         phone = s.get("phone", "Unknown")
         status = s.get("worker_status", "Off")
         error_streak = s.get("error_streak", 0)
