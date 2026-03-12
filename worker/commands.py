@@ -16,11 +16,11 @@ from telethon.errors import (
 )
 from telethon.tl.types import InputPeerSelf
 
-from config import MAX_GROUPS_PER_USER, MIN_INTERVAL_MINUTES
-from db.models import (
-    get_session, get_user_groups, add_group, remove_group,
-    get_user_config, update_user_config, get_plan, get_group_count
-)
+from core.config import MAX_GROUPS_PER_USER, MIN_INTERVAL_MINUTES
+from models.session import get_session
+from models.user import get_user_config, update_user_config
+from models.group import get_user_groups, add_group, remove_group, get_group_count, toggle_group
+from models.plan import get_plan
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ async def reply_to_command(client: TelegramClient, message, text: str):
 
 async def handle_help(client: TelegramClient, user_id: int, message):
     """Handle .help command with professional styling."""
-    from config import MIN_INTERVAL_MINUTES
+    from core.config import MIN_INTERVAL_MINUTES
     text = (
         "📘 *BOT WORKER COMMANDS* 📘\n\n"
         "👥 *GROUP MANAGEMENT*\n"
@@ -162,7 +162,7 @@ async def handle_status(client: TelegramClient, user_id: int, message):
         plan_type = "None"
     
     phone = session.get("phone", "Unknown") if session else "Unknown"
-    from config import DEFAULT_INTERVAL_MINUTES
+    from core.config import DEFAULT_INTERVAL_MINUTES
     interval = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
     
     # Setting indicators
@@ -644,14 +644,14 @@ def parse_group_input(input_str: str) -> str:
     return None
 async def handle_nightmode(client: TelegramClient, user_id: int, message, text: str):
     """Handle .nightmode on/off/auto command (Owner only)."""
-    from config import OWNER_ID
+    from core.config import OWNER_ID
     if user_id != OWNER_ID:
         await reply_to_command(client, message, "❌ This command is restricted to the BOT OWNER.")
         return
         
     parts = text.split()
     if len(parts) < 2:
-        from db.models import get_global_settings
+        from models.job import get_global_settings
         settings = await get_global_settings()
         current = settings.get("night_mode_force", "auto").upper()
         await reply_to_command(client, message, 
@@ -669,7 +669,7 @@ async def handle_nightmode(client: TelegramClient, user_id: int, message, text: 
         await reply_to_command(client, message, "❌ Use: .nightmode on/off/auto")
         return
         
-    from db.models import update_global_settings
+    from models.job import update_global_settings
     await update_global_settings(night_mode_force=val)
     
     await reply_to_command(client, message, 
@@ -679,8 +679,8 @@ async def handle_nightmode(client: TelegramClient, user_id: int, message, text: 
 
 async def get_night_mode_label() -> str:
     """Helper to get a human-friendly night mode status label."""
-    from db.models import get_global_settings
-    from worker.utils import is_night_mode
+    from models.job import get_global_settings
+    from services.worker.send_logic import is_night_mode
     
     settings = await get_global_settings()
     force = settings.get("night_mode_force", "auto")

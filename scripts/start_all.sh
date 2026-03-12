@@ -37,15 +37,23 @@ arq services.worker.task_worker.WorkerSettings > logs/worker.log 2>&1 &
 WORKER_PID=$!
 echo "  PID: $WORKER_PID"
 
+sleep 1
+
+# 5. Start Command Listener
+echo "Starting Command Listener..."
+python -m services.worker.command_listener > logs/listener.log 2>&1 &
+LISTENER_PID=$!
+echo "  PID: $LISTENER_PID"
+
 echo ""
-echo "✅ All 4 services started in the background!"
+echo "✅ All 5 services started in the background!"
 echo "Logs are located in the ./logs/ directory."
 echo ""
 echo "Press Ctrl+C at any time to stop them all."
 echo ""
 
 # Wait for all background processes (keeps terminal open)
-wait $MAIN_BOT_PID $LOGIN_BOT_PID $SCHEDULER_PID $WORKER_PID
+wait $MAIN_BOT_PID $LOGIN_BOT_PID $SCHEDULER_PID $WORKER_PID $LISTENER_PID
 
 # Cleanup hook when Ctrl+C is pressed
-trap "echo 'Stopping all services...'; kill -SIGINT $MAIN_BOT_PID $LOGIN_BOT_PID $SCHEDULER_PID $WORKER_PID" SIGINT SIGTERM
+trap "echo 'Stopping all services...'; kill -SIGINT $MAIN_BOT_PID $LOGIN_BOT_PID $SCHEDULER_PID $WORKER_PID $LISTENER_PID" SIGINT SIGTERM

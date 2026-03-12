@@ -64,3 +64,32 @@ async def check_referral_bonus(referral_code: str):
     if referrer.get("referral_count", 0) >= REFERRALS_NEEDED:
         from models.plan import extend_plan
         await extend_plan(referrer["user_id"], REFERRAL_BONUS_DAYS, upgrade_to_paid=False)
+
+
+async def get_user_config(user_id: int) -> dict:
+    """Get user settings (interval, shuffle, etc)."""
+    db = get_database()
+    doc = await db.user_configs.find_one({"user_id": user_id})
+    if not doc:
+        # Return defaults
+        return {
+            "user_id": user_id,
+            "interval_min": 60,
+            "shuffle_mode": False,
+            "copy_mode": False,
+            "send_mode": "sequential",
+            "auto_reply_enabled": False,
+            "auto_reply_text": "Hello! I am currently away. (Auto-reply)",
+        }
+    return doc
+
+
+async def update_user_config(user_id: int, **kwargs):
+    """Update specific user settings."""
+    db = get_database()
+    kwargs["updated_at"] = datetime.utcnow()
+    await db.user_configs.update_one(
+        {"user_id": user_id},
+        {"$set": kwargs},
+        upsert=True
+    )

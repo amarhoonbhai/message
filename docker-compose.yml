@@ -22,7 +22,7 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -61,6 +61,21 @@ services:
       dockerfile: services/scheduler/Dockerfile
     restart: unless-stopped
     env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+
+  # ── Command Listener ─────────────────────────────────────────────────────
+
+  listener:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    command: python -m services.worker.command_listener
     depends_on:
       redis:
         condition: service_healthy
