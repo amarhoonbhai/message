@@ -342,6 +342,49 @@ async def get_group_count(user_id: int) -> int:
     return await db.groups.count_documents({"user_id": user_id})
 
 
+async def mark_group_failing(user_id: int, chat_id: int, reason: str):
+    """Mark a group as failing. Sets first_fail_at only if not already set."""
+    db = get_database()
+    now = datetime.utcnow()
+    # Set first_fail_at only if not already marked
+    await db.groups.update_one(
+        {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": False}},
+        {"$set": {"first_fail_at": now, "fail_reason": reason, "enabled": False, "pause_reason": reason}},
+    )
+    # If already marked, just update reason
+    await db.groups.update_one(
+        {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": True}},
+        {"$set": {"fail_reason": reason, "enabled": False, "pause_reason": reason}},
+    )
+
+
+async def clear_group_fail(user_id: int, chat_id: int):
+    """Clear failing status after a successful send."""
+    db = get_database()
+    await db.groups.update_one(
+        {"user_id": user_id, "chat_id": chat_id},
+        {"$unset": {"first_fail_at": "", "fail_reason": ""},
+         "$set": {"enabled": True, "pause_reason": None}},
+    )
+
+
+async def remove_stale_failing_groups(user_id: int) -> int:
+    """Remove groups failing for more than 24 hours. Returns count removed."""
+    db = get_database()
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    result = await db.groups.delete_many({
+        "user_id": user_id,
+        "first_fail_at": {"$lte": cutoff},
+    })
+    return result.deleted_count
+
+
+async def get_failing_groups_count() -> int:
+    """Get total groups currently marked as failing (for admin stats)."""
+    db = get_database()
+    return await db.groups.count_documents({"first_fail_at": {"$exists": True}})
+
+
 # ==================== PLANS ====================
 
 async def grant_trial_if_new(user_id: int):
@@ -602,11 +645,18 @@ async def get_admin_stats() -> Dict[str, Any]:
     # Send stats
     send_stats = await get_send_stats(24)
     
-    # Groups paused (from logs)
-    groups_paused = await db.send_logs.count_documents({
+    # Group stats
+    total_groups = await db.groups.count_documents({})
+    groups_failing = await get_failing_groups_count()
+    groups_removed_24h = await db.send_logs.count_documents({
         "sent_at": {"$gte": now - timedelta(hours=24)},
-        "status": "auto_paused"
+        "status": {"$in": ["removed", "failing"]}
     })
+    
+    # Avg success rate
+    total_sent = send_stats["total"]
+    success_sent = send_stats["success"]
+    avg_success_rate = round((success_sent / total_sent * 100) if total_sent > 0 else 0, 1)
     
     return {
         "total_users": total_users,
@@ -617,7 +667,10 @@ async def get_admin_stats() -> Dict[str, Any]:
         "sends_24h": send_stats["total"],
         "success_24h": send_stats["success"],
         "failed_24h": send_stats["failed"],
-        "groups_paused_24h": groups_paused,
+        "total_groups": total_groups,
+        "groups_failing": groups_failing,
+        "groups_removed_24h": groups_removed_24h,
+        "avg_success_rate": avg_success_rate,
     }
 
 

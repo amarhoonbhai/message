@@ -111,3 +111,33 @@ Connect your Telegram account to instantly receive *7 DAYS FREE TRIAL!*
         parse_mode="Markdown",
         reply_markup=get_plan_keyboard(),
     )
+
+
+async def buy_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle buy plan button clicks."""
+    query = update.callback_query
+    await query.answer()
+    
+    plan_type = query.data.split(":")[1]
+    price = PLAN_PRICES.get(plan_type, 0)
+    
+    text = f"""
+💳 *UPGRADE TO {plan_type.upper()} PRO*
+══════════════════════════════
+
+💎 *Tier:* {plan_type.upper()}
+💰 *Price:* ₹{price}
+⏳ *Validity:* {"7" if plan_type == "week" else "30"} Days
+
+🚀 *HOW TO ACTIVATE:*
+1. Send ₹{price} via UPI to: `spinify@ybl`
+2. Take a screenshot of the transaction.
+3. Send the screenshot to @spinify along with your User ID: `{update.effective_user.id}`
+
+_Your plan will be activated within 30 minutes of verification._
+"""
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_back_home_keyboard()
+    )

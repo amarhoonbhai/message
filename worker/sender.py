@@ -42,6 +42,7 @@ from db.models import (
     update_session_activity, is_trial_user, get_all_user_sessions,
     mark_session_auth_failed, mark_session_disabled, reset_session_auth_fails
 )
+from models.group import mark_group_failing, clear_group_fail, remove_stale_failing_groups
 from worker.utils import (
     is_night_mode, seconds_until_morning, format_time_remaining,
     UserLogAdapter
@@ -579,10 +580,10 @@ class UserSender:
                 asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "removed", f"Pre-check: {type(e).__name__}", phone=self.phone))
                 return (False, 0)
             except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
-                # Group is restricted — auto-pause, don't waste an API call
-                self.logger.warning(f"⚠️ Pre-check: {chat_title} is restricted ({type(e).__name__}). Auto-pausing.")
-                asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=f"Pre-check: {type(e).__name__}"))
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "auto_paused", f"Pre-check: {type(e).__name__}", phone=self.phone))
+                # Group is restricted — mark as failing (will auto-remove after 24h)
+                self.logger.warning(f"⚠️ Pre-check: {chat_title} restricted ({type(e).__name__}). Marking failing.")
+                asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"Pre-check: {type(e).__name__}"))
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failing", f"Pre-check: {type(e).__name__}", phone=self.phone))
                 return (False, 0)
             except ValueError as e:
                 # Private group not in Telethon's entity cache — scan dialogs to find it
@@ -596,8 +597,8 @@ class UserSender:
                         raise ValueError(f"Not found in dialogs either")
                 except Exception as dial_e:
                     self.logger.warning(f"Could not resolve entity for {chat_id}: {dial_e}")
-                    asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason="Entity Not Found / Not Cached"))
-                    asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", f"Entity error: {dial_e}", phone=self.phone))
+                    asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"Entity error: {dial_e}"))
+                    asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failing", f"Entity error: {dial_e}", phone=self.phone))
                     return (False, 0)
 
             except Exception as e:
@@ -653,6 +654,8 @@ class UserSender:
                 status="success",
                 phone=self.phone
             ))
+            # Clear failing status on success
+            asyncio.create_task(clear_group_fail(self.user_id, chat_id))
             return (False, 0)
             
         except FloodWaitError as e:
@@ -679,9 +682,9 @@ class UserSender:
 
         except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
             reason = type(e).__name__
-            self.logger.warning(f"⚠️ Pausing restricted group {chat_title}: {reason}")
-            asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=reason))
-            asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "auto_paused", f"Auto-Paused: {reason}", phone=self.phone))
+            self.logger.warning(f"⚠️ Group {chat_title} failing: {reason}")
+            asyncio.create_task(mark_group_failing(self.user_id, chat_id, reason))
+            asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failing", f"Failing: {reason}", phone=self.phone))
             return (False, 0)
             
         except InputUserDeactivatedError:
@@ -697,9 +700,9 @@ class UserSender:
             
             # Smart RPC categorization
             if any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN", "USER_BANNED_IN_CHANNEL"]):
-                self.logger.warning(f"⚠️ Auto-pausing group {chat_title} due to RPC error: {e}")
-                asyncio.create_task(toggle_group(self.user_id, chat_id, enabled=False, reason=f"RPC Error: {error_msg}"))
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "auto_paused", f"RPC: {error_msg}", phone=self.phone))
+                self.logger.warning(f"⚠️ Group {chat_title} failing due to RPC: {e}")
+                asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"RPC: {error_msg[:40]}"))
+                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failing", f"RPC: {error_msg}", phone=self.phone))
             elif any(x in error_msg for x in ["CHANNEL_INVALID", "USERNAME_NOT_OCCUPIED", "USERNAME_INVALID", "INVITE_HASH_EXPIRED"]):
                 self.logger.warning(f"❌ Removing group {chat_title} due to fatal RPC error: {e}")
                 asyncio.create_task(remove_group(self.user_id, chat_id))

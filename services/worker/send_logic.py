@@ -30,7 +30,7 @@ from telethon.errors import (
     InviteHashExpiredError,
 )
 
-from models.group import remove_group, toggle_group
+from models.group import remove_group, toggle_group, mark_group_failing, clear_group_fail
 from models.job import log_job_event
 
 logger = logging.getLogger(__name__)
@@ -68,12 +68,11 @@ async def send_message_to_group(
 
         except (ChatWriteForbiddenError, ChannelPrivateError,
                 ChatAdminRequiredError, UserBannedInChannelError) as e:
-            logger.warning(f"⚠️ Group {group_id} restricted ({type(e).__name__}). Pausing.")
-            asyncio.create_task(toggle_group(user_id, group_id, enabled=False,
-                                             reason=f"Pre-check: {type(e).__name__}"))
+            logger.warning(f"⚠️ Group {group_id} restricted ({type(e).__name__}). Marking as failing.")
+            asyncio.create_task(mark_group_failing(user_id, group_id, f"Pre-check: {type(e).__name__}"))
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "paused", f"Pre-check: {type(e).__name__}")
-            return ("paused", 0)
+                                "failing", f"Pre-check: {type(e).__name__}")
+            return ("failing", 0)
 
         except ValueError as e:
             logger.info(f"Entity not in cache for {group_id}, trying to fetch from dialogs...")
@@ -87,10 +86,10 @@ async def send_message_to_group(
                     raise ValueError(f"Could not find entity {group_id} in dialogs either.")
             except Exception as dialog_e:
                 logger.warning(f"Entity not found for {group_id} despite dialogs fallback: {dialog_e}")
-                asyncio.create_task(toggle_group(user_id, group_id, enabled=False, reason="Entity Not Found / Not Cached"))
+                asyncio.create_task(mark_group_failing(user_id, group_id, "Entity Not Found"))
                 await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                    "paused", "Entity Not Found")
-                return ("paused", 0)
+                                    "failing", "Entity Not Found")
+                return ("failing", 0)
 
         except Exception as e:
             logger.warning(f"Entity resolve error for {group_id}: {e}")
@@ -138,6 +137,8 @@ async def send_message_to_group(
             )
 
         await log_job_event(job_id, user_id, phone, group_id, message_id, "sent")
+        # Clear any previous failing status on success
+        asyncio.create_task(clear_group_fail(user_id, group_id))
         return ("sent", 0)
 
     except FloodWaitError as e:
@@ -163,11 +164,11 @@ async def send_message_to_group(
     except (ChatWriteForbiddenError, ChannelPrivateError,
             ChatAdminRequiredError, UserBannedInChannelError) as e:
         reason = type(e).__name__
-        logger.warning(f"⚠️ Pausing group {group_id}: {reason}")
-        asyncio.create_task(toggle_group(user_id, group_id, enabled=False, reason=reason))
+        logger.warning(f"⚠️ Group {group_id} failing: {reason}")
+        asyncio.create_task(mark_group_failing(user_id, group_id, reason))
         await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "paused", f"Auto-Paused: {reason}")
-        return ("paused", 0)
+                            "failing", f"Failing: {reason}")
+        return ("failing", 0)
 
     except InputUserDeactivatedError:
         logger.error(f"🛑 Account {phone} is deactivated!")
@@ -191,15 +192,14 @@ async def send_message_to_group(
             # Don't pause the group, just skip this message
             return ("failed", 0)
 
-        # 2. TOPIC_CLOSED or Join Required: Auto-pause the group
+        # 2. TOPIC_CLOSED or Join Required: Mark as failing (delayed removal)
         elif any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN",
                                           "USER_BANNED_IN_CHANNEL", "TOPIC_CLOSED", "JOIN THE DISCUSSION GROUP",
                                           "SEND_MESSAGES_FORBIDDEN"]):
-            asyncio.create_task(toggle_group(user_id, group_id, enabled=False,
-                                             reason=f"Restricted: {error_msg[:40]}"))
+            asyncio.create_task(mark_group_failing(user_id, group_id, f"Restricted: {error_msg[:40]}"))
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "paused", f"Restricted: {error_msg[:40]}")
-            return ("paused", 0)
+                                "failing", f"Restricted: {error_msg[:40]}")
+            return ("failing", 0)
             
         # 3. CHANNEL_INVALID or Not Occupied: Remove the group
         elif any(x in error_msg for x in ["CHANNEL_INVALID", "USERNAME_NOT_OCCUPIED",

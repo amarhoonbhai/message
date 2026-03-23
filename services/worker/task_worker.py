@@ -182,6 +182,12 @@ async def send_job(ctx: dict, job_id: str):
         # ── 5. Mark job as done ─────────────────────────────────────────
         await complete_job(job_id, groups_sent=sent_count)
 
+        # ── 6. Cleanup stale failing groups (24h+ old) ──────────────────
+        from models.group import remove_stale_failing_groups
+        removed = await remove_stale_failing_groups(user_id)
+        if removed > 0:
+            logger.info(f"🗑️ Auto-removed {removed} stale failing group(s) for user {user_id}")
+
         pool.release(user_id, phone)
 
         logger.info(

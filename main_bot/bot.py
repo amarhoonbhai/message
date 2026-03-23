@@ -23,7 +23,7 @@ from main_bot.handlers.dashboard import (
     add_account_callback,
     toggle_send_mode_callback,
 )
-from main_bot.handlers.plans import my_plan_callback
+from main_bot.handlers.plans import my_plan_callback, buy_plan_callback
 from main_bot.handlers.referral import referral_callback
 from main_bot.handlers.redeem import (
     redeem_code_callback,
@@ -48,6 +48,11 @@ from main_bot.handlers.admin import (
     nightmode_command,
     admin_health_callback,
     WAITING_BROADCAST_MESSAGE,
+    admin_upgrade_init_callback,
+    receive_upgrade_user_id,
+    admin_upgrade_perform_callback,
+    upgrade_command,
+    WAITING_UPGRADE_USER_ID,
 )
 from main_bot.handlers.help import help_callback, help_command
 from main_bot.handlers.account import (
@@ -74,6 +79,7 @@ def create_application() -> Application:
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("generate", generate_command))
     application.add_handler(CommandHandler("nightmode", nightmode_command))
+    application.add_handler(CommandHandler("upgrade", upgrade_command))
 
     # ============== Conversation Handlers ==============
     redeem_conv = ConversationHandler(
@@ -106,6 +112,20 @@ def create_application() -> Application:
     )
     application.add_handler(broadcast_conv)
 
+    upgrade_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_upgrade_init_callback, pattern="^admin_upgrade_init$")],
+        states={
+            WAITING_UPGRADE_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_upgrade_user_id)],
+        },
+        fallbacks=[
+            CallbackQueryHandler(home_callback, pattern="^home$"),
+            CallbackQueryHandler(admin_callback, pattern="^admin$"),
+        ],
+        per_user=True,
+        per_chat=True,
+    )
+    application.add_handler(upgrade_conv)
+
     # ============== Callback Query Handlers ==============
     patterns = [
         ("^home$", home_callback),
@@ -128,6 +148,8 @@ def create_application() -> Application:
         ("^admin_nightmode$", admin_nightmode_callback),
         ("^set_nightmode:", set_nightmode_callback),
         ("^admin_health$", admin_health_callback),
+        ("^adm_upgr:", admin_upgrade_perform_callback),
+        ("^buy_plan:", buy_plan_callback),
     ]
     
     for pattern, callback in patterns:

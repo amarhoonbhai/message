@@ -11,14 +11,16 @@ from db.models import (
 )
 from main_bot.utils.keyboards import (
     get_admin_keyboard, get_broadcast_keyboard, get_back_home_keyboard,
-    get_night_mode_settings_keyboard
+    get_night_mode_settings_keyboard, get_admin_upgrade_keyboard
 )
-from config import OWNER_ID
+from config import OWNER_ID, PLAN_DURATIONS
 from shared.utils import escape_markdown
+from db.models import extend_plan, activate_plan, get_plan
 
 
 # Conversation states
 WAITING_BROADCAST_MESSAGE = 1
+WAITING_UPGRADE_USER_ID = 2
 
 
 def is_owner(user_id: int) -> bool:
@@ -80,7 +82,7 @@ async def get_stats_text():
     
     total = stats['sends_24h']
     success = stats['success_24h']
-    success_rate = round((success/total*100) if total > 0 else 0, 1)
+    success_rate = stats.get('avg_success_rate', round((success/total*100) if total > 0 else 0, 1))
 
     return f"""
 📊 *GLOBAL SYSTEM STATISTICS*
@@ -96,8 +98,16 @@ async def get_stats_text():
 ├ Messages Attempted: {total}
 ├ Messages Delivered: {success}
 ├ Success Rate: {success_rate}%
-├ Failures: {stats['failed_24h']}
-└ Groups Auto-Paused: {stats['groups_paused_24h']}
+└ Failures: {stats['failed_24h']}
+
+📁 *GROUP HEALTH*
+├ Total Groups: {stats.get('total_groups', 'N/A')}
+├ Currently Failing: {stats.get('groups_failing', 0)} ⚠️
+└ Removed/Flagged (24h): {stats.get('groups_removed_24h', 0)}
+
+🛡️ *SYSTEM*
+├ Auto-Remove: After 24h of failures
+└ Status: 🟢 Operational
 
 _Data is live and accurate as of now._
 """
@@ -563,3 +573,105 @@ Select a mode button below to override the system-wide night mode behavior.
         parse_mode="Markdown",
         reply_markup=get_night_mode_settings_keyboard(),
     )
+async def admin_upgrade_init_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start the upgrade process (ask for User ID)."""
+    query = update.callback_query
+    if not is_owner(update.effective_user.id): return
+    
+    await query.answer()
+    await query.edit_message_text(
+        "⚡ *ADMIN UPGRADE TOOL*\n\n"
+        "Please send the *Telegram User ID* of the user you wish to upgrade.\n\n"
+        "_Example: 123456789_",
+        parse_mode="Markdown",
+        reply_markup=get_back_home_keyboard()
+    )
+    return WAITING_UPGRADE_USER_ID
+
+async def receive_upgrade_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive User ID and show options."""
+    if not is_owner(update.effective_user.id): return ConversationHandler.END
+    
+    text = update.message.text
+    if text == "/cancel":
+        await update.message.reply_text("Cancelled.", reply_markup=get_back_home_keyboard())
+        return ConversationHandler.END
+        
+    try:
+        target_uid = int(text)
+        plan = await get_plan(target_uid)
+        
+        status = "No Plan"
+        if plan:
+            status = plan.get("plan_type", "trial").upper()
+            
+        await update.message.reply_text(
+            f"👤 *USER:* `{target_uid}`\n"
+            f"📊 *CURRENT:* `{status}`\n\n"
+            "Select the upgrade tier below:",
+            parse_mode="Markdown",
+            reply_markup=get_admin_upgrade_keyboard(target_uid)
+        )
+        return ConversationHandler.END
+    except ValueError:
+        await update.message.reply_text("❌ Invalid ID. Please send a numeric User ID.")
+        return WAITING_UPGRADE_USER_ID
+
+async def admin_upgrade_perform_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Execute the upgrade."""
+    query = update.callback_query
+    if not is_owner(update.effective_user.id): return
+    
+    data = query.data.split(":")
+    target_uid = int(data[1])
+    tier = data[2]
+    
+    await query.answer(f"Upgrading {target_uid} to {tier.upper()}...")
+    
+    await activate_plan(target_uid, tier)
+    days = PLAN_DURATIONS.get(tier, 0)
+    
+    await query.edit_message_text(
+        f"✅ *SUCCESSFULLY UPGRADED*\n\n"
+        f"👤 *User:* `{target_uid}`\n"
+        f"📦 *Tier:* {tier.upper()}\n"
+        f"📅 *Added:* {days} Days\n\n"
+        "_The user has been notified via their dashboard._",
+        parse_mode="Markdown",
+        reply_markup=get_admin_keyboard()
+    )
+    
+    # Try to notify the user
+    try:
+        await context.bot.send_message(
+            target_uid,
+            f"🎊 *PLAN UPGRADED!*\n\n"
+            f"The administrator has granted you **{days} days** of **{tier.upper()}** access.\n"
+            "Enjoy uninterrupted service!",
+            parse_mode="Markdown"
+        )
+    except: pass
+
+async def upgrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /upgrade <user_id> <week/month>."""
+    if not is_owner(update.effective_user.id): return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text("⚠️ *Usage:* `/upgrade <user_id> <week|month>`")
+        return
+        
+    try:
+        uid = int(context.args[0])
+        tier = context.args[1].lower()
+        if tier not in ["week", "month"]: raise ValueError()
+        
+        await activate_plan(uid, tier)
+        days = PLAN_DURATIONS[tier]
+        
+        await update.message.reply_text(f"✅ User `{uid}` upgraded to {tier.upper()} ({days} days).")
+        
+        try:
+            await context.bot.send_message(uid, f"🎊 *PLAN UPGRADED!*\n\nGranted **{days} days** of **{tier.upper()}**.")
+        except: pass
+    except:
+        await update.message.reply_text("❌ Invalid arguments. Example: `/upgrade 123456 week`")

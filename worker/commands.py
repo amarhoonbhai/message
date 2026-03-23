@@ -44,8 +44,17 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         if cmd == ".help":
             await handle_help(client, user_id, message)
             return True
-        elif cmd == ".status":
-            await handle_status(client, user_id, message)
+        elif cmd == ".status" or cmd == ".stats":
+            await handle_status(client, user_id, message, text)
+            return True
+        elif cmd == ".userstatus":
+            await handle_userstatus(client, user_id, message, text)
+            return True
+        elif cmd == ".addplan":
+            await handle_addplan(client, user_id, message, text)
+            return True
+        elif cmd == ".rmpaused":
+            await handle_rmpaused(client, user_id, message)
             return True
         elif cmd == ".groups":
             await handle_groups(client, user_id, message)
@@ -74,9 +83,6 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".ping":
             await reply_to_command(client, message, "● Pong! Worker is active ⚡")
             return True
-        elif cmd == ".stats":
-            await handle_status(client, user_id, message)
-            return True
         elif cmd == ".nightmode":
             await handle_nightmode(client, user_id, message, text)
             return True
@@ -88,8 +94,19 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
 
 
 async def reply_to_command(client: TelegramClient, message, text: str):
-    """Send a reply to the message that triggered the command."""
-    await message.reply(text)
+    """Send a reply to the message that triggered the command, auto-delete after 30s."""
+    import asyncio
+    reply = await message.reply(text)
+    
+    async def _auto_delete():
+        await asyncio.sleep(30)
+        try:
+            await reply.delete()
+            await message.delete()
+        except Exception:
+            pass  # Message may already be deleted
+    
+    asyncio.create_task(_auto_delete())
 
 
 async def handle_help(client: TelegramClient, user_id: int, message):
@@ -111,6 +128,8 @@ async def handle_help(client: TelegramClient, user_id: int, message):
         "⚡ *DIAGNOSTICS*\n"
         "🔸 `.ping` — Check if worker is alive\n\n"
         "👑 *OWNER COMMANDS*\n"
+        "🔸 `.userstatus <id>` — Check any user's plan\n"
+        "🔸 `.addplan <id> <week/month/days>` — Grant plan\n"
         "🔸 `.nightmode on/off/auto` — Global control\n\n"
         "💡 *PRO TIP:* You can add multiple groups at once!\n"
         "Example: `.addgroup @group1 @group2`"
@@ -119,20 +138,32 @@ async def handle_help(client: TelegramClient, user_id: int, message):
     await reply_to_command(client, message, text)
 
 
-async def handle_status(client: TelegramClient, user_id: int, message):
-    """Handle .status command with detailed information for THIS account."""
+async def handle_status(client: TelegramClient, user_id: int, message, text: str = ""):
+    """Handle .status command with detailed information for THIS or ANOTHER account."""
+    from core.config import OWNER_ID
+    
+    target_user_id = user_id
+    parts = text.split()
+    
+    # Owner can check other users: .status <user_id>
+    if len(parts) > 1 and user_id == OWNER_ID:
+        try:
+            target_user_id = int(parts[1])
+        except ValueError:
+            pass # Use self if invalid ID
+            
     # Get specifically this account's session
     phone = getattr(client, 'phone', None)
-    session = await get_session(user_id, phone)
+    session = await get_session(target_user_id, phone if target_user_id == user_id else None)
     
     # Get plan (User-wide)
-    plan = await get_plan(user_id)
+    plan = await get_plan(target_user_id)
     
     # Get config (User-wide)
-    config = await get_user_config(user_id)
+    config = await get_user_config(target_user_id)
     
     # Get groups (all groups for this user)
-    groups = await get_user_groups(user_id)
+    groups = await get_user_groups(target_user_id)
     total_groups = len(groups)
     enabled_groups = len([g for g in groups if g.get("enabled", True)])
     
@@ -161,20 +192,19 @@ async def handle_status(client: TelegramClient, user_id: int, message):
         plan_badge = "❌ NONE"
         plan_type = "None"
     
-    phone = session.get("phone", "Unknown") if session else "Unknown"
+    phone_display = session.get("phone", "Unknown") if session else ("Owner Check" if target_user_id != user_id else "Unknown")
     from core.config import DEFAULT_INTERVAL_MINUTES
     interval = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
     
     # Setting indicators
-    copy_icon = "🟢 ON" if config.get("copy_mode") else "⚫ OFF"
-    shuffle_icon = "🟢 ON" if config.get("shuffle_mode") else "⚫ OFF"
     send_mode = config.get("send_mode", "sequential").title()
-    responder_icon = "🟢 ON" if config.get("auto_reply_enabled") else "⚫ OFF"
     
-    text = f"""📊 *WORKER DIAGNOSTICS* 📊
+    header = "📊 *WORKER DIAGNOSTICS*" if target_user_id == user_id else f"📊 *USER PROFILE: {target_user_id}*"
+    
+    text = f"""{header}
 
 📱 *ACCOUNT PROFILE*
-├ Phone: {phone}
+├ Phone: {phone_display}
 └ Status: 🟢 Connected
 
 🏷️ *PLAN INFO*
@@ -594,6 +624,77 @@ async def handle_responder(client: TelegramClient, user_id: int, message, text: 
             f"➤ New message: {val}"
         )
 
+
+async def handle_userstatus(client: TelegramClient, user_id: int, message, text: str):
+    """Owner command: .userstatus <user_id>"""
+    from core.config import OWNER_ID
+    if user_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for owner.")
+        return
+        
+    parts = text.split()
+    if len(parts) < 2:
+        await reply_to_command(client, message, "○ Usage: .userstatus <user_id>")
+        return
+        
+    try:
+        target_id = int(parts[1])
+        await handle_status(client, user_id, message, f".status {target_id}")
+    except ValueError:
+        await reply_to_command(client, message, "○ Invalid User ID.")
+
+async def handle_addplan(client: TelegramClient, user_id: int, message, text: str):
+    """Owner command: .addplan <user_id> <week/month/days>"""
+    from core.config import OWNER_ID
+    if user_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for owner.")
+        return
+        
+    parts = text.split()
+    if len(parts) < 3:
+        await reply_to_command(client, message, "○ Usage: .addplan <user_id> <week/month/days>")
+        return
+        
+    try:
+        target_id = int(parts[1])
+        duration_input = parts[2].lower()
+        
+        from models.plan import extend_plan, activate_plan
+        from core.config import PLAN_DURATIONS
+        
+        if duration_input in PLAN_DURATIONS:
+            await activate_plan(target_id, duration_input)
+            days = PLAN_DURATIONS[duration_input]
+        else:
+            try:
+                days = int(duration_input)
+                await extend_plan(target_id, days)
+            except ValueError:
+                await reply_to_command(client, message, "○ Invalid duration. Use: week, month, or number of days.")
+                return
+                
+        await reply_to_command(client, message, 
+            f"✅ Plan upgraded for user {target_id}!\n"
+            f"  ▸ +{days} days premium added."
+        )
+    except Exception as e:
+        await reply_to_command(client, message, f"❌ Error: {str(e)}")
+
+async def handle_rmpaused(client: TelegramClient, user_id: int, message):
+    """Remove all paused groups."""
+    groups = await get_user_groups(user_id)
+    paused = [g for g in groups if not g.get("enabled", True)]
+    
+    if not paused:
+        await reply_to_command(client, message, "⚪ No paused groups to remove.")
+        return
+        
+    count = 0
+    for g in paused:
+        await remove_group(user_id, g["chat_id"])
+        count += 1
+        
+    await reply_to_command(client, message, f"✅ Removed {count} paused group(s).")
 
 def parse_group_input(input_str: str) -> str:
     """Parse group URL or username to identifier."""

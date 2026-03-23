@@ -82,14 +82,33 @@ def get_plan_keyboard() -> InlineKeyboardMarkup:
     """Build plan display keyboard."""
     keyboard = [
         [
+            InlineKeyboardButton("💎 Upgrade to WEEKLY (₹99)", callback_data="buy_plan:week"),
+        ],
+        [
+            InlineKeyboardButton("🏆 Upgrade to MONTHLY (₹299)", callback_data="buy_plan:month"),
+        ],
+        [
             InlineKeyboardButton("🧾 Redeem Promo Code", callback_data="redeem_code"),
         ],
         [
-            InlineKeyboardButton("👨‍💻 Contact Support to Upgrade", url="https://t.me/spinify"),
+            InlineKeyboardButton("👨‍💻 Contact Support", url="https://t.me/spinify"),
         ],
         [
             InlineKeyboardButton("🔙 Back", callback_data="dashboard"),
             InlineKeyboardButton("🏠 Home", callback_data="home"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_admin_upgrade_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
+    """Build admin upgrade selection keyboard."""
+    keyboard = [
+        [
+            InlineKeyboardButton("💎 Grant 1 Week", callback_data=f"adm_upgr:{target_user_id}:week"),
+            InlineKeyboardButton("🏆 Grant 1 Month", callback_data=f"adm_upgr:{target_user_id}:month"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Admin", callback_data="admin"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -143,6 +162,9 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("🎟 Give 1 Week", callback_data="gen_code:week"),
             InlineKeyboardButton("🎟 Give 1 Month", callback_data="gen_code:month"),
+        ],
+        [
+            InlineKeyboardButton("⚡ Quick Upgrade User", callback_data="admin_upgrade_init"),
         ],
         [
             InlineKeyboardButton("👥 User Database", callback_data="admin_users"),
@@ -232,3 +254,5 @@ def get_night_mode_settings_keyboard() -> InlineKeyboardMarkup:
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
