@@ -576,13 +576,17 @@ Select a mode button below to override the system-wide night mode behavior.
 async def admin_upgrade_init_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start the upgrade process (ask for User ID)."""
     query = update.callback_query
-    if not is_owner(update.effective_user.id): return
+    
+    if not is_owner(update.effective_user.id):
+        await query.answer("⛔ Access denied", show_alert=True)
+        return ConversationHandler.END
     
     await query.answer()
     await query.edit_message_text(
         "⚡ *ADMIN UPGRADE TOOL*\n\n"
         "Please send the *Telegram User ID* of the user you wish to upgrade.\n\n"
-        "_Example: 123456789_",
+        "_Example: 123456789_\n\n"
+        "Type /cancel to abort.",
         parse_mode="Markdown",
         reply_markup=get_back_home_keyboard()
     )
@@ -620,7 +624,9 @@ async def receive_upgrade_user_id(update: Update, context: ContextTypes.DEFAULT_
 async def admin_upgrade_perform_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Execute the upgrade."""
     query = update.callback_query
-    if not is_owner(update.effective_user.id): return
+    if not is_owner(update.effective_user.id):
+        await query.answer("⛔ Access denied", show_alert=True)
+        return
     
     data = query.data.split(":")
     target_uid = int(data[1])
