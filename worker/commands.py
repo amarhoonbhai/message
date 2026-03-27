@@ -14,7 +14,8 @@ from telethon.errors import (
     InviteHashInvalidError,
     InviteHashExpiredError,
 )
-from telethon.tl.types import InputPeerSelf
+from telethon.tl.types import InputPeerSelf, InputPeerChannel, InputPeerChat
+from telethon.tl.functions.messages import GetDialogFiltersRequest
 
 from core.config import MAX_GROUPS_PER_USER, MIN_INTERVAL_MINUTES
 from models.session import get_session
@@ -86,6 +87,12 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".nightmode":
             await handle_nightmode(client, user_id, message, text)
             return True
+        elif cmd == ".folders":
+            await handle_folders(client, user_id, message)
+            return True
+        elif cmd == ".addfolder":
+            await handle_addfolder(client, user_id, message, text)
+            return True
     except Exception as e:
         logger.error(f"[User {user_id}] Command error: {e}")
         await reply_to_command(client, message, f"Error: {str(e)}")
@@ -116,8 +123,10 @@ async def handle_help(client: TelegramClient, user_id: int, message):
         "📘 *BOT WORKER COMMANDS* 📘\n\n"
         "👥 *GROUP MANAGEMENT*\n"
         "🔸 `.addgroup <url>` — Add to forward list\n"
+        "🔸 `.addfolder <name>` — Add all groups from folder\n"
         "🔸 `.rmgroup <url/idx>` — Remove from list\n"
-        "🔸 `.groups` — Show your active groups\n\n"
+        "🔸 `.groups` — Show your active groups\n"
+        "🔸 `.folders` — List your Telegram folders\n\n"
         "⚙️ *SETTINGS*\n"
         "🔸 `.interval <min>` — Set loop delay (min: {min}m)\n"
         "🔸 `.shuffle on/off` — Randomize loop order\n"
@@ -199,10 +208,12 @@ async def handle_status(client: TelegramClient, user_id: int, message, text: str
     # Setting indicators
     send_mode = config.get("send_mode", "sequential").title()
     
+    total_reach = sum(g.get("member_count", 0) for g in groups)
+    
     header = "📊 *WORKER DIAGNOSTICS*" if target_user_id == user_id else f"📊 *USER PROFILE: {target_user_id}*"
     
     text = f"""{header}
-
+    
 📱 *ACCOUNT PROFILE*
 ├ Phone: {phone_display}
 └ Status: 🟢 Connected
@@ -220,6 +231,7 @@ async def handle_status(client: TelegramClient, user_id: int, message, text: str
 └ Night Mode: {await get_night_mode_label()}
 
 👥 *GROUPS ({enabled_groups}/{total_groups})*
+└ 📢 Potential Reach: {total_reach:,} members
 
 Type `.help` for available commands
 """
@@ -328,9 +340,18 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             chat_id = entity.id
             chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
             
+            # Get member count
+            member_count = 0
+            try:
+                from telethon.tl.functions.channels import GetFullChannelRequest
+                full_chat = await client(GetFullChannelRequest(entity))
+                member_count = full_chat.full_chat.participants_count
+            except Exception:
+                pass
+                
             # Save to database
             # Link to the current account's phone for multi-account support
-            success = await add_group(user_id, chat_id, chat_title, account_phone=getattr(client, 'phone', None))
+            success = await add_group(user_id, chat_id, chat_title, account_phone=getattr(client, 'phone', None), member_count=member_count)
             
             if success:
                 added.append(chat_title)
@@ -793,3 +814,132 @@ async def get_night_mode_label() -> str:
          return "🟢 FORCED OFF"
     
     return "🌙 Active (00-06 IST)" if active else "☀️ Inactive (Daytime)"
+
+
+async def handle_folders(client: TelegramClient, user_id: int, message):
+    """List all Telegram chat folders (filters)."""
+    try:
+        from telethon.tl.functions.messages import GetDialogFiltersRequest
+        filters = await client(GetDialogFiltersRequest())
+        
+        if not filters:
+            await reply_to_command(client, message, "📁 No folders found on your account.")
+            return
+            
+        text = "📁 *YOUR TELEGRAM FOLDERS*\n"
+        text += "══════════════════════════\n\n"
+        
+        count = 0
+        for f in filters:
+            if hasattr(f, 'title') and f.title:
+                text += f"▪ `{f.title}`\n"
+                count += 1
+                
+        if count == 0:
+            await reply_to_command(client, message, "📁 No custom folders found.")
+            return
+            
+        text += f"\n💡 Use `.addfolder <name>` to add all groups from a folder."
+        await reply_to_command(client, message, text)
+        
+    except Exception as e:
+        logger.error(f"Error fetching folders: {e}")
+        await reply_to_command(client, message, f"❌ Error: {str(e)}")
+
+
+async def handle_addfolder(client: TelegramClient, user_id: int, message, text: str):
+    """Add all groups from a specific Telegram folder."""
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        await reply_to_command(client, message, "○ Usage: `.addfolder <folder_name>`\n\nExample: `.addfolder Crypto`")
+        return
+        
+    folder_name = parts[1].strip()
+    await reply_to_command(client, message, f"🔍 Searching for folder: `{folder_name}`...")
+    
+    try:
+        from telethon.tl.functions.messages import GetDialogFiltersRequest
+        filters = await client(GetDialogFiltersRequest())
+        
+        target_filter = None
+        for f in filters:
+            if hasattr(f, 'title') and f.title and f.title.lower() == folder_name.lower():
+                target_filter = f
+                break
+                
+        if not target_filter:
+            await reply_to_command(client, message, f"❌ Folder `{folder_name}` not found.\n\nType `.folders` to see all available folders.")
+            return
+            
+        # Get peers from filter
+        peers = getattr(target_filter, 'include_peers', [])
+        if not peers:
+            await reply_to_command(client, message, f"⚪ Folder `{folder_name}` is empty or contains no groups.")
+            return
+            
+        await reply_to_command(client, message, f"⏳ Found {len(peers)} items in `{folder_name}`. Resolving...")
+        
+        # Check current group count
+        count = await get_group_count(user_id)
+        available_slots = MAX_GROUPS_PER_USER - count
+        
+        if available_slots <= 0:
+            await reply_to_command(client, message, f"❌ Maximum groups ({MAX_GROUPS_PER_USER}) reached.")
+            return
+            
+        added = []
+        failed = []
+        
+        # Limit to available slots
+        to_process = peers
+        if len(peers) > available_slots:
+            to_process = peers[:available_slots]
+            await reply_to_command(client, message, f"⚠️ Note: only {available_slots} slots available. Processing first {available_slots} chats...")
+            
+        for peer in to_process:
+            try:
+                # Resolve entity
+                entity = await client.get_entity(peer)
+                
+                # We only want groups or channels (not users/bots)
+                from telethon.tl.types import Channel, Chat
+                if not isinstance(entity, (Channel, Chat)):
+                    continue
+                    
+                chat_id = entity.id
+                chat_title = entity.title
+                
+                # Get member count
+                member_count = 0
+                try:
+                    from telethon.tl.functions.channels import GetFullChannelRequest
+                    full_chat = await client(GetFullChannelRequest(entity))
+                    member_count = full_chat.full_chat.participants_count
+                except Exception:
+                    pass
+                
+                success = await add_group(user_id, chat_id, chat_title, account_phone=getattr(client, 'phone', None), member_count=member_count)
+                if success:
+                    added.append(chat_title)
+                else:
+                    failed.append(chat_title)
+                    
+            except Exception as e:
+                logger.warning(f"Failed to resolve/add peer from folder: {e}")
+                
+        # Final response
+        res = f"✅ *FOLDER IMPORT COMPLETE*\n"
+        res += f"📁 Folder: `{folder_name}`\n"
+        res += f"🎯 Groups Added: {len(added)}\n"
+        
+        if failed:
+            res += f"❌ Skip (exists): {len(failed)}\n"
+            
+        new_total = await get_group_count(user_id)
+        res += f"\nTotal Groups: {new_total}/{MAX_GROUPS_PER_USER}"
+        
+        await reply_to_command(client, message, res)
+        
+    except Exception as e:
+        logger.error(f"Error adding folder: {e}")
+        await reply_to_command(client, message, f"❌ Error: {str(e)}")

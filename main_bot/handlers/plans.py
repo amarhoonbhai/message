@@ -32,15 +32,13 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⚪ *STATUS:* NO ACTIVE PLAN
 
 🚀 *UNLOCK PREMIUM AUTO-FORWARDING*
-Connect your Telegram account to instantly receive *7 DAYS FREE TRIAL!*
-
-💰 *PRICING TIERS*
+Connect your Telegram account to get started!
 
 📅 *WEEKLY PRO* — ₹99
-└ 7 days of uninterrupted service
-
 🏆 *MONTHLY ULTRA* — ₹299
-└ 30 days — Best value!
+🌟 *3 MONTHS* — ₹799
+👑 *6 MONTHS* — ₹1499
+☄️ *1 YEAR* — ₹2499
 
 💡 *TIP:* Have a promo code? Tap Redeem below!
 """
@@ -64,10 +62,11 @@ Connect your Telegram account to instantly receive *7 DAYS FREE TRIAL!*
                 status_text = "ACTIVE"
                 time_display = f"⏳ Expires in: *{time_left}*"
                 
-                badge = "🏅" if plan_type == "TRIAL" else "💎"
+                badge = "💎"
                 
                 # Create visual progress bar
-                max_days = 30 if plan_type == "MONTH" else 7
+                from config import PLAN_DURATIONS
+                max_days = PLAN_DURATIONS.get(plan.get("tier", "month"), 30)
                 progress = min(days_left / max_days, 1.0)
                 filled = int(progress * 10)
                 bar = "█" * filled + "▒" * (10 - filled)
@@ -102,8 +101,9 @@ Connect your Telegram account to instantly receive *7 DAYS FREE TRIAL!*
 
 📅 *WEEKLY PRO* — ₹99 (+7 days)
 🏆 *MONTHLY ULTRA* — ₹299 (+30 days)
-
-💡 invite 3 friends → *+7 days FREE!*
+🌟 *3 MONTHS* — ₹799 (+90 days)
+👑 *6 MONTHS* — ₹1499 (+180 days)
+☄️ *1 YEAR* — ₹2499 (+365 days)
 """
     
     await query.edit_message_text(
@@ -121,13 +121,16 @@ async def buy_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     plan_type = query.data.split(":")[1]
     price = PLAN_PRICES.get(plan_type, 0)
     
+    from config import PLAN_DURATIONS
+    days = PLAN_DURATIONS.get(plan_type, 0)
+    
     text = f"""
 💳 *UPGRADE TO {plan_type.upper()} PRO*
 ══════════════════════════════
 
 💎 *Tier:* {plan_type.upper()}
 💰 *Price:* ₹{price}
-⏳ *Validity:* {"7" if plan_type == "week" else "30"} Days
+⏳ *Validity:* {days} Days
 
 🚀 *HOW TO ACTIVATE:*
 1. Send ₹{price} via UPI to: `spinify@ybl`

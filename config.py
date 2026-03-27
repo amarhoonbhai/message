@@ -74,21 +74,19 @@ NIGHT_MODE_START_HOUR = 0       # 00:00 IST
 NIGHT_MODE_END_HOUR = 6         # 06:00 IST
 TIMEZONE = "Asia/Kolkata"
 
-# ============== Trial Bio Enforcement ==============
-TRIAL_BIO_TEXT = "Powered by @AutoMessageSchedulerBot"
-BIO_CHECK_INTERVAL = 600        # Check every 10 minutes
-
 # ============== Plans ==============
-TRIAL_DAYS = 7
-REFERRAL_BONUS_DAYS = 7
-REFERRALS_NEEDED = 3
-
 PLAN_PRICES = {
-    "week": 99,     # ₹99/week
-    "month": 299,   # ₹299/month
+    "week": 99,       # ₹99/week
+    "month": 299,     # ₹299/month
+    "3month": 799,    # ₹799/3 months
+    "6month": 1499,   # ₹1499/6 months
+    "1year": 2499,    # ₹2499/1 year
 }
 
 PLAN_DURATIONS = {
-    "week": 7,      # 7 days
-    "month": 30,    # 30 days
+    "week": 7,        # 7 days
+    "month": 30,      # 30 days
+    "3month": 90,     # 90 days
+    "6month": 180,    # 180 days
+    "1year": 365,     # 365 days
 }

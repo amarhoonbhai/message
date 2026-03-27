@@ -15,7 +15,6 @@ def get_welcome_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🎁 My Plan", callback_data="my_plan"),
-            InlineKeyboardButton("🤝 Refer & Earn", callback_data="referral"),
         ],
         [
             InlineKeyboardButton("📌 Join Community", url=f"https://t.me/{CHANNEL_USERNAME}"),
@@ -47,7 +46,6 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🎁 My Plan / Status", callback_data="my_plan"),
-            InlineKeyboardButton("🤝 Refer & Earn", callback_data="referral"),
         ],
         [
             InlineKeyboardButton("🧾 Redeem Promo Code", callback_data="redeem_code"),
@@ -82,10 +80,15 @@ def get_plan_keyboard() -> InlineKeyboardMarkup:
     """Build plan display keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("💎 Upgrade to WEEKLY (₹99)", callback_data="buy_plan:week"),
+            InlineKeyboardButton("💎 WEEKLY (₹99)", callback_data="buy_plan:week"),
+            InlineKeyboardButton("🏆 MONTHLY (₹299)", callback_data="buy_plan:month"),
         ],
         [
-            InlineKeyboardButton("🏆 Upgrade to MONTHLY (₹299)", callback_data="buy_plan:month"),
+            InlineKeyboardButton("🌟 3 MONTHS (₹799)", callback_data="buy_plan:3month"),
+        ],
+        [
+            InlineKeyboardButton("👑 6 MONTHS (₹1499)", callback_data="buy_plan:6month"),
+            InlineKeyboardButton("☄️ 1 YEAR (₹2499)", callback_data="buy_plan:1year"),
         ],
         [
             InlineKeyboardButton("🧾 Redeem Promo Code", callback_data="redeem_code"),
@@ -104,8 +107,15 @@ def get_admin_upgrade_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
     """Build admin upgrade selection keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("💎 Grant 1 Week", callback_data=f"adm_upgr:{target_user_id}:week"),
-            InlineKeyboardButton("🏆 Grant 1 Month", callback_data=f"adm_upgr:{target_user_id}:month"),
+            InlineKeyboardButton("💎 1 Week", callback_data=f"adm_upgr:{target_user_id}:week"),
+            InlineKeyboardButton("🏆 1 Month", callback_data=f"adm_upgr:{target_user_id}:month"),
+        ],
+        [
+            InlineKeyboardButton("🌟 3 Months", callback_data=f"adm_upgr:{target_user_id}:3month"),
+            InlineKeyboardButton("👑 6 Months", callback_data=f"adm_upgr:{target_user_id}:6month"),
+        ],
+        [
+            InlineKeyboardButton("☄️ 1 Year", callback_data=f"adm_upgr:{target_user_id}:1year"),
         ],
         [
             InlineKeyboardButton("🔙 Back to Admin", callback_data="admin"),
@@ -114,18 +124,6 @@ def get_admin_upgrade_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_referral_keyboard(referral_link: str) -> InlineKeyboardMarkup:
-    """Build referral screen keyboard."""
-    keyboard = [
-        [
-            InlineKeyboardButton("📤 Share Link with Friends", switch_inline_query=referral_link),
-        ],
-        [
-            InlineKeyboardButton("🔙 Back", callback_data="dashboard"),
-            InlineKeyboardButton("🏠 Home", callback_data="home"),
-        ],
-    ]
-    return InlineKeyboardMarkup(keyboard)
 
 
 def get_back_home_keyboard() -> InlineKeyboardMarkup:
@@ -160,8 +158,13 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📢 Global Blast", callback_data="admin_broadcast"),
         ],
         [
-            InlineKeyboardButton("🎟 Give 1 Week", callback_data="gen_code:week"),
-            InlineKeyboardButton("🎟 Give 1 Month", callback_data="gen_code:month"),
+            InlineKeyboardButton("🎟 1 Week", callback_data="gen_code:week"),
+            InlineKeyboardButton("🎟 1 Month", callback_data="gen_code:month"),
+            InlineKeyboardButton("🎟 3 Month", callback_data="gen_code:3month"),
+        ],
+        [
+            InlineKeyboardButton("🎟 6 Month", callback_data="gen_code:6month"),
+            InlineKeyboardButton("🎟 1 Year", callback_data="gen_code:1year"),
         ],
         [
             InlineKeyboardButton("⚡ Quick Upgrade User", callback_data="admin_upgrade_init"),
@@ -185,7 +188,6 @@ def get_broadcast_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🔗 Active APIs", callback_data="broadcast:connected"),
         ],
         [
-            InlineKeyboardButton("🎁 Trial Group", callback_data="broadcast:trial"),
             InlineKeyboardButton("💎 Premium Base", callback_data="broadcast:paid"),
         ],
         [
@@ -230,7 +232,6 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🎁 My Plan", callback_data="my_plan"),
-            InlineKeyboardButton("🤝 Referrals", callback_data="referral"),
         ],
         [
             InlineKeyboardButton("🔙 Back to Dashboard", callback_data="dashboard"),

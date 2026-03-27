@@ -96,10 +96,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             hours_left = ((plan["expires_at"] - datetime.datetime.utcnow()).seconds // 3600)
             expiry_date = format_expiry_date(plan["expires_at"])
             
-            if plan_type.lower() == "trial":
-                plan_badge = "🏅 TRIAL"
-            else:
-                plan_badge = "💎 PREMIUM"
+            plan_badge = "💎 PREMIUM"
             
             if days_left > 0:
                 plan_status = f"{plan_badge} ▪ {days_left}d {hours_left}h left"
@@ -112,7 +109,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             plan_line2 = "     └─ Redeem a code to reactivate!"
     else:
         plan_status = "⚪ NO PLAN"
-        plan_line2 = "     └─ Connect an account for *7 days FREE!*"
+        plan_line2 = "     └─ Upgrade to Premium to start!"
     
     # ═══ Forwarding status ═══
     has_connected = any(s.get("connected") for s in sessions) if sessions else False

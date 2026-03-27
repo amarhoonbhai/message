@@ -30,14 +30,10 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Plan info
     plan = data.get("plan")
     if plan and plan.get("status") == "active":
-        plan_type = plan.get("plan_type", "trial").title()
         days_left = (plan["expires_at"] - datetime.datetime.utcnow()).days
         hours_left = (plan["expires_at"] - datetime.datetime.utcnow()).seconds // 3600
 
-        if plan_type.lower() == "trial":
-            plan_badge = "TRIAL"
-        else:
-            plan_badge = "PREMIUM"
+        plan_badge = "PREMIUM"
 
         if days_left > 0:
             plan_line = f"{plan_badge} -- {days_left}d {hours_left}h left"
@@ -64,10 +60,6 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     shuffle_mode = "ON" if config.get("shuffle_mode") else "OFF"
     responder = "ON" if config.get("auto_reply_enabled") else "OFF"
 
-    # Referral
-    user_data = data.get("user")
-    referral_code = user_data.get("referral_code", "N/A") if user_data else "N/A"
-    referrals_count = user_data.get("referrals_count", 0) if user_data else 0
 
     profile_text = f"""
 *YOUR PROFILE*
@@ -90,10 +82,6 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
   Copy Mode: {copy_mode}
   Shuffle: {shuffle_mode}
   Responder: {responder}
-
-*REFERRALS*
-  Code: `{referral_code}`
-  Invited: {referrals_count} users
 """
 
     await query.edit_message_text(

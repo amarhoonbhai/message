@@ -28,12 +28,8 @@ async def build_welcome_text(user) -> str:
     # Plan badge
     if plan and plan.get("status") == "active":
         import datetime
-        plan_type = plan.get("plan_type", "trial").title()
         days_left = (plan["expires_at"] - datetime.datetime.utcnow()).days
-        if plan_type.lower() == "trial":
-            plan_tag = f"TRIAL ({days_left}d left)"
-        else:
-            plan_tag = f"PREMIUM ({days_left}d left)"
+        plan_tag = f"PREMIUM ({days_left}d left)"
     elif plan:
         plan_tag = "EXPIRED"
     else:
@@ -77,19 +73,16 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     args = context.args
 
-    # Check for referral or connected deep link
-    referred_by = None
+    # Check for connected deep link
     show_dashboard = False
 
     if args:
         arg = args[0]
-        if arg.startswith("ref_"):
-            referred_by = arg[4:]
-        elif arg == "connected":
+        if arg == "connected":
             show_dashboard = True
 
     # Create or get user
-    await create_user(user.id, referred_by=referred_by)
+    await create_user(user.id)
 
     if show_dashboard:
         from main_bot.handlers.dashboard import show_dashboard

@@ -24,7 +24,6 @@ from main_bot.handlers.dashboard import (
     toggle_send_mode_callback,
 )
 from main_bot.handlers.plans import my_plan_callback, buy_plan_callback
-from main_bot.handlers.referral import referral_callback
 from main_bot.handlers.redeem import (
     redeem_code_callback,
     receive_redeem_code,
@@ -134,7 +133,6 @@ def create_application() -> Application:
         ("^add_account$", add_account_callback),
         ("^help$", help_callback),
         ("^my_plan$", my_plan_callback),
-        ("^referral$", referral_callback),
         ("^profile$", profile_callback),
         ("^admin$", admin_callback),
         ("^admin_stats$", admin_stats_callback),

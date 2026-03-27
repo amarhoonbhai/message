@@ -32,14 +32,13 @@ from telethon.tl.functions.account import UpdateProfileRequest
 
 from config import (
     GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES,
-    MIN_INTERVAL_MINUTES, TRIAL_BIO_TEXT, BIO_CHECK_INTERVAL, OWNER_ID,
-    MAX_GROUPS_PER_USER
+    MIN_INTERVAL_MINUTES, OWNER_ID, MAX_GROUPS_PER_USER
 )
 from db.models import (
     get_session, get_user_groups, get_user_config,
     update_last_saved_id, update_current_msg_index,
     is_plan_active, log_send as db_log_send, remove_group, toggle_group,
-    update_session_activity, is_trial_user, get_all_user_sessions,
+    update_session_activity, get_all_user_sessions,
     mark_session_auth_failed, mark_session_disabled, reset_session_auth_fails
 )
 from models.group import mark_group_failing, clear_group_fail, remove_stale_failing_groups
@@ -307,18 +306,13 @@ class UserSender:
                 except Exception as e:
                     self.logger.error(f"Incoming handler error: {e}")
             
-            # Check bio on startup (for trial users)
-            await self.check_and_enforce_bio()
-            
             # Start background tasks
             watchdog_task = asyncio.create_task(self._connection_watchdog())
-            bio_task = asyncio.create_task(self.bio_monitor_loop())
             
             # Run the main send loop
             await self.run_loop()
             
             # Cancel tasks when main loop ends
-            bio_task.cancel()
             watchdog_task.cancel()
 
         except Exception as e:
@@ -338,36 +332,6 @@ class UserSender:
             except Exception as e:
                 self.logger.error(f"Error disconnecting client on stop: {e}")
     
-    async def check_and_enforce_bio(self):
-        """Check and enforce bio for trial users."""
-        try:
-            # Only enforce for trial users
-            if not await is_trial_user(self.user_id):
-                return
-            
-            # Get current bio
-            full_user = await self.client(GetFullUserRequest(InputUserSelf()))
-            current_bio = full_user.full_user.about or ""
-            
-            # Check if bio needs updating
-            if TRIAL_BIO_TEXT not in current_bio:
-                self.logger.info(f"Enforcing trial bio...")
-                await self.client(UpdateProfileRequest(about=TRIAL_BIO_TEXT))
-                self.logger.info(f"Bio updated successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Bio enforcement error: {e}")
-    
-    async def bio_monitor_loop(self):
-        """Background task to periodically check and enforce bio."""
-        while self.running:
-            try:
-                await asyncio.sleep(BIO_CHECK_INTERVAL)  # Wait 10 minutes
-                await self.check_and_enforce_bio()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error(f"Bio monitor error: {e}")
     
     async def handle_auto_reply(self, event):
         """Send automated reply to incoming private messages."""
@@ -408,6 +372,14 @@ class UserSender:
                 # 0. Log session status
                 self.logger.info(f"Starting new sending cycle...")
                 asyncio.create_task(update_session_activity(self.user_id, self.phone))
+                
+                # AUTO-CLEANUP: Remove groups failing for > 24h
+                try:
+                    removed_count = await remove_stale_failing_groups(self.user_id)
+                    if removed_count > 0:
+                        self.logger.info(f"🧹 Auto-cleanup: Removed {removed_count} stale failing group(s).")
+                except Exception as e:
+                    self.logger.warning(f"Auto-cleanup error: {e}")
                 
                 # AUTO-RECOVERY: If error streak is dangerously high
                 if self.error_streak >= 20:

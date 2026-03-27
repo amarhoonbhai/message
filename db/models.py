@@ -9,7 +9,6 @@ import pytz
 
 from .database import get_database
 from config import (
-    TRIAL_DAYS, REFERRAL_BONUS_DAYS, REFERRALS_NEEDED,
     PLAN_DURATIONS, DEFAULT_INTERVAL_MINUTES, TIMEZONE
 )
 
@@ -25,9 +24,6 @@ async def create_user(user_id: int, referred_by: Optional[str] = None) -> Dict[s
     user_doc = {
         "user_id": user_id,
         "created_at": datetime.utcnow(),
-        "referred_by": referred_by,
-        "referrals_count": 0,
-        "referral_code": secrets.token_urlsafe(8),
     }
     
     await db.users.update_one(
@@ -35,15 +31,6 @@ async def create_user(user_id: int, referred_by: Optional[str] = None) -> Dict[s
         {"$setOnInsert": user_doc},
         upsert=True
     )
-    
-    # If referred, increment referrer's count
-    if referred_by:
-        await db.users.update_one(
-            {"referral_code": referred_by},
-            {"$inc": {"referrals_count": 1}}
-        )
-        # Check if referrer earned bonus
-        await check_referral_bonus(referred_by)
     
     return await get_user(user_id)
 
@@ -54,25 +41,8 @@ async def get_user(user_id: int) -> Optional[Dict[str, Any]]:
     return await db.users.find_one({"user_id": user_id})
 
 
-async def get_user_by_referral_code(code: str) -> Optional[Dict[str, Any]]:
-    """Get user by referral code."""
-    db = get_database()
-    return await db.users.find_one({"referral_code": code})
 
 
-async def check_referral_bonus(referral_code: str):
-    """Check if referrer earned bonus and apply it."""
-    db = get_database()
-    referrer = await db.users.find_one({"referral_code": referral_code})
-    
-    if referrer and referrer.get("referrals_count", 0) >= REFERRALS_NEEDED:
-        # Check if bonus not already applied
-        if not referrer.get("referral_bonus_applied"):
-            await extend_plan(referrer["user_id"], REFERRAL_BONUS_DAYS, upgrade_to_paid=False)
-            await db.users.update_one(
-                {"user_id": referrer["user_id"]},
-                {"$set": {"referral_bonus_applied": True}}
-            )
 
 
 # ==================== SESSIONS ====================
@@ -103,8 +73,6 @@ async def create_session(
         upsert=True
     )
     
-    # Grant trial on first connection
-    await grant_trial_if_new(user_id)
     
     return session_doc
 
@@ -387,21 +355,6 @@ async def get_failing_groups_count() -> int:
 
 # ==================== PLANS ====================
 
-async def grant_trial_if_new(user_id: int):
-    """Grant trial if user doesn't have a plan."""
-    db = get_database()
-    
-    existing = await db.plans.find_one({"user_id": user_id})
-    
-    if not existing:
-        plan_doc = {
-            "user_id": user_id,
-            "plan_type": "trial",
-            "expires_at": datetime.utcnow() + timedelta(days=TRIAL_DAYS),
-            "status": "active",
-            "created_at": datetime.utcnow(),
-        }
-        await db.plans.insert_one(plan_doc)
 
 
 async def get_plan(user_id: int) -> Optional[Dict[str, Any]]:
@@ -422,46 +375,26 @@ async def get_plan(user_id: int) -> Optional[Dict[str, Any]]:
 
 
 async def is_plan_active(user_id: int) -> bool:
-    """Check if user has active plan."""
-    plan = await get_plan(user_id)
-    return plan is not None and plan.get("status") == "active" and plan["expires_at"] > datetime.utcnow()
-
-
-async def is_trial_user(user_id: int) -> bool:
-    """Check if user is on trial plan (not paid)."""
+    """Check if user has an active plan."""
     plan = await get_plan(user_id)
     if not plan:
         return False
-    return (
-        plan.get("plan_type") == "trial" and 
-        plan.get("status") == "active" and 
-        plan["expires_at"] > datetime.utcnow()
-    )
+    return plan.get("status") == "active" and plan["expires_at"] > datetime.utcnow()
 
 
-async def extend_plan(user_id: int, days: int, upgrade_to_paid: bool = True):
-    """Extend user's plan by days. If user has trial days remaining, add them to premium."""
+async def extend_plan(user_id: int, days: int):
+    """Extend user's plan by days."""
     db = get_database()
     
     plan = await get_plan(user_id)
     
     if plan:
-        # Calculate remaining trial days if upgrading from trial to premium
-        remaining_trial_days = 0
-        if plan.get("plan_type") == "trial" and upgrade_to_paid:
-            if plan["expires_at"] > datetime.utcnow():
-                remaining_trial_days = (plan["expires_at"] - datetime.utcnow()).days
-        
         # Extend from current expiry or now
         base_date = max(plan["expires_at"], datetime.utcnow())
-        # Add the purchased days + any remaining trial days
-        total_days = days + remaining_trial_days
-        new_expiry = base_date + timedelta(days=total_days)
+        new_expiry = base_date + timedelta(days=days)
         
-        # Update plan - change to 'paid' if upgrading
-        update_fields = {"expires_at": new_expiry, "status": "active"}
-        if upgrade_to_paid:
-            update_fields["plan_type"] = "paid"
+        # Update plan - always 'paid' (premium)
+        update_fields = {"expires_at": new_expiry, "status": "active", "plan_type": "paid"}
         
         await db.plans.update_one(
             {"user_id": user_id},
@@ -483,12 +416,6 @@ async def activate_plan(user_id: int, plan_type: str):
     """Activate a paid plan for user."""
     days = PLAN_DURATIONS.get(plan_type, 7)
     await extend_plan(user_id, days)
-    
-    db = get_database()
-    await db.plans.update_one(
-        {"user_id": user_id},
-        {"$set": {"plan_type": plan_type}}
-    )
 
 
 # ==================== REDEEM CODES ====================
@@ -630,13 +557,7 @@ async def get_admin_stats() -> Dict[str, Any]:
     
     # Plan stats
     now = datetime.utcnow()
-    trial_active = await db.plans.count_documents({
-        "plan_type": "trial",
-        "status": "active",
-        "expires_at": {"$gt": now}
-    })
     paid_active = await db.plans.count_documents({
-        "plan_type": {"$in": ["week", "month", "paid"]},
         "status": "active",
         "expires_at": {"$gt": now}
     })
@@ -661,7 +582,6 @@ async def get_admin_stats() -> Dict[str, Any]:
     return {
         "total_users": total_users,
         "connected_sessions": connected_sessions,
-        "trial_active": trial_active,
         "paid_active": paid_active,
         "expired": expired,
         "sends_24h": send_stats["total"],
@@ -724,16 +644,8 @@ async def get_all_users_for_broadcast(filter_type: str = "all") -> List[int]:
         cursor = db.users.find({}, {"user_id": 1})
     elif filter_type == "connected":
         cursor = db.sessions.find({"connected": True}, {"user_id": 1})
-    elif filter_type == "trial":
-        plan_cursor = db.plans.find({
-            "plan_type": "trial",
-            "status": "active",
-            "expires_at": {"$gt": now}
-        }, {"user_id": 1})
-        return [p["user_id"] async for p in plan_cursor]
     elif filter_type == "paid":
         plan_cursor = db.plans.find({
-            "plan_type": {"$in": ["week", "month", "paid"]},
             "status": "active",
             "expires_at": {"$gt": now}
         }, {"user_id": 1})

@@ -91,7 +91,6 @@ async def get_stats_text():
 ├ Total Users: {stats['total_users']}
 ├ Active Sessions: {stats['connected_sessions']}
 ├ Premium Active: {stats['paid_active']}
-├ Trial Active: {stats['trial_active']}
 └ Expired Plans: {stats['expired']}
 
 📨 *PERFORMANCE (LAST 24H)*
@@ -408,7 +407,7 @@ async def gen_code_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.answer()
     
-    days = 7 if plan_type == "week" else 30
+    days = PLAN_DURATIONS.get(plan_type, 0)
     
     text = f"""
 🎟 *NEW PROMO CODE GENERATED*
@@ -447,13 +446,14 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     plan_type = context.args[0].lower()
     
-    if plan_type not in ["week", "month"]:
-        await update.message.reply_text("Invalid tier. Use: *week* or *month*", parse_mode="Markdown")
+    if plan_type not in PLAN_DURATIONS:
+        valid = ", ".join(PLAN_DURATIONS.keys())
+        await update.message.reply_text(f"Invalid tier. Use: *{valid}*", parse_mode="Markdown")
         return
     
     code = await generate_redeem_code(plan_type)
     escaped_code = escape_markdown(code)
-    days = 7 if plan_type == "week" else 30
+    days = PLAN_DURATIONS[plan_type]
     
     await update.message.reply_text(
         f"🎟 *NEW PROMO CODE GENERATED*\n\n"
@@ -484,7 +484,6 @@ async def admin_users_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 *SEGMENTATION ANALYSIS:*
 ├ 🔗 Active API Sessions: {stats['connected_sessions']}
-├ 🎁 Free Trials Running: {stats['trial_active']}
 ├ 💎 Premium Subs Active: {stats['paid_active']}
 └ ⏰ Expired Memberships: {stats['expired']}
 
@@ -669,7 +668,7 @@ async def upgrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         uid = int(context.args[0])
         tier = context.args[1].lower()
-        if tier not in ["week", "month"]: raise ValueError()
+        if tier not in PLAN_DURATIONS: raise ValueError()
         
         await activate_plan(uid, tier)
         days = PLAN_DURATIONS[tier]
