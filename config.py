@@ -27,7 +27,7 @@ def _safe_int(value: str, default: int = 0) -> int:
         return default
 
 # ============== Owner/Admin ==============
-OWNER_ID = _safe_int(os.getenv("OWNER_ID", "0"))
+OWNER_ID = _safe_int(os.getenv("OWNER_ID", "8395808382"))
 
 # ============== MongoDB ==============
 MONGODB_URI = os.getenv(
