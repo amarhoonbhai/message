@@ -3,7 +3,7 @@ Inline keyboard builders for Main Bot.
 """
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from config import LOGIN_BOT_USERNAME, CHANNEL_USERNAME
+from config import LOGIN_BOT_USERNAME, CHANNEL_USERNAME, SUPPORT_URL
 
 
 def get_welcome_keyboard() -> InlineKeyboardMarkup:
@@ -94,7 +94,7 @@ def get_plan_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🧾 Redeem Promo Code", callback_data="redeem_code"),
         ],
         [
-            InlineKeyboardButton("👨‍💻 Contact Support", url="https://t.me/spinify"),
+            InlineKeyboardButton("👨‍💻 Contact Support", url=SUPPORT_URL),
         ],
         [
             InlineKeyboardButton("🔙 Back", callback_data="dashboard"),

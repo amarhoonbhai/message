@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 
 from db.models import get_plan
 from main_bot.utils.keyboards import get_plan_keyboard, get_back_home_keyboard
-from config import PLAN_PRICES
+from config import PLAN_PRICES, PAYMENT_UPI_ID, SUPPORT_HANDLE
 
 
 def format_expiry_date(dt: datetime) -> str:
@@ -133,9 +133,9 @@ async def buy_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⏳ *Validity:* {days} Days
 
 🚀 *HOW TO ACTIVATE:*
-1. Send ₹{price} via UPI to: `spinify@ybl`
+1. Send ₹{price} via UPI to: `{PAYMENT_UPI_ID}`
 2. Take a screenshot of the transaction.
-3. Send the screenshot to @spinify along with your User ID: `{update.effective_user.id}`
+3. Send the screenshot to {SUPPORT_HANDLE} along with your User ID: `{update.effective_user.id}`
 
 _Your plan will be activated within 30 minutes of verification._
 """
