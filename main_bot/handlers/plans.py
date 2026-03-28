@@ -32,7 +32,7 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⚪ *STATUS:* NO ACTIVE PLAN
 
 🚀 *UNLOCK PREMIUM AUTO-FORWARDING*
-Connect your Telegram account to get started!
+Link your Telegram account and purchase a plan to start automated messaging!
 
 📅 *WEEKLY PRO* — ₹99
 🏆 *MONTHLY ULTRA* — ₹299
@@ -40,10 +40,10 @@ Connect your Telegram account to get started!
 👑 *6 MONTHS* — ₹1499
 ☄️ *1 YEAR* — ₹2499
 
-💡 *TIP:* Have a promo code? Tap Redeem below!
+✨ *Instant activation after payment verification!*
 """
     else:
-        plan_type = plan.get("plan_type", "trial").upper()
+        plan_type = plan.get("plan_type", "premium").upper()
         status = plan.get("status", "unknown").upper()
         expires_at = plan.get("expires_at")
         

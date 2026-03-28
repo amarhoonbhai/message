@@ -23,35 +23,18 @@ def build_connection_success_text(phone: str, plan: dict) -> str:
     from datetime import datetime
     
     if plan and plan.get("status") == "active" and plan.get("expires_at", datetime.min) > datetime.utcnow():
-        plan_type = plan.get("plan_type", "trial")
+        plan_type = plan.get("plan_type", "premium").upper()
         expires_at = plan["expires_at"]
         days_left = (expires_at - datetime.utcnow()).days
         hours_left = (expires_at - datetime.utcnow()).seconds // 3600
 
-        if plan_type == "trial":
-            # Trial user
-            time_left = f"{days_left}d {hours_left}h" if days_left > 0 else f"{hours_left}h"
-            return f"""
+        time_left = f"{days_left}d {hours_left}h" if days_left > 0 else f"{hours_left}h"
+        return f"""
 ✅ *Connected Successfully!*
 
 📱 `{phone}` is now linked to your account.
 
-🏅 *Plan:* Free Trial
-⏳ *Time Left:* {time_left}
-
-💡 Invite *3 friends* to earn +7 bonus days!
-Open the dashboard to add groups and start sending.
-"""
-        else:
-            # Paid/premium user
-            plan_label = plan_type.upper()
-            time_left = f"{days_left}d {hours_left}h" if days_left > 0 else f"{hours_left}h"
-            return f"""
-✅ *Connected Successfully!*
-
-📱 `{phone}` is now linked to your account.
-
-💎 *Plan:* {plan_label} Premium
+💎 *Plan:* {plan_type} Premium
 ⏳ *Remaining:* {time_left}
 
 🚀 Your premium plan is active. Open the dashboard to configure groups and intervals.

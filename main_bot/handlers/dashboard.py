@@ -91,7 +91,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ═══ Plan badge ═══
     if plan:
         if plan.get("status") == "active":
-            plan_type = plan.get("plan_type", "trial").title()
+            plan_type = plan.get("plan_type", "premium").title()
             days_left = (plan["expires_at"] - datetime.datetime.utcnow()).days
             hours_left = ((plan["expires_at"] - datetime.datetime.utcnow()).seconds // 3600)
             expiry_date = format_expiry_date(plan["expires_at"])

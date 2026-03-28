@@ -439,7 +439,7 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not context.args:
         await update.message.reply_text(
-            "⚠️ *Usage:* `/generate <week/month>`\n\nExample: `/generate week`",
+            "⚠️ *Usage:* `/generate <week|month|3month|6month|1year>`\n\nExample: `/generate 3month`",
             parse_mode="Markdown"
         )
         return
@@ -606,7 +606,7 @@ async def receive_upgrade_user_id(update: Update, context: ContextTypes.DEFAULT_
         
         status = "No Plan"
         if plan:
-            status = plan.get("plan_type", "trial").upper()
+            status = plan.get("plan_type", "premium").upper()
             
         await update.message.reply_text(
             f"👤 *USER:* `{target_uid}`\n"

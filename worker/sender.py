@@ -402,7 +402,7 @@ class UserSender:
                     self.logger.info(f"Plan expired or inactive, sleeping 5 min...")
                     await self.update_status("Inactive Plan")
                     self.error_streak = 0
-                    await asyncio.sleep(300)
+                    await asyncio.sleep(60)
                     continue
                 
                 # 2. Check night mode
@@ -436,14 +436,14 @@ class UserSender:
 
                 if not groups:
                     await self.update_status("Sleeping (No assigned groups)")
-                    await asyncio.sleep(300)
+                    await asyncio.sleep(60)
                     continue
 
                 # Get messages
                 messages = await self.get_all_saved_messages()
                 if not messages:
                     await self.update_status("Sleeping (No ads)")
-                    await asyncio.sleep(300)
+                    await asyncio.sleep(60)
                     continue
                 
                 messages.sort(key=lambda x: x.id)

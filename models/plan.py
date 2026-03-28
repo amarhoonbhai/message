@@ -1,7 +1,7 @@
 """
-Plans model — plan CRUD (trial, paid, referral bonus).
+Plans model — plan CRUD (paid).
 
-Preserves all existing functionality from db/models.py.
+Preserves consolidated functionality for premium plan management.
 """
 
 from datetime import datetime, timedelta
@@ -9,7 +9,7 @@ from typing import Optional
 
 from core.database import get_database
 from core.config import (
-    TRIAL_DAYS, PLAN_DURATIONS, DEFAULT_INTERVAL_MINUTES, TIMEZONE
+    PLAN_DURATIONS, DEFAULT_INTERVAL_MINUTES, TIMEZONE
 )
 
 import pytz

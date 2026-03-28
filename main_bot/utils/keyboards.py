@@ -224,6 +224,25 @@ def get_confirm_disconnect_keyboard(phone: str) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
+def get_subscription_required_keyboard() -> InlineKeyboardMarkup:
+    """Build keyboard for non-premium access attempt."""
+    keyboard = [
+        [
+            InlineKeyboardButton("💎 Buy Premium Plan", callback_data="buy_plan:month"),
+        ],
+        [
+            InlineKeyboardButton("🎟️ Redeem Promo Code", callback_data="redeem_code"),
+        ],
+        [
+            InlineKeyboardButton("📢 Join Community", url=f"https://t.me/{CHANNEL_USERNAME}"),
+            InlineKeyboardButton("👨‍💻 Support", url=SUPPORT_URL),
+        ],
+        [
+            InlineKeyboardButton("🏠 Back to Home", callback_data="home"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 def get_profile_keyboard() -> InlineKeyboardMarkup:
     """Build profile screen keyboard."""
     keyboard = [

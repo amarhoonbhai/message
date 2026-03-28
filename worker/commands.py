@@ -183,11 +183,9 @@ async def handle_status(client: TelegramClient, user_id: int, message, text: str
         if expires and expires > datetime.utcnow():
             days_left = (expires - datetime.utcnow()).days
             hours_left = ((expires - datetime.utcnow()).seconds // 3600)
-            plan_type = plan.get("plan_type", "trial").title()
-            if plan_type.lower() == "trial":
-                plan_badge = "🏅 TRIAL"
-            else:
-                plan_badge = "💎 PREMIUM"
+            plan_type = plan.get("plan_type", "premium").title()
+            plan_badge = "💎 PREMIUM"
+            
             if days_left > 0:
                 plan_status = f"🟢 Active — {days_left}d {hours_left}h left"
             else:
@@ -673,7 +671,7 @@ async def handle_addplan(client: TelegramClient, user_id: int, message, text: st
         
     parts = text.split()
     if len(parts) < 3:
-        await reply_to_command(client, message, "○ Usage: .addplan <user_id> <week/month/days>")
+        await reply_to_command(client, message, "○ Usage: .addplan <user_id> <week|month|3month|6month|1year|days>")
         return
         
     try:
@@ -691,7 +689,7 @@ async def handle_addplan(client: TelegramClient, user_id: int, message, text: st
                 days = int(duration_input)
                 await extend_plan(target_id, days)
             except ValueError:
-                await reply_to_command(client, message, "○ Invalid duration. Use: week, month, or number of days.")
+                await reply_to_command(client, message, "○ Invalid duration. Use: week, month, 3month, 6month, 1year, or number of days.")
                 return
                 
         await reply_to_command(client, message, 

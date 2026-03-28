@@ -15,6 +15,7 @@ from telegram.ext import (
 
 from config import MAIN_BOT_TOKEN
 from shared.bot_init import setup_logging, create_base_application, run_bot_gracefully
+from shared.decorators import require_premium
 
 # Import handlers
 from main_bot.handlers.start import start_handler, home_callback
@@ -88,7 +89,7 @@ def create_application() -> Application:
         },
         fallbacks=[
             CallbackQueryHandler(home_callback, pattern="^home$"),
-            CallbackQueryHandler(dashboard_callback, pattern="^dashboard$"),
+            CallbackQueryHandler(require_premium(dashboard_callback), pattern="^dashboard$"),
         ],
         per_user=True,
         per_chat=True,
@@ -126,32 +127,34 @@ def create_application() -> Application:
     application.add_handler(upgrade_conv)
 
     # ============== Callback Query Handlers ==============
-    patterns = [
-        ("^home$", home_callback),
-        ("^dashboard$", dashboard_callback),
-        ("^toggle_send_mode$", toggle_send_mode_callback),
-        ("^add_account$", add_account_callback),
-        ("^help$", help_callback),
-        ("^my_plan$", my_plan_callback),
-        ("^profile$", profile_callback),
-        ("^admin$", admin_callback),
-        ("^admin_stats$", admin_stats_callback),
-        ("^admin_broadcast$", admin_broadcast_callback),
-        ("^gen_code:", gen_code_callback),
-        ("^admin_users$", admin_users_callback),
-        ("^accounts_list$", accounts_list_callback),
-        ("^manage_account:", manage_account_callback),
-        ("^disconnect_account:", disconnect_account_callback),
-        ("^confirm_disconnect:", confirm_disconnect_callback),
-        ("^admin_nightmode$", admin_nightmode_callback),
-        ("^set_nightmode:", set_nightmode_callback),
-        ("^admin_health$", admin_health_callback),
-        ("^adm_upgr:", admin_upgrade_perform_callback),
-        ("^buy_plan:", buy_plan_callback),
+    # (pattern, callback, needs_premium)
+    handlers_config = [
+        ("^home$", home_callback, False),
+        ("^dashboard$", dashboard_callback, True),
+        ("^toggle_send_mode$", toggle_send_mode_callback, True),
+        ("^add_account$", add_account_callback, True),
+        ("^help$", help_callback, False),
+        ("^my_plan$", my_plan_callback, False),
+        ("^profile$", profile_callback, True),
+        ("^admin$", admin_callback, False),
+        ("^admin_stats$", admin_stats_callback, False),
+        ("^admin_broadcast$", admin_broadcast_callback, False),
+        ("^gen_code:", gen_code_callback, False),
+        ("^admin_users$", admin_users_callback, False),
+        ("^accounts_list$", accounts_list_callback, True),
+        ("^manage_account:", manage_account_callback, True),
+        ("^disconnect_account:", disconnect_account_callback, True),
+        ("^confirm_disconnect:", confirm_disconnect_callback, True),
+        ("^admin_nightmode$", admin_nightmode_callback, False),
+        ("^set_nightmode:", set_nightmode_callback, False),
+        ("^admin_health$", admin_health_callback, False),
+        ("^adm_upgr:", admin_upgrade_perform_callback, False),
+        ("^buy_plan:", buy_plan_callback, False),
     ]
     
-    for pattern, callback in patterns:
-        application.add_handler(CallbackQueryHandler(callback, pattern=pattern))
+    for pattern, callback, needs_premium in handlers_config:
+        final_callback = require_premium(callback) if needs_premium else callback
+        application.add_handler(CallbackQueryHandler(final_callback, pattern=pattern))
 
     return application
 

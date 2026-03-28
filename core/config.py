@@ -73,8 +73,8 @@ RETRY_BASE_DELAY_SECONDS: int = _safe_int(os.getenv("RETRY_BASE_DELAY_SECONDS", 
 
 # ── Scheduling Rules ───────────────────────────────────────────────────────
 
-GROUP_GAP_SECONDS: int = _safe_int(os.getenv("GROUP_GAP_SECONDS", "300"), 300)
-MESSAGE_GAP_SECONDS: int = _safe_int(os.getenv("MESSAGE_GAP_SECONDS", "300"), 300)
+GROUP_GAP_SECONDS: int = _safe_int(os.getenv("GROUP_GAP_SECONDS", "45"), 45)
+MESSAGE_GAP_SECONDS: int = _safe_int(os.getenv("MESSAGE_GAP_SECONDS", "210"), 210)
 MIN_INTERVAL_MINUTES: int = _safe_int(os.getenv("MIN_INTERVAL_MINUTES", "15"), 15)
 DEFAULT_INTERVAL_MINUTES: int = _safe_int(os.getenv("DEFAULT_INTERVAL_MINUTES", "15"), 15)
 MAX_GROUPS_PER_USER: int = 100
@@ -90,18 +90,23 @@ NIGHT_MODE_START_HOUR: int = 0
 NIGHT_MODE_END_HOUR: int = 6
 TIMEZONE: str = "Asia/Kolkata"
 
-# ── Trial / Bio ─────────────────────────────────────────────────────────────
-
-TRIAL_BIO_TEXT: str = "Powered by @AutoMessageSchedulerBot"
-BIO_CHECK_INTERVAL: int = 600
-TRIAL_DAYS: int = 7
-REFERRAL_BONUS_DAYS: int = 7
-REFERRALS_NEEDED: int = 3
-
 # ── Plans ───────────────────────────────────────────────────────────────────
 
-PLAN_PRICES: dict = {"week": 99, "month": 299}
-PLAN_DURATIONS: dict = {"week": 7, "month": 30}
+PLAN_PRICES: dict = {
+    "week": 99,
+    "month": 299,
+    "3month": 799,
+    "6month": 1499,
+    "1year": 2499
+}
+
+PLAN_DURATIONS: dict = {
+    "week": 7,
+    "month": 30,
+    "3month": 90,
+    "6month": 180,
+    "1year": 365
+}
 
 # ── Channel ─────────────────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@ from typing import Optional
 import secrets
 
 from core.database import get_database
-from core.config import TRIAL_DAYS, REFERRAL_BONUS_DAYS, REFERRALS_NEEDED
+from core.config import OWNER_ID # Actually, let me check if I can just remove them
 
 
 async def create_user(user_id: int, referred_by: Optional[str] = None) -> dict:

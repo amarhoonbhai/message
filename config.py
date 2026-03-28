@@ -67,10 +67,10 @@ SUPPORT_URL = os.getenv("SUPPORT_URL", "https://t.me/spinify")
 
 # ============== Scheduling Rules ==============
 MAX_GROUPS_PER_USER = 100
-GROUP_GAP_SECONDS = 45           # Delay between groups (45 seconds - medium speed)
-MESSAGE_GAP_SECONDS = 210        # Delay between messages (3.5 minutes)
+GROUP_GAP_SECONDS = 45           # 45 seconds (Premium speed)
+MESSAGE_GAP_SECONDS = 210        # 3.5 minutes
 MIN_INTERVAL_MINUTES = 15       # Minimum user interval
-DEFAULT_INTERVAL_MINUTES = 15   # Default interval (if user doesn't set .interval)
+DEFAULT_INTERVAL_MINUTES = 15   # Default interval
 
 # ============== Night Mode (IST) ==============
 NIGHT_MODE_START_HOUR = 0       # 00:00 IST
