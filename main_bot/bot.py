@@ -62,6 +62,11 @@ from main_bot.handlers.account import (
     confirm_disconnect_callback,
 )
 from main_bot.handlers.profile import profile_callback
+from main_bot.handlers.admin_subscriptions import (
+    admin_sub_menu_callback, admin_sub_list_callback, admin_sub_action_callback,
+    admin_sub_export_callback, cmd_all_subscriptions, cmd_active_subscriptions,
+    cmd_expired_subscriptions, cmd_expiring_users, cmd_subscription
+)
 
 # Configure logging
 logger = setup_logging()
@@ -69,6 +74,23 @@ logger = setup_logging()
 def create_application() -> Application:
     """Create and configure the bot application."""
     application = create_base_application(MAIN_BOT_TOKEN)
+
+    # ============== Global Middleware ==============
+    from telegram.ext import TypeHandler
+    from telegram import Update
+    from models.user import update_user_profile
+    import logging
+
+    async def global_profile_capture(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.effective_user and not update.effective_user.is_bot:
+            user = update.effective_user
+            try:
+                await update_user_profile(user.id, user.username, user.first_name, user.last_name)
+            except Exception as e:
+                pass
+
+    # Run on all updates in a separate group so it doesn't block other handlers
+    application.add_handler(TypeHandler(Update, global_profile_capture), group=-1)
 
     # ============== Command Handlers ==============
     application.add_handler(CommandHandler("start", start_handler))
@@ -80,6 +102,13 @@ def create_application() -> Application:
     application.add_handler(CommandHandler("generate", generate_command))
     application.add_handler(CommandHandler("nightmode", nightmode_command))
     application.add_handler(CommandHandler("upgrade", upgrade_command))
+    
+    # Subscription Commands
+    application.add_handler(CommandHandler("all_subscriptions", cmd_all_subscriptions))
+    application.add_handler(CommandHandler("active_subscriptions", cmd_active_subscriptions))
+    application.add_handler(CommandHandler("expired_subscriptions", cmd_expired_subscriptions))
+    application.add_handler(CommandHandler("expiring_users", cmd_expiring_users))
+    application.add_handler(CommandHandler("subscription", cmd_subscription))
 
     # ============== Conversation Handlers ==============
     redeem_conv = ConversationHandler(
@@ -150,6 +179,10 @@ def create_application() -> Application:
         ("^admin_health$", admin_health_callback, False),
         ("^adm_upgr:", admin_upgrade_perform_callback, False),
         ("^buy_plan:", buy_plan_callback, False),
+        ("^adm_sub_menu$", admin_sub_menu_callback, False),
+        ("^adm_sub_list:", admin_sub_list_callback, False),
+        ("^adm_sub_act:", admin_sub_action_callback, False),
+        ("^adm_sub_export$", admin_sub_export_callback, False),
     ]
     
     for pattern, callback, needs_premium in handlers_config:

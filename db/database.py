@@ -25,6 +25,8 @@ def get_database() -> AsyncIOMotorDatabase:
                 tlsCAFile=certifi.where(),
                 serverSelectionTimeoutMS=30000,
                 connectTimeoutMS=30000,
+                maxPoolSize=50,
+                minPoolSize=5,
             )
             # Access a property to trigger client creation (idempotent)
             _db = _client.spinify

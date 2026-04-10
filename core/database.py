@@ -28,7 +28,7 @@ def get_database() -> AsyncIOMotorDatabase:
             tlsCAFile=certifi.where(),
             serverSelectionTimeoutMS=30_000,
             connectTimeoutMS=30_000,
-            maxPoolSize=100,
+            maxPoolSize=50,
             minPoolSize=5,
         )
         _db = _client[MONGODB_DB_NAME]

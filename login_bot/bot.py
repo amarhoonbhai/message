@@ -47,6 +47,24 @@ def create_application() -> Application:
     """Create and configure the bot application."""
     application = create_base_application(LOGIN_BOT_TOKEN)
 
+    # ============== Global Middleware ==============
+    from telegram.ext import TypeHandler
+    from telegram import Update
+    from models.user import update_user_profile
+    import logging
+
+    async def global_profile_capture(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if hasattr(update, 'effective_user') and update.effective_user and not update.effective_user.is_bot:
+            user = update.effective_user
+            try:
+                await update_user_profile(user.id, user.username, user.first_name, user.last_name)
+            except Exception as e:
+                pass
+
+    # Run on all updates in a separate group so it doesn't block other handlers
+    from telegram.ext import ContextTypes # Needed for typing
+    application.add_handler(TypeHandler(Update, global_profile_capture), group=-1)
+
     # ============== Command Handlers ==============
     # /start is always allowed
     application.add_handler(CommandHandler("start", start_handler))

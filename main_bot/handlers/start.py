@@ -73,7 +73,7 @@ This is a *Fully Premium Bot*. Only users with an active paid plan can access th
 
 🎯 *AUTOMATE YOUR TELEGRAM ADS*
 
-📤 *Auto-forward* to 15+ Groups
+📤 *Auto-forward* to 100+ Groups
 🛡️ *Smart Anti-Flood* Protection
 🌙 *Auto Night Mode* (12AM-6AM)
 📊 *Real-time* Dashboard
@@ -108,6 +108,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Create or get user
     await create_user(user.id)
+    from models.user import update_user_profile
+    await update_user_profile(user.id, user.username, user.first_name, user.last_name)
 
     if show_dashboard_link:
         from main_bot.handlers.dashboard import show_dashboard
@@ -136,6 +138,9 @@ async def home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     user = update.effective_user
+    from models.user import update_user_profile
+    await update_user_profile(user.id, user.username, user.first_name, user.last_name)
+    
     welcome_text, is_premium = await build_welcome_text(user)
     
     # Use restricted keyboard if not premium

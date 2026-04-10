@@ -155,6 +155,7 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📊 Live Stats", callback_data="admin_stats"),
         ],
         [
+            InlineKeyboardButton("💳 Subscriptions", callback_data="adm_sub_menu"),
             InlineKeyboardButton("📢 Global Blast", callback_data="admin_broadcast"),
         ],
         [
@@ -272,6 +273,71 @@ def get_night_mode_settings_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_stats"),
         ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_subscription_menu_keyboard() -> InlineKeyboardMarkup:
+    """Build keyboard for subscription overview stats."""
+    keyboard = [
+        [
+            InlineKeyboardButton("👥 All Users", callback_data="adm_sub_list:all:0"),
+            InlineKeyboardButton("🟢 Active", callback_data="adm_sub_list:active:0"),
+        ],
+        [
+            InlineKeyboardButton("🔴 Expired", callback_data="adm_sub_list:expired:0"),
+            InlineKeyboardButton("⏳ Expiring Soon", callback_data="adm_sub_list:expiring_soon:0"),
+        ],
+        [
+            InlineKeyboardButton("💎 Lifetime", callback_data="adm_sub_list:lifetime:0"),
+            InlineKeyboardButton("📥 Export Data", callback_data="adm_sub_export"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Admin", callback_data="admin"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_subscription_list_keyboard(filter_type: str, current_page: int, total_pages: int, search: str = "") -> InlineKeyboardMarkup:
+    """Build pagination keyboard for user subscriptions."""
+    keyboard = []
+    
+    # Pagination row
+    nav_row = []
+    if current_page > 0:
+        nav_row.append(InlineKeyboardButton("⏮ Previous", callback_data=f"adm_sub_list:{filter_type}:{current_page-1}"))
+    
+    # Always display a middle button showing current page
+    nav_row.append(InlineKeyboardButton(f"📄 {current_page+1}/{total_pages or 1}", callback_data="ignore"))
+    
+    if current_page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Next ⏭", callback_data=f"adm_sub_list:{filter_type}:{current_page+1}"))
+        
+    if nav_row:
+        keyboard.append(nav_row)
+
+    keyboard.append([
+        InlineKeyboardButton("🔙 Back to Subscriptions", callback_data="adm_sub_menu")
+    ])
+    
+    return InlineKeyboardMarkup(keyboard)
+
+def get_subscription_user_details_keyboard(user_id: int, filter_type: str = "all", page: int = 0) -> InlineKeyboardMarkup:
+    """Keyboard for single user actions in subscription view."""
+    keyboard = [
+        [
+            InlineKeyboardButton("➕ Extend 7d", callback_data=f"adm_sub_act:{user_id}:extend:7"),
+            InlineKeyboardButton("➕ Extend 30d", callback_data=f"adm_sub_act:{user_id}:extend:30"),
+        ],
+        [
+            InlineKeyboardButton("➖ Reduce 7d", callback_data=f"adm_sub_act:{user_id}:reduce:7"),
+            InlineKeyboardButton("🛑 Mark Expired", callback_data=f"adm_sub_act:{user_id}:expire:0"),
+        ],
+        [
+            InlineKeyboardButton("🗑 Delete Record", callback_data=f"adm_sub_act:{user_id}:delete:0"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to List", callback_data=f"adm_sub_list:{filter_type}:{page}"),
+        ]
     ]
     return InlineKeyboardMarkup(keyboard)
 

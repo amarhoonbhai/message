@@ -36,6 +36,26 @@ async def get_user(user_id: int) -> Optional[dict]:
     db = get_database()
     return await db.users.find_one({"user_id": user_id})
 
+async def update_user_profile(user_id: int, username: str = None, first_name: str = None, last_name: str = None):
+    """Update user's profile information."""
+    db = get_database()
+    updates = {}
+    if username is not None:
+        updates["username"] = username
+    if first_name is not None:
+        updates["first_name"] = first_name
+    if last_name is not None:
+        updates["last_name"] = last_name
+        
+    if updates:
+        # Also ensure last_active is updated
+        updates["last_active"] = datetime.utcnow()
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": updates},
+            upsert=True
+        )
+
 
 
 

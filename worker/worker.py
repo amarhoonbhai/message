@@ -252,6 +252,30 @@ async def run_worker():
 
 async def main():
     """Auto-restart wrapper."""
+    
+    # SYSTEM FIX: Increase file descriptor soft limits to prevent Errno 24
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        # Increase the limit to max allowed or at least 65535 to handle many sockets
+        target = hard if (hard > 65535 and hard != -1) else 65535
+        if hard == -1: target = 65535
+        # Ensure we don't attempt to set more than hard limit (if bounded)
+        target = min(target, hard) if hard != -1 else target
+        
+        resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+        logger.info(f"File descriptor limit optimized from {soft} to {target}")
+    except Exception as e:
+        logger.warning(f"OS Resource config skipped (Non-Linux or insufficient privileges): {e}")
+
+    # START PLAN NOTIFIER BACKGROUND TASK
+    try:
+        from worker.notifier import PlanNotifier
+        notifier = PlanNotifier()
+        asyncio.create_task(notifier.start())
+    except Exception as notify_err:
+        logger.error(f"Could not start PlanNotifier: {notify_err}")
+
     restart_delay = 5
     max_delay = 60
     while True:
