@@ -34,6 +34,7 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🚀 *UNLOCK PREMIUM AUTO-FORWARDING*
 Link your Telegram account and purchase a plan to start automated messaging!
 
+🎁 *TRIAL PRO* — ₹49 (3 Days)
 📅 *WEEKLY PRO* — ₹99
 🏆 *MONTHLY ULTRA* — ₹299
 🌟 *3 MONTHS* — ₹799
@@ -99,6 +100,7 @@ Link your Telegram account and purchase a plan to start automated messaging!
 
 💰 *EXTEND YOUR SUBSCRIPTION*
 
+🎁 *TRIAL PRO* — ₹49 (+3 days)
 📅 *WEEKLY PRO* — ₹99 (+7 days)
 🏆 *MONTHLY ULTRA* — ₹299 (+30 days)
 🌟 *3 MONTHS* — ₹799 (+90 days)

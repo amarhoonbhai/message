@@ -60,6 +60,9 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".groups":
             await handle_groups(client, user_id, message)
             return True
+        elif cmd == ".resume" or cmd == ".unpause":
+            await handle_resume(client, user_id, message)
+            return True
         elif cmd == ".addgroup":
             await handle_addgroup(client, user_id, message, text)
             return True
@@ -389,90 +392,111 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
 
 
 async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: str):
-    """Handle .rmgroup <number or url> command."""
-    # Parse the input
-    parts = text.split(maxsplit=1)
+    """Handle .rmgroup <number or url> [number2] ... command. Supports batch removal."""
+    parts = text.split()
     if len(parts) < 2:
         await reply_to_command(client, message,
-            "○ Usage: .rmgroup <number or url>\n\n"
+            "○ Usage: .rmgroup <number or url> [idx2] [idx3]...\n\n"
             "Examples:\n"
             "  ◦ .rmgroup 1\n"
-            "  ◦ .rmgroup @groupname\n\n"
+            "  ◦ .rmgroup 1 5 10 @groupname\n\n"
             "▪ Use .groups to see your groups first."
         )
         return
     
-    group_input = parts[1].strip()
+    inputs = parts[1:]
     
-    # Get user's groups FOR THIS ACCOUNT
-    phone = getattr(client, 'phone', None)
-    groups = await get_user_groups(user_id, phone=phone)
+    # Get user's groups (ALL groups to match numbering in .groups)
+    groups = await get_user_groups(user_id)
     
     if not groups:
-        await reply_to_command(client, message, 
-            f"○ No groups found for this account ({phone}).\n\n"
-            "▪ Use .addgroup to add groups first."
-        )
+        await reply_to_command(client, message, "○ You have no groups in your list.")
         return
     
-    chat_id = None
-    chat_title = None
+    removed_titles = []
+    failed_inputs = []
     
-    # Check if input is a number (remove by position)
-    if group_input.isdigit():
-        group_num = int(group_input)
-        if 1 <= group_num <= len(groups):
-            group = groups[group_num - 1]
-            chat_id = group["chat_id"]
-            chat_title = group.get("chat_title", "Unknown")
+    for item in inputs:
+        chat_id = None
+        chat_title = None
+        
+        # Check if index number
+        if item.isdigit():
+            idx = int(item)
+            if 1 <= idx <= len(groups):
+                group = groups[idx - 1]
+                chat_id = group["chat_id"]
+                chat_title = group.get("chat_title", "Unknown")
+            else:
+                failed_inputs.append(f"{item} (Out of range)")
+                continue
         else:
-            await reply_to_command(client, message,
-                f"○ Invalid group number\n\n"
-                f"You have {len(groups)} group(s). Use a number between 1 and {len(groups)}."
-            )
-            return
-    else:
-        # Try to parse as URL/username
-        group_identifier = parse_group_input(group_input)
+            # Try to resolve url/username
+            group_identifier = parse_group_input(item)
+            if not group_identifier:
+                failed_inputs.append(f"{item} (Invalid URL)")
+                continue
+                
+            try:
+                # Resolve entity or match by username/title in existing list
+                try:
+                    entity = await client.get_entity(group_identifier)
+                    chat_id = entity.id
+                except Exception:
+                    pass
+                
+                # Match in existing list
+                search = group_identifier.lstrip("@").lower()
+                for g in groups:
+                    if chat_id and g["chat_id"] == chat_id:
+                        chat_id = g["chat_id"]
+                        chat_title = g["chat_title"]
+                        break
+                    if search in g.get("chat_title", "").lower() or (g.get("chat_id") and str(g["chat_id"]) == search):
+                        chat_id = g["chat_id"]
+                        chat_title = g["chat_title"]
+                        break
+            except Exception:
+                failed_inputs.append(f"{item} (Not found)")
+                continue
         
-        if not group_identifier:
-            await reply_to_command(client, message, "○ Invalid group URL or username")
-            return
-        
-        try:
-            # Try to resolve entity
-            entity = await client.get_entity(group_identifier)
-            chat_id = entity.id
-            chat_title = getattr(entity, 'title', str(chat_id))
-        except Exception:
-            # Try to match by name in existing groups
-            search_term = group_identifier.lstrip("@").lower()
-            for g in groups:
-                if search_term in g.get("chat_title", "").lower():
-                    chat_id = g["chat_id"]
-                    chat_title = g["chat_title"]
-                    break
-            
-            if not chat_id:
-                await reply_to_command(client, message,
-                    "○ Group not found in your list\n\n"
-                    "▪ Use .groups to see your groups."
-                )
-                return
+        if chat_id:
+            try:
+                await remove_group(user_id, chat_id)
+                removed_titles.append(chat_title or f"Chat {chat_id}")
+            except Exception as e:
+                failed_inputs.append(f"{item} ({str(e)[:15]})")
     
-    try:
-        # Remove from database
-        await remove_group(user_id, chat_id)
+    # Build response
+    resp = ""
+    if removed_titles:
+        resp += f"✅ Removed {len(removed_titles)} group(s):\n"
+        for t in removed_titles:
+            resp += f"  ▸ {t}\n"
+            
+    if failed_inputs:
+        resp += f"\n❌ Failed to remove:\n"
+        for f in failed_inputs:
+            resp += f"  ▸ {f}\n"
+            
+    if not resp:
+        resp = "○ No groups were removed."
+    else:
         remaining = await get_group_count(user_id)
-        await reply_to_command(client, message, 
-            f"✅ Group removed!\n\n"
-            f"  ▸ {chat_title}\n\n"
-            f"📁 Remaining: {remaining}/{MAX_GROUPS_PER_USER} slots."
-        )
+        resp += f"\n📁 Remaining: {remaining}/{MAX_GROUPS_PER_USER} slots."
         
-    except Exception as e:
-        logger.error(f"Error removing group: {e}")
-        await reply_to_command(client, message, f"❌ Error: {str(e)}")
+    await reply_to_command(client, message, resp.strip())
+
+
+async def handle_resume(client: TelegramClient, user_id: int, message):
+    """Handle .resume command to re-enable all paused groups."""
+    from models.group import resume_user_groups
+    count = await resume_user_groups(user_id)
+    
+    if count > 0:
+        await reply_to_command(client, message, f"✅ Resumed {count} group(s)!\nWorker will pick them up in the next cycle. ⚡")
+    else:
+        await reply_to_command(client, message, "⚪ No paused groups found to resume.")
 
 
 async def handle_interval(client: TelegramClient, user_id: int, message, text: str):

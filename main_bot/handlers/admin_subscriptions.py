@@ -96,14 +96,14 @@ async def admin_sub_list_callback(update: Update, context: ContextTypes.DEFAULT_
         return
 
     text = f"📋 *Subscription Details* ({filter_type.upper().replace('_', ' ')})\n"
-    text += f"Records: {skip+1} to min({skip+limit}, {total}) of {total}\n════════════════════════════\n\n"
+    text += f"Records: {skip+1} to {min(skip+limit, total)} of {total}\n════════════════════════════\n\n"
     
     for plan in results:
         uinfo = plan.get("user_info", {})
         uid = plan["user_id"]
         uname = escape_markdown(uinfo.get("username", "Not Set"))
         fname = escape_markdown(uinfo.get("first_name", "Unknown"))
-        ptype = plan.get("plan_type", "premium").title()
+        ptype = plan.get("plan_type", "premium").upper()
         
         start_date = plan.get("started_at", datetime.utcnow())
         expiry_date = plan.get("expires_at", datetime.utcnow())
@@ -111,28 +111,23 @@ async def admin_sub_list_callback(update: Update, context: ContextTypes.DEFAULT_
         days_left = (expiry_date - datetime.utcnow()).days
         
         if plan.get("status") == "expired" or days_left < 0:
-            status = "🔴 Expired"
+            status = "🔴 EXPIRED"
             days_left = 0
         elif days_left <= 7:
-            status = "🟡 Expiring Soon"
+            status = "🟡 EXPIRING"
         elif days_left > 3000:
-            status = "💎 Lifetime"
-            days_left = "Unlimited"
+            status = "💎 LIFETIME"
+            days_left = "∞"
         else:
-            status = "🟢 Active"
+            status = "🟢 ACTIVE"
             
-        start_str = start_date.strftime("%d %b %Y")
-        expiry_str = expiry_date.strftime("%d %b %Y") if str(days_left) != "Unlimited" else "Never"
+        expiry_str = expiry_date.strftime("%d %b %y") if str(days_left) != "∞" else "Never"
         
-        text += f"👤 *Username:* @{uname} ({fname})\n"
-        text += f"🆔 *User ID:* `{uid}`\n"
-        text += f"💎 *Plan:* {ptype}\n"
-        text += f"📅 *Start:* {start_str}\n"
-        text += f"⏳ *Expiry:* {expiry_str}\n"
-        text += f"📌 *Days Left:* {days_left}\n"
-        text += f"✅ *Status:* {status}\n\n"
-        text += f"*(Use /subscription {uid} to edit)*\n"
-        text += "〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n"
+        text += f"👤 *{fname}* (@{uname})\n"
+        text += f"🆔 `{uid}`  |  🏷 *{ptype}*\n"
+        text += f"📊 {status} — `{days_left}d` left (Exp: {expiry_str})\n"
+        text += f"🔗 [Details / Edit](https://t.me/share/url?url=/subscription%20{uid})\n"
+        text += "────────────────────────\n"
 
     await query.edit_message_text(
         text,
@@ -203,14 +198,22 @@ async def display_subscription_user(update, context, target_uid: int, query=None
         
         text = f"""
 🛠 *SUBSCRIPTION CONTROLS*
+════════════════════════════
 
-👤 *Username:* @{uname} ({fname})
-🆔 *User ID:* `{target_uid}`
-💎 *Plan:* {ptype}
-📅 *Start:* {start_str}
-⏳ *Expiry:* {expiry_str}
-📌 *Days Left:* {days_left}
-✅ *Status:* {status}
+👤 *USER DETAILS*
+├ Name: {fname}
+├ Username: @{uname}
+└ ID: `{target_uid}`
+
+💳 *PLAN STATUS*
+├ Tier: *{ptype.upper()}*
+├ Status: {status.upper()}
+├ Days Left: `{days_left}`
+└ Expiry: {expiry_date.strftime("%d %b %Y")}
+
+📅 *DATES*
+├ Started: {start_str}
+└ Active Exp: {expiry_date.strftime("%Y-%m-%d %H:%M")}
 
 Choose an action to modify this subscription:
 """

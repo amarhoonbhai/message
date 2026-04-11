@@ -141,3 +141,16 @@ async def get_failing_groups_count() -> int:
     """Get total number of groups currently marked as failing (admin stat)."""
     db = get_database()
     return await db.groups.count_documents({"first_fail_at": {"$exists": True}})
+
+
+async def resume_user_groups(user_id: int) -> int:
+    """Re-enable all paused groups for a user. Returns count updated."""
+    db = get_database()
+    result = await db.groups.update_many(
+        {"user_id": user_id, "enabled": False},
+        {
+            "$set": {"enabled": True, "pause_reason": None},
+            "$unset": {"first_fail_at": "", "fail_reason": ""}
+        }
+    )
+    return result.modified_count

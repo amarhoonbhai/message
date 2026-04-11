@@ -80,10 +80,11 @@ def get_plan_keyboard() -> InlineKeyboardMarkup:
     """Build plan display keyboard."""
     keyboard = [
         [
+            InlineKeyboardButton("🎁 3 DAYS (₹49)", callback_data="buy_plan:trial"),
             InlineKeyboardButton("💎 WEEKLY (₹99)", callback_data="buy_plan:week"),
-            InlineKeyboardButton("🏆 MONTHLY (₹299)", callback_data="buy_plan:month"),
         ],
         [
+            InlineKeyboardButton("🏆 MONTHLY (₹299)", callback_data="buy_plan:month"),
             InlineKeyboardButton("🌟 3 MONTHS (₹799)", callback_data="buy_plan:3month"),
         ],
         [
@@ -107,12 +108,12 @@ def get_admin_upgrade_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
     """Build admin upgrade selection keyboard."""
     keyboard = [
         [
+            InlineKeyboardButton("🎁 3 Days", callback_data=f"adm_upgr:{target_user_id}:trial"),
             InlineKeyboardButton("💎 1 Week", callback_data=f"adm_upgr:{target_user_id}:week"),
-            InlineKeyboardButton("🏆 1 Month", callback_data=f"adm_upgr:{target_user_id}:month"),
         ],
         [
+            InlineKeyboardButton("🏆 1 Month", callback_data=f"adm_upgr:{target_user_id}:month"),
             InlineKeyboardButton("🌟 3 Months", callback_data=f"adm_upgr:{target_user_id}:3month"),
-            InlineKeyboardButton("👑 6 Months", callback_data=f"adm_upgr:{target_user_id}:6month"),
         ],
         [
             InlineKeyboardButton("☄️ 1 Year", callback_data=f"adm_upgr:{target_user_id}:1year"),
@@ -159,11 +160,12 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📢 Global Blast", callback_data="admin_broadcast"),
         ],
         [
+            InlineKeyboardButton("🎟 3 Days", callback_data="gen_code:trial"),
             InlineKeyboardButton("🎟 1 Week", callback_data="gen_code:week"),
             InlineKeyboardButton("🎟 1 Month", callback_data="gen_code:month"),
-            InlineKeyboardButton("🎟 3 Month", callback_data="gen_code:3month"),
         ],
         [
+            InlineKeyboardButton("🎟 3 Month", callback_data="gen_code:3month"),
             InlineKeyboardButton("🎟 6 Month", callback_data="gen_code:6month"),
             InlineKeyboardButton("🎟 1 Year", callback_data="gen_code:1year"),
         ],
@@ -325,14 +327,15 @@ def get_subscription_user_details_keyboard(user_id: int, filter_type: str = "all
     """Keyboard for single user actions in subscription view."""
     keyboard = [
         [
+            InlineKeyboardButton("➕ Extend 3d", callback_data=f"adm_sub_act:{user_id}:extend:3"),
             InlineKeyboardButton("➕ Extend 7d", callback_data=f"adm_sub_act:{user_id}:extend:7"),
+        ],
+        [
             InlineKeyboardButton("➕ Extend 30d", callback_data=f"adm_sub_act:{user_id}:extend:30"),
-        ],
-        [
             InlineKeyboardButton("➖ Reduce 7d", callback_data=f"adm_sub_act:{user_id}:reduce:7"),
-            InlineKeyboardButton("🛑 Mark Expired", callback_data=f"adm_sub_act:{user_id}:expire:0"),
         ],
         [
+            InlineKeyboardButton("🛑 Mark Expired", callback_data=f"adm_sub_act:{user_id}:expire:0"),
             InlineKeyboardButton("🗑 Delete Record", callback_data=f"adm_sub_act:{user_id}:delete:0"),
         ],
         [

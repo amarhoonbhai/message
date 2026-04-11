@@ -378,8 +378,16 @@ class UserSender:
                     removed_count = await remove_stale_failing_groups(self.user_id)
                     if removed_count > 0:
                         self.logger.info(f"🧹 Auto-cleanup: Removed {removed_count} stale failing group(s).")
+                    
+                    # AUTO-RESUME: Automatically re-enable paused groups every cycle
+                    # This gives "failing" groups another chance, especially useful after 
+                    # the "Smart Assignment" fix.
+                    from models.group import resume_user_groups
+                    resumed = await resume_user_groups(self.user_id)
+                    if resumed > 0:
+                        self.logger.info(f"🔄 Auto-resume: Re-enabled {resumed} group(s).")
                 except Exception as e:
-                    self.logger.warning(f"Auto-cleanup error: {e}")
+                    self.logger.warning(f"Maintenance tasks error: {e}")
                 
                 # AUTO-RECOVERY: If error streak is dangerously high
                 if self.error_streak >= 20:
@@ -416,23 +424,40 @@ class UserSender:
                 # 3. Get groups
                 all_raw_groups = await get_user_groups(self.user_id, enabled_only=True)
                 
-                # DISTRIBUTED LOAD BALANCING (Modulo assignment)
+                # SMART GROUP ASSIGNMENT
+                # 1. Groups explicitly linked to this phone
+                my_groups = [g for g in all_raw_groups if g.get("account_phone") == self.phone]
+                
+                # 2. Groups linked to OTHER phones (skip these)
+                other_groups_count = len([g for g in all_raw_groups if g.get("account_phone") and g.get("account_phone") != self.phone])
+                
+                # 3. Orphan groups (no phone linked - legacy or shared)
+                orphan_groups = [g for g in all_raw_groups if g.get("account_phone") is None]
+                
+                # DISTRIBUTED LOAD BALANCING (Modulo for orphans only)
                 all_sessions = await get_all_user_sessions(self.user_id)
                 all_sessions.sort(key=lambda s: s["phone"])
                 session_phones = [s["phone"] for s in all_sessions]
                 num_accounts = len(session_phones)
                 
-                all_raw_groups.sort(key=lambda x: x.get('chat_id', 0))
+                groups = list(my_groups)
+                if orphan_groups:
+                    orphan_groups.sort(key=lambda x: x.get('chat_id', 0))
+                    if num_accounts > 1:
+                        try:
+                            my_idx = session_phones.index(self.phone)
+                            my_orphans = [g for i, g in enumerate(orphan_groups) if i % num_accounts == my_idx]
+                            groups.extend(my_orphans)
+                        except ValueError:
+                            groups.extend(orphan_groups)
+                    else:
+                        groups.extend(orphan_groups)
+
+                if other_groups_count > 0:
+                    self.logger.info(f"🛡️ Smart Assignment: Skipping {other_groups_count} groups managed by other accounts.")
                 
-                if num_accounts > 1:
-                    try:
-                        my_idx = session_phones.index(self.phone)
-                        groups = [g for i, g in enumerate(all_raw_groups) if i % num_accounts == my_idx]
-                        self.logger.info(f"⚖️ Balancing: Account {my_idx+1}/{num_accounts} taking {len(groups)}/{len(all_raw_groups)} groups.")
-                    except ValueError:
-                        groups = all_raw_groups
-                else:
-                    groups = all_raw_groups
+                if my_groups:
+                    self.logger.info(f"🎯 Assigned {len(my_groups)} groups linked directly to this account.")
 
                 if not groups:
                     await self.update_status("Sleeping (No assigned groups)")

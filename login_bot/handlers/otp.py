@@ -277,6 +277,16 @@ async def save_session_and_complete(
         
         # Save to database WITH per-user API credentials
         await create_user(user_id)
+        
+        # Sync user profile info (username, names)
+        from models.user import update_user_profile
+        await update_user_profile(
+            user_id, 
+            update.effective_user.username,
+            update.effective_user.first_name,
+            update.effective_user.last_name
+        )
+        
         await create_session(user_id, phone, session_string, api_id, api_hash)
         
         # Disconnect client

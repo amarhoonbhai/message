@@ -93,6 +93,7 @@ TIMEZONE: str = "Asia/Kolkata"
 # ── Plans ───────────────────────────────────────────────────────────────────
 
 PLAN_PRICES: dict = {
+    "trial": 49,
     "week": 99,
     "month": 299,
     "3month": 799,
@@ -101,6 +102,7 @@ PLAN_PRICES: dict = {
 }
 
 PLAN_DURATIONS: dict = {
+    "trial": 3,
     "week": 7,
     "month": 30,
     "3month": 90,
