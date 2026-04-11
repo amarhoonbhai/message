@@ -12,7 +12,10 @@ from telegram.ext import (
     ConversationHandler,
     ContextTypes,
     filters,
+    TypeHandler,
 )
+from telegram import Update
+from models.user import update_user_profile
 
 from config import MAIN_BOT_TOKEN
 from shared.bot_init import setup_logging, create_base_application, run_bot_gracefully
@@ -77,10 +80,7 @@ def create_application() -> Application:
     application = create_base_application(MAIN_BOT_TOKEN)
 
     # ============== Global Middleware ==============
-    from telegram.ext import TypeHandler
-    from telegram import Update
-    from models.user import update_user_profile
-    import logging
+
 
     async def global_profile_capture(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.effective_user and not update.effective_user.is_bot:

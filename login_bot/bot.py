@@ -10,7 +10,11 @@ from telegram.ext import (
     CallbackQueryHandler,
     MessageHandler,
     filters,
+    ContextTypes,
+    TypeHandler,
 )
+from telegram import Update
+from models.user import update_user_profile
 
 from config import LOGIN_BOT_TOKEN
 from shared.bot_init import setup_logging, create_base_application, run_bot_gracefully
@@ -48,10 +52,7 @@ def create_application() -> Application:
     application = create_base_application(LOGIN_BOT_TOKEN)
 
     # ============== Global Middleware ==============
-    from telegram.ext import TypeHandler
-    from telegram import Update
-    from models.user import update_user_profile
-    import logging
+
 
     async def global_profile_capture(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if hasattr(update, 'effective_user') and update.effective_user and not update.effective_user.is_bot:
@@ -62,7 +63,7 @@ def create_application() -> Application:
                 pass
 
     # Run on all updates in a separate group so it doesn't block other handlers
-    from telegram.ext import ContextTypes # Needed for typing
+
     application.add_handler(TypeHandler(Update, global_profile_capture), group=-1)
 
     # ============== Command Handlers ==============
