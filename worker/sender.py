@@ -101,6 +101,7 @@ class UserSender:
         
         # Performance & Reliability state
         self.config_cache = {} # {key: (value, expiry)}
+        self.last_status = ""  # Cache to prevent redundant DB writes
         self.adaptive_group_gap = AdaptiveDelayController(GROUP_GAP_SECONDS)
         self.adaptive_msg_gap = AdaptiveDelayController(MESSAGE_GAP_SECONDS)
         self.last_heartbeat = None
@@ -108,8 +109,13 @@ class UserSender:
         self.first_run = True  # Flag for staggered first cycle
     
     async def update_status(self, status: str):
-        """Update worker status in database for the current account."""
+        """Update worker status in database with throttling for smoothness."""
+        if status == self.last_status:
+            return
+            
         self.status = status
+        self.last_status = status
+        
         try:
             from db.database import get_database
             db = get_database()
@@ -491,6 +497,11 @@ class UserSender:
                     for grp_idx, group in enumerate(groups):
                         if not self.running: break
                         
+                        # PROACTIVE CHECK: Don't start a send if Night Mode just began
+                        if await is_night_mode():
+                            self.logger.info("🌙 Night Mode detected mid-cycle. Pausing...")
+                            break
+                        
                         chat_title = group.get('chat_title', 'Unknown')
                         self.logger.info(f"📤 Forwarding msg {msg.id} to {chat_title}...")
                         await self.update_status(f"Sending to {chat_title}")
@@ -501,15 +512,17 @@ class UserSender:
                             await self.update_status(f"FloodWait ({flood_wait}s)")
                             await asyncio.sleep(flood_wait)
                             
-                        # Group Gap Delay (skip after the last group)
+                        # Group Gap Delay (Adaptive)
                         if grp_idx < len(groups) - 1:
-                            await self.update_status(f"Group Gap ({GROUP_GAP_SECONDS}s)")
-                            await asyncio.sleep(GROUP_GAP_SECONDS)
+                            current_gap = self.adaptive_group_gap.get_gap()
+                            await self.update_status(f"Group Gap ({current_gap}s)")
+                            await asyncio.sleep(current_gap)
                             
-                    # Message Gap Delay (skip after the last message)
+                    # Message Gap Delay (Adaptive)
                     if msg_idx < len(messages) - 1:
-                        await self.update_status(f"Msg Gap ({MESSAGE_GAP_SECONDS}s)")
-                        await asyncio.sleep(MESSAGE_GAP_SECONDS)
+                        current_gap = self.adaptive_msg_gap.get_gap()
+                        await self.update_status(f"Msg Gap ({current_gap}s)")
+                        await asyncio.sleep(current_gap)
                 
                 # 5. Cycle complete, respect user interval
                 actual_interval = max(interval_minutes, MIN_INTERVAL_MINUTES)

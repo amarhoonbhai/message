@@ -12,7 +12,7 @@ from telegram import Bot
 from telegram.error import TelegramError
 
 from config import MAIN_BOT_TOKEN
-from models.plan import get_expiring_plans, get_newly_expired_plans, update_plan_notification
+from models.plan import get_expiring_plans, get_plans_needing_expiry_reminder, update_plan_notification
 
 logger = logging.getLogger(__name__)
 
@@ -86,20 +86,37 @@ class PlanNotifier:
                 if success:
                     await update_plan_notification(user_id, {"expiration_warnings_sent": new_warning_level})
 
-        # 2. Process newly expired plans
-        newly_expired = await get_newly_expired_plans()
-        for plan in newly_expired:
+        # 2. Process expired plans (recurring reminders)
+        plans_needing_reminders = await get_plans_needing_expiry_reminder()
+        for plan in plans_needing_reminders:
             user_id = plan["user_id"]
+            is_reminder = plan.get("notified_expired", False)
+            expires_at = plan.get("expires_at", now)
             
+            # Formatting for expiry date
+            expiry_str = expires_at.strftime("%Y-%m-%d %H:%M UTC")
+            
+            if is_reminder:
+                title = "⏰ <b>RENEWAL REMINDER</b>"
+                body = f"Your Spinify premium plan remains expired (since {expiry_str}). Your campaigns are currently paused."
+            else:
+                title = "🛑 <b>PLAN EXPIRED</b>"
+                body = f"Your Spinify premium plan has officially expired as of {expiry_str}! Your scheduled campaigns have been paused."
+
             message = (
-                f"🛑 <b>Plan Expired</b>\n\n"
-                f"Your Spinify premium plan has officially expired! Your scheduled campaigns have been paused.\n"
-                f"Please purchase a new plan from the dashboard to continue using the service."
+                f"{title}\n\n"
+                f"{body}\n\n"
+                f"Please purchase a new plan from the dashboard to resume your automated service immediately."
             )
+            
             success = await self.send_message(user_id, message)
             if success:
-                # Set so we don't spam them again
-                await update_plan_notification(user_id, {"notified_expired": True, "status": "expired"})
+                # Update status and set last notification time to throttle the next one for 24h
+                await update_plan_notification(user_id, {
+                    "notified_expired": True, 
+                    "status": "expired",
+                    "last_expiry_notification_at": datetime.utcnow()
+                })
 
     async def send_message(self, user_id: int, text: str) -> bool:
         """Sends a message via the bot, returns True on success."""

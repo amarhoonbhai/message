@@ -300,83 +300,64 @@ async def receive_broadcast_message(update: Update, context: ContextTypes.DEFAUL
     # Get target users
     user_ids = await get_all_users_for_broadcast(target)
     
+    total = len(user_ids)
     success = 0
     failed = 0
+    processed = 0
     
-    status_msg = await message.reply_text(f"📤 *Initiating broadcast to {len(user_ids)} users...*", parse_mode="Markdown")
+    status_msg = await message.reply_text(f"📤 *Initiating Parallel Broadcast...*\nTarget: {target.upper()}\nAudience: {total} users", parse_mode="Markdown")
     
-    for uid in user_ids:
-        try:
-            if message.text:
-                # Try without parse_mode first (safer for plain text with special chars)
-                try:
-                    await context.bot.send_message(
-                        uid, 
-                        message.text, 
-                        parse_mode="Markdown",
-                        disable_web_page_preview=False
-                    )
-                except Exception:
-                    # Fallback: send without Markdown if it fails
-                    await context.bot.send_message(
-                        uid, 
-                        message.text,
-                        disable_web_page_preview=False
-                    )
-            elif message.photo:
-                await context.bot.send_photo(
-                    uid,
-                    message.photo[-1].file_id,
-                    caption=message.caption
-                )
-            elif message.video:
-                await context.bot.send_video(
-                    uid,
-                    message.video.file_id,
-                    caption=message.caption
-                )
-            elif message.animation:
-                await context.bot.send_animation(
-                    uid,
-                    message.animation.file_id,
-                    caption=message.caption
-                )
-            elif message.sticker:
-                await context.bot.send_sticker(uid, message.sticker.file_id)
-            elif message.voice:
-                await context.bot.send_voice(
-                    uid,
-                    message.voice.file_id,
-                    caption=message.caption
-                )
-            elif message.audio:
-                await context.bot.send_audio(
-                    uid,
-                    message.audio.file_id,
-                    caption=message.caption
-                )
-            elif message.video_note:
-                await context.bot.send_video_note(uid, message.video_note.file_id)
-            elif message.document:
-                await context.bot.send_document(
-                    uid,
-                    message.document.file_id,
-                    caption=message.caption
-                )
-            else:
-                # Fallback: copy the message directly for any other type
-                await context.bot.copy_message(
-                    chat_id=uid,
-                    from_chat_id=message.chat_id,
-                    message_id=message.message_id
-                )
-            success += 1
-        except Exception as e:
-            failed += 1
-            # Log first few failures for debugging
-            if failed <= 3:
-                import logging
-                logging.warning(f"Broadcast failed for {uid}: {e}")
+    # Semaphore to cap concurrency (25 msgs/sec is safe)
+    semaphore = asyncio.Semaphore(25)
+    
+    async def send_to_user(uid):
+        nonlocal success, failed, processed
+        async with semaphore:
+            try:
+                if message.text:
+                    try:
+                        await context.bot.send_message(uid, message.text, parse_mode="Markdown", disable_web_page_preview=False)
+                    except Exception:
+                        await context.bot.send_message(uid, message.text, disable_web_page_preview=False)
+                elif message.photo:
+                    await context.bot.send_photo(uid, message.photo[-1].file_id, caption=message.caption)
+                elif message.video:
+                    await context.bot.send_video(uid, message.video.file_id, caption=message.caption)
+                elif message.animation:
+                    await context.bot.send_animation(uid, message.animation.file_id, caption=message.caption)
+                elif message.sticker:
+                    await context.bot.send_sticker(uid, message.sticker.file_id)
+                elif message.voice:
+                    await context.bot.send_voice(uid, message.voice.file_id, caption=message.caption)
+                elif message.audio:
+                    await context.bot.send_audio(uid, message.audio.file_id, caption=message.caption)
+                elif message.video_note:
+                    await context.bot.send_video_note(uid, message.video_note.file_id)
+                elif message.document:
+                    await context.bot.send_document(uid, message.document.file_id, caption=message.caption)
+                else:
+                    await context.bot.copy_message(chat_id=uid, from_chat_id=message.chat_id, message_id=message.message_id)
+                success += 1
+            except Exception:
+                failed += 1
+            finally:
+                processed += 1
+                # Update status message every 50 users for visual smoothness
+                if processed % 50 == 0 or processed == total:
+                    try:
+                        progress = (processed / total) * 100
+                        await status_msg.edit_text(
+                            f"📤 *TRANSMISSION IN PROGRESS*\n"
+                            f"📊 *Progress:* {progress:.1f}%\n"
+                            f"✅ *Success:* {success}\n"
+                            f"❌ *Failed:* {failed}",
+                            parse_mode="Markdown"
+                        )
+                    except: pass
+
+    # Run tasks in parallel
+    tasks = [send_to_user(uid) for uid in user_ids]
+    await asyncio.gather(*tasks)
     
     await status_msg.edit_text(
         f"✅ *BROADCAST COMPLETE*\n\n"

@@ -530,19 +530,33 @@ async def get_account_stats(user_id: int, phone: str) -> Dict[str, Any]:
 
 
 async def get_send_stats(hours: int = 24) -> Dict[str, int]:
-    """Get send statistics for the last N hours."""
+    """Get send statistics for the last N hours categorized by type."""
     db = get_database()
     
     since = datetime.utcnow() - timedelta(hours=hours)
     
-    total = await db.send_logs.count_documents({"sent_at": {"$gte": since}})
+    # Successes
     success = await db.send_logs.count_documents({"sent_at": {"$gte": since}, "status": "success"})
-    failed = await db.send_logs.count_documents({"sent_at": {"$gte": since}, "status": "failed"})
+    
+    # Hard Failures (delivery errors)
+    failed = await db.send_logs.count_documents({
+        "sent_at": {"$gte": since}, 
+        "status": {"$in": ["failed", "peer_flood", "flood_wait"]}
+    })
+    
+    # Maintenance/Pool Cleanup (group specific removals)
+    removed = await db.send_logs.count_documents({
+        "sent_at": {"$gte": since}, 
+        "status": {"$in": ["removed", "failing", "skipped"]}
+    })
+    
+    total = success + failed + removed
     
     return {
         "total": total,
         "success": success,
         "failed": failed,
+        "removed": removed
     }
 
 
@@ -561,7 +575,13 @@ async def get_admin_stats() -> Dict[str, Any]:
         "status": "active",
         "expires_at": {"$gt": now}
     })
-    expired = await db.plans.count_documents({"status": "expired"})
+    
+    # Filter expired plans: only show those expired within the last 7 days
+    seven_days_ago = now - timedelta(days=7)
+    expired = await db.plans.count_documents({
+        "status": "expired",
+        "expires_at": {"$gte": seven_days_ago}
+    })
     
     # Send stats
     send_stats = await get_send_stats(24)
@@ -569,15 +589,13 @@ async def get_admin_stats() -> Dict[str, Any]:
     # Group stats
     total_groups = await db.groups.count_documents({})
     groups_failing = await get_failing_groups_count()
-    groups_removed_24h = await db.send_logs.count_documents({
-        "sent_at": {"$gte": now - timedelta(hours=24)},
-        "status": {"$in": ["removed", "failing"]}
-    })
     
-    # Avg success rate
-    total_sent = send_stats["total"]
+    # Success Rate calculation: Corrected to only count Actionable attempts
+    # Delivered / (Delivered + Hard Failures)
     success_sent = send_stats["success"]
-    avg_success_rate = round((success_sent / total_sent * 100) if total_sent > 0 else 0, 1)
+    failed_sent = send_stats["failed"]
+    total_for_rate = success_sent + failed_sent
+    avg_success_rate = round((success_sent / total_for_rate * 100) if total_for_rate > 0 else 0, 1)
     
     return {
         "total_users": total_users,
@@ -585,11 +603,11 @@ async def get_admin_stats() -> Dict[str, Any]:
         "paid_active": paid_active,
         "expired": expired,
         "sends_24h": send_stats["total"],
-        "success_24h": send_stats["success"],
-        "failed_24h": send_stats["failed"],
+        "success_24h": success_sent,
+        "failed_24h": failed_sent,
         "total_groups": total_groups,
         "groups_failing": groups_failing,
-        "groups_removed_24h": groups_removed_24h,
+        "groups_removed_24h": send_stats["removed"],
         "avg_success_rate": avg_success_rate,
     }
 

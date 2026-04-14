@@ -27,13 +27,19 @@ async def get_expiring_plans() -> list:
     })
     return await cursor.to_list(None)
 
-async def get_newly_expired_plans() -> list:
-    """Get plans that recently expired and haven't triggered final notification."""
+async def get_plans_needing_expiry_reminder() -> list:
+    """Get plans that are expired and need a reminder (every 24h, up to 7 days)."""
     db = get_database()
     now = datetime.utcnow()
+    yesterday = now - timedelta(hours=24)
+    seven_days_ago = now - timedelta(days=7)
+    
     cursor = db.plans.find({
-        "expires_at": {"$lte": now},
-        "notified_expired": {"$ne": True}
+        "expires_at": {"$lte": now, "$gte": seven_days_ago},
+        "$or": [
+            {"notified_expired": {"$ne": True}},
+            {"last_expiry_notification_at": {"$lte": yesterday}}
+        ]
     })
     return await cursor.to_list(None)
 
