@@ -82,7 +82,8 @@ async def get_stats_text():
     
     total = stats['sends_24h']
     success = stats['success_24h']
-    success_rate = stats.get('avg_success_rate', round((success/total*100) if total > 0 else 0, 1))
+    hard_attempts = success + stats['failed_24h']
+    success_rate = stats.get('avg_success_rate', round((success/hard_attempts*100) if hard_attempts > 0 else 0, 1))
 
     return f"""
 📊 *GLOBAL SYSTEM STATISTICS*
@@ -96,7 +97,7 @@ async def get_stats_text():
 📨 *PERFORMANCE (LAST 24H)*
 ├ Messages Attempted: {total}
 ├ Messages Delivered: {success}
-├ Success Rate: {success_rate}%
+├ Success Rate: {success_rate}% ({success}/{hard_attempts})
 └ Failures: {stats['failed_24h']}
 
 📁 *GROUP HEALTH*
