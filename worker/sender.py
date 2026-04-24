@@ -721,12 +721,13 @@ class UserSender:
             topic_id = group.get("topic_id")
 
             # ── STEP 7: Send the message ─────────────────────────────────────
-            if copy_mode:
+            if copy_mode or topic_id:
                 # Safeguard: skip empty messages (no text and no media)
                 if not message.text and not message.media:
                     self.logger.warning("Skipping empty message")
                     return (False, 0)
 
+                # Use send_message as it reliably supports reply_to (for forums)
                 await self.client.send_message(
                     entity=entity,
                     message=message.text or None,
@@ -736,13 +737,13 @@ class UserSender:
                 )
                 log_action = f"Copied (Topic {topic_id})" if topic_id else "Copied"
             else:
+                # Standard forward (shows "Forwarded from")
                 await self.client.forward_messages(
                     entity=entity,
                     messages=message.id,
-                    from_peer=InputPeerSelf(),
-                    reply_to=topic_id
+                    from_peer='me'
                 )
-                log_action = f"Forwarded (Topic {topic_id})" if topic_id else "Forwarded"
+                log_action = "Forwarded"
             
             self.logger.info(f"{log_action} message {message.id} to {chat_title}")
             self.adaptive_group_gap.on_success()

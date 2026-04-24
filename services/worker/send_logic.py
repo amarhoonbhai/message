@@ -152,6 +152,8 @@ async def send_message_to_group(
                                     "skipped", "Empty message")
                 return ("failed", 0)
 
+        if copy_mode or topic_id:
+            # Use send_message as it reliably supports reply_to (for forums) and media
             await client.send_message(
                 entity=entity,
                 message=saved_msg.text or None,
@@ -160,12 +162,11 @@ async def send_message_to_group(
                 reply_to=topic_id
             )
         else:
-            # Use 'me' instead of InputPeerSelf() for better cross-session compatibility
+            # Standard forward (shows "Forwarded from")
             await client.forward_messages(
                 entity=entity,
                 messages=message_id,
-                from_peer='me',
-                reply_to=topic_id
+                from_peer='me'
             )
 
         await log_job_event(job_id, user_id, phone, group_id, message_id, "sent")
