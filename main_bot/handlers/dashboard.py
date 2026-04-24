@@ -199,11 +199,8 @@ to start auto-forwarding messages.
 👇 *Tap below to continue to Login Bot*
 """
     
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=get_add_account_keyboard(),
-    )
+    from shared.utils import safe_reply
+    await safe_reply(update, text, reply_markup=get_add_account_keyboard())
 async def toggle_send_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Toggle between send modes (sequential -> rotate -> random -> sequential)."""
     query = update.callback_query

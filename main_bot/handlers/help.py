@@ -58,11 +58,8 @@ async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    await query.edit_message_text(
-        HELP_TEXT,
-        parse_mode="Markdown",
-        reply_markup=get_back_home_keyboard(),
-    )
+    from shared.utils import safe_reply
+    await safe_reply(update, HELP_TEXT, reply_markup=get_back_home_keyboard())
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

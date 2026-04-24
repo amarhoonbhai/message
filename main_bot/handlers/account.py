@@ -41,11 +41,8 @@ async def accounts_list_callback(update: Update, context: ContextTypes.DEFAULT_T
 
 *Your API credentials are safe and encrypted.*
 """
-        await query.edit_message_text(
-            text,
-            parse_mode="Markdown",
-            reply_markup=get_back_home_keyboard(),
-        )
+        from shared.utils import safe_reply
+        await safe_reply(update, text, reply_markup=get_back_home_keyboard())
         return
     
     text = """
@@ -53,11 +50,8 @@ async def accounts_list_callback(update: Update, context: ContextTypes.DEFAULT_T
 
 Select a connected account below to view its live stats or to disconnect it:
 """
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=get_account_selection_keyboard(sessions),
-    )
+    from shared.utils import safe_reply
+    await safe_reply(update, text, reply_markup=get_account_selection_keyboard(sessions))
 
 
 async def manage_account_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

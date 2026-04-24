@@ -5,6 +5,7 @@ Commands are sent by user to their own Saved Messages and processed by Worker.
 
 import logging
 import re
+from typing import Optional, List
 from telethon import TelegramClient
 from telethon.errors import (
     ChannelPrivateError,
@@ -24,6 +25,7 @@ from models.user import get_user_config, update_user_config
 from models.group import get_user_groups, add_group, remove_group, get_group_count, toggle_group
 from db.models import get_account_stats, get_recent_failed_logs
 from models.plan import get_plan
+from worker.utils import is_night_mode
 
 logger = logging.getLogger(__name__)
 
@@ -899,11 +901,12 @@ async def handle_nightmode(client: TelegramClient, user_id: int, message, text: 
 async def get_night_mode_label() -> str:
     """Helper to get a human-friendly night mode status label."""
     from models.job import get_global_settings
-    from services.worker.send_logic import is_night_mode
+    # Fix: Import is_night_mode from worker.utils instead of send_logic
+    from worker.utils import is_night_mode as check_night_mode
     
     settings = await get_global_settings()
     force = settings.get("night_mode_force", "auto")
-    active = await is_night_mode()
+    active = await check_night_mode()
     
     if force == "on":
         return "🔴 FORCED ON"

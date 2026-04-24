@@ -59,6 +59,7 @@ async def safe_reply(update, text: str, reply_markup=None, parse_mode="Markdown"
     from telegram.error import BadRequest, Forbidden
     
     try:
+        # 1. Try to edit if it's a callback
         if update.callback_query:
             try:
                 await update.callback_query.edit_message_text(
@@ -66,24 +67,24 @@ async def safe_reply(update, text: str, reply_markup=None, parse_mode="Markdown"
                     reply_markup=reply_markup,
                     parse_mode=parse_mode
                 )
+                return
             except BadRequest as e:
+                # Common harmless error when refreshing dashboard with same data
                 if "Message is not modified" in str(e):
-                    return # Safe to ignore
-                # Fallback to sending new message if edit fails (e.g. too old)
-                await update.effective_chat.send_message(
-                    text=text,
-                    reply_markup=reply_markup,
-                    parse_mode=parse_mode
-                )
-        else:
-            await update.effective_chat.send_message(
-                text=text,
-                reply_markup=reply_markup,
-                parse_mode=parse_mode
-            )
+                    return
+                # If editing fails for other reasons (e.g. message too old), try sending new
+                pass
+        
+        # 2. Send new message as final fallback
+        await update.effective_chat.send_message(
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode
+        )
     except Forbidden:
-        # User blocked the bot — we can't do anything, but shouldn't crash
         pass
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"safe_reply failed: {e}")
+        # Check again in the outer catch for "not modified" just in case
+        if "Message is not modified" not in str(e):
+            import logging
+            logging.getLogger(__name__).error(f"safe_reply failed: {e}")

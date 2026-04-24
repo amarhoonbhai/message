@@ -249,12 +249,8 @@ class UserSender:
         Register event handlers, run background tasks, and enter the send loop.
         Called AFTER the semaphore is released — runs for the entire session lifetime.
         """
-        # Initial Smart Delay: stagger startups to avoid simultaneous API bursts
-        startup_delay = random.randint(5, 15)
-        self.logger.info(f"🏁 Waiting {startup_delay}s (anti-burst) before loop...")
-        await asyncio.sleep(startup_delay)
-
         try:
+            # ── PHASE 2a: REGISTER HANDLERS IMMEDIATELY ────────────────────
             # Handler 1: Outgoing messages from self (commands + new ads in Saved Messages)
             @self.client.on(events.NewMessage(outgoing=True))
             async def outgoing_handler(event):
@@ -313,8 +309,15 @@ class UserSender:
 
                 except Exception as e:
                     self.logger.error(f"Incoming handler error: {e}")
-            
-            # Start background tasks
+
+            self.logger.info("✅ Event handlers registered")
+
+            # ── PHASE 2b: STARTUP STAGGER ──────────────────────────────────
+            startup_delay = random.randint(5, 15)
+            self.logger.info(f"🏁 Waiting {startup_delay}s (anti-burst) before loop...")
+            await asyncio.sleep(startup_delay)
+
+            # ── PHASE 2c: START BACKGROUND TASKS & MAIN LOOP ───────────────
             watchdog_task = asyncio.create_task(self._connection_watchdog())
             
             # Run the main send loop
