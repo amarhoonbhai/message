@@ -160,10 +160,11 @@ async def send_message_to_group(
                 reply_to=topic_id
             )
         else:
+            # Use 'me' instead of InputPeerSelf() for better cross-session compatibility
             await client.forward_messages(
                 entity=entity,
                 messages=message_id,
-                from_peer=InputPeerSelf(),
+                from_peer='me',
                 reply_to=topic_id
             )
 
@@ -181,15 +182,16 @@ async def send_message_to_group(
     except PeerFloodError:
         logger.error(f"🚨 PeerFlood on group {group_id} — account restricted!")
         await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "flood", "PeerFlood")
+                            "flood", "PeerFlood Restriction")
         return ("flood", 7200)  # 2-hour cooldown
 
     except (ChannelInvalidError, UsernameNotOccupiedError,
             UsernameInvalidError, InviteHashExpiredError) as e:
-        logger.warning(f"❌ Removing group {group_id}: {type(e).__name__}")
+        reason = type(e).__name__
+        logger.warning(f"❌ Removing group {group_id}: {reason}")
         asyncio.create_task(remove_group(user_id, group_id))
         await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "removed", f"{type(e).__name__}")
+                            "removed", f"Dead link: {reason}")
         return ("removed", 0)
 
     except (ChatWriteForbiddenError, ChannelPrivateError,
@@ -198,7 +200,7 @@ async def send_message_to_group(
         logger.warning(f"⚠️ Group {group_id} failing: {reason}")
         asyncio.create_task(mark_group_failing(user_id, group_id, reason))
         await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "failing", f"Failing: {reason}")
+                            "failing", f"Permission: {reason}")
         return ("failing", 0)
 
     except InputUserDeactivatedError:
@@ -208,49 +210,36 @@ async def send_message_to_group(
             mark_session_disabled(user_id, phone, reason="UserDeactivated")
         )
         await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "failed", "UserDeactivated")
+                            "failed", "Account Banned/Deactivated")
         return ("deactivated", 0)
 
-
     except RPCError as e:
-        error_msg = str(e).upper()
-        
+        # Extract the most meaningful part of the RPC error
+        raw_error = str(e).upper()
+        if "(" in raw_error:
+            # e.g. "FILE_REFERENCE_EXPIRED (400)" -> "FILE_REFERENCE_EXPIRED"
+            error_code = raw_error.split("(")[0].strip()
+        else:
+            error_code = raw_error[:30]
+
         # 1. MESSAGE_ID_INVALID: The ad message was deleted from Saved Messages
-        if "MESSAGE_ID_INVALID" in error_msg or "OPERATION ON SUCH MESSAGE" in error_msg:
-            logger.warning(f"Message ID invalid or deleted (msg {message_id})")
+        if any(x in error_code for x in ["MESSAGE_ID_INVALID", "OPERATION ON SUCH MESSAGE"]):
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "skipped", "Message deleted/invalid")
-            # Don't pause the group, just skip this message
+                                "skipped", "Ad Deleted from Saved Messages")
             return ("failed", 0)
 
-        # 2. TOPIC_CLOSED or Join Required: Mark as failing (delayed removal)
-        elif any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN",
-                                          "USER_BANNED_IN_CHANNEL", "TOPIC_CLOSED", "JOIN THE DISCUSSION GROUP",
-                                          "SEND_MESSAGES_FORBIDDEN"]):
-            asyncio.create_task(mark_group_failing(user_id, group_id, f"Restricted: {error_msg[:40]}"))
+        # 2. Permission issues
+        elif any(x in error_code for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN",
+                                           "USER_BANNED_IN_CHANNEL", "TOPIC_CLOSED", "SEND_MESSAGES_FORBIDDEN"]):
+            asyncio.create_task(mark_group_failing(user_id, group_id, error_code))
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "failing", f"Restricted: {error_msg[:40]}")
+                                "failing", error_code)
             return ("failing", 0)
-            
-        # 3. CHANNEL_INVALID or Not Occupied: Remove the group
-        elif any(x in error_msg for x in ["CHANNEL_INVALID", "USERNAME_NOT_OCCUPIED",
-                                            "USERNAME_INVALID", "INVITE_HASH_EXPIRED"]):
-            asyncio.create_task(remove_group(user_id, group_id))
-            await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "removed", f"Invalid: {error_msg[:20]}")
-            return ("removed", 0)
-            
-        # 4. Message Empty: User tried to copy a totally empty URL preview or similar unsupported media
-        elif "MESSAGE CANNOT BE EMPTY" in error_msg:
-            logger.warning(f"Empty message content for copying (msg {message_id})")
-            await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "skipped", "Empty message or unsupported media")
-            return ("failed", 0)
             
         else:
             logger.error(f"RPCError on group {group_id}: {e}")
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "failed", error_msg[:50])
+                                "failed", error_code)
             return ("failed", 0)
 
     except Exception as e:
