@@ -1011,17 +1011,30 @@ async def handle_addlist_link(client: TelegramClient, user_id: int, message, lin
         
         # Check the invite
         invite = await client(CheckChatlistInviteRequest(slug))
-        title = invite.chatlist.title
-        peers = invite.peers
+        
+        # Handle both ChatlistInvite (new) and ChatlistInviteAlready (already joined)
+        # Both have a 'chatlist' attribute but it contains different types of objects
+        from telethon.tl.types.chatlists import ChatlistInviteAlready
+        
+        title = "Shared Folder"
+        peers = []
+        
+        if hasattr(invite, 'chatlist'):
+            title = getattr(invite.chatlist, 'title', "Shared Folder")
+        
+        # ChatlistInvite has 'peers'
+        # ChatlistInviteAlready has 'already_peers'
+        peers = getattr(invite, 'peers', []) or getattr(invite, 'already_peers', [])
         
         if not peers:
-            await reply_to_command(client, message, f"⚪ Shared folder `{title}` is empty.")
+            await reply_to_command(client, message, f"⚪ Shared folder `{title}` is empty or already fully synced.")
             return
             
         await reply_to_command(client, message, f"📂 Found {len(peers)} items in shared folder `{title}`.\nImporting...")
         
-        # Join the chatlist (actually joins the groups)
-        await client(JoinChatlistInviteRequest(slug, peers))
+        # Only Join if it's a new invite
+        if not isinstance(invite, ChatlistInviteAlready):
+            await client(JoinChatlistInviteRequest(slug, peers))
         
         # Now process like a folder
         await process_folder_peers(client, user_id, message, title, peers)
