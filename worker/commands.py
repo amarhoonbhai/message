@@ -996,7 +996,8 @@ async def handle_folders(client: TelegramClient, user_id: int, message):
         text += "══════════════════════════\n\n"
         
         count = 0
-        for f in filters:
+        # Fix: Iterate over filters.filters
+        for f in getattr(filters, 'filters', []):
             if hasattr(f, 'title') and f.title:
                 text += f"▪ `{f.title}`\n"
                 count += 1
@@ -1033,7 +1034,8 @@ async def handle_addfolder(client: TelegramClient, user_id: int, message, text: 
         filters = await client(GetDialogFiltersRequest())
         
         target_filter = None
-        for f in filters:
+        # Fix: Iterate over filters.filters
+        for f in getattr(filters, 'filters', []):
             if hasattr(f, 'title') and f.title and f.title.lower() == folder_input.lower():
                 target_filter = f
                 break
@@ -1139,6 +1141,9 @@ async def fetch_peers_by_flags(client: TelegramClient, f: DialogFilter) -> list:
 
 async def process_folder_peers(client, user_id, message, folder_name, peers):
     """Common logic to resolve and add multiple peers from a foldery source."""
+    if peers is None:
+        peers = []
+        
     # Check current group count
     count = await get_group_count(user_id)
     available_slots = MAX_GROUPS_PER_USER - count
