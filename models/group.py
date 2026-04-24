@@ -156,3 +156,18 @@ async def resume_user_groups(user_id: int) -> int:
         }
     )
     return result.modified_count
+    
+async def pause_user_groups(user_id: int) -> int:
+    """Disable all active groups for a user. Returns count updated."""
+    db = get_database()
+    result = await db.groups.update_many(
+        {"user_id": user_id, "enabled": True},
+        {"$set": {"enabled": False, "pause_reason": "Global Pause (Command)"}}
+    )
+    return result.modified_count
+
+async def clear_user_groups(user_id: int) -> int:
+    """Delete and remove ALL groups for a user. Returns count removed."""
+    db = get_database()
+    result = await db.groups.delete_many({"user_id": user_id})
+    return result.deleted_count

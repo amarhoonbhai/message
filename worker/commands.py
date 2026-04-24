@@ -67,8 +67,17 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".groups":
             await handle_groups(client, user_id, message)
             return True
-        elif cmd == ".resume" or cmd == ".unpause":
+        elif cmd == ".resume" or cmd == ".unpause" or cmd == ".start":
             await handle_resume(client, user_id, message)
+            return True
+        elif cmd == ".pause" or cmd == ".stop":
+            await handle_pause(client, user_id, message)
+            return True
+        elif cmd == ".clear":
+            await handle_clear(client, user_id, message)
+            return True
+        elif cmd == ".logs":
+            await handle_logs(client, user_id, message)
             return True
         elif cmd == ".addgroup":
             await handle_addgroup(client, user_id, message, text)
@@ -130,28 +139,30 @@ async def handle_help(client: TelegramClient, user_id: int, message):
     """Handle .help command with professional styling."""
     from core.config import MIN_INTERVAL_MINUTES
     text = (
-        "📘 *BOT WORKER COMMANDS* 📘\n\n"
-        "👥 *GROUP MANAGEMENT*\n"
-        "🔸 `.addgroup <url>` — Add to forward list\n"
-        "🔸 `.addfolder <name>` — Add all groups from folder\n"
-        "🔸 `.rmgroup <url/idx>` — Remove from list\n"
-        "🔸 `.groups` — Show your active groups\n"
-        "🔸 `.folders` — List your Telegram folders\n\n"
-        "⚙️ *SETTINGS*\n"
-        "🔸 `.interval <min>` — Set loop delay (min: {min}m)\n"
-        "🔸 `.shuffle on/off` — Randomize loop order\n"
-        "🔸 `.copymode on/off` — Send as fresh message\n"
-        "🔸 `.sendmode <seq/rot/rand>` — Message distribution\n"
-        "🔸 `.responder <msg>` — Set auto-reply for DMs\n"
-        "🔸 `.responder off` — Disable auto-reply\n\n"
-        "⚡ *DIAGNOSTICS*\n"
-        "🔸 `.ping` — Check if worker is alive\n\n"
-        "👑 *OWNER COMMANDS*\n"
-        "🔸 `.userstatus <id>` — Check any user's plan\n"
-        "🔸 `.addplan <id> <week/month/days>` — Grant plan\n"
-        "🔸 `.nightmode on/off/auto` — Global control\n\n"
-        "💡 *PRO TIP:* You can add multiple groups at once!\n"
-        "Example: `.addgroup @group1 @group2`"
+        "💎 *KURUP ADS V5 ELITE — COMMANDS* 💎\n\n"
+        "📢 *GROUP MANAGEMENT*\n"
+        "├ `.addgroup <url>` — Add target group\n"
+        "├ `.addfolder <name>` — Add Telegram folder\n"
+        "├ `.rmgroup <idx>` — Remove group by index\n"
+        "├ `.rmpaused` — Remove all paused groups\n"
+        "├ `.clear` — Remove *EVERYTHING* from list\n"
+        "├ `.groups` — Show your target list\n"
+        "└ `.folders` — List your account folders\n\n"
+        "⚙️ *WORKER SETTINGS*\n"
+        "├ `.interval <min>` — Set loop delay (min: {min}m)\n"
+        "├ `.shuffle on/off` — Randomize loop order\n"
+        "├ `.copymode on/off` — Fresh message (No Forward tag)\n"
+        "├ `.sendmode <pattern>` — `seq` | `rot` | `rand` \n"
+        "├ `.responder <msg>` — Set auto-DM reply\n"
+        "├ `.responder off` — Disable auto-DM\n"
+        "└ `.nightmode on/off` — 12AM-6AM Automation\n\n"
+        "⚡ *DIAGNOSTICS & CONTROL*\n"
+        "├ `.status` — Live account dashboard\n"
+        "├ `.stats` — Performance & Success rate\n"
+        "├ `.logs` — Recent activity feed\n"
+        "├ `.pause` — Global pause all groups\n"
+        "├ `.resume` — Global resume all groups\n"
+        "└ `.ping` — Connectivity test\n"
     ).format(min=MIN_INTERVAL_MINUTES)
     
     await reply_to_command(client, message, text)
@@ -293,40 +304,46 @@ async def handle_stats(client: TelegramClient, user_id: int, message):
 
 
 async def handle_groups(client: TelegramClient, user_id: int, message):
-    """Handle .groups command - list groups for THIS account."""
+    """Handle .groups command - list groups with stylized output."""
     phone = getattr(client, 'phone', None)
     groups = await get_user_groups(user_id)
     
     if not groups:
         await reply_to_command(client, message, 
-            f"📁 GROUPS — {phone}\n"
-            f"══════════════════════════\n\n"
-            f"⚪ No groups added yet.\n\n"
-            f"💡 Use .addgroup <url> to add one."
+            f"📁 *TARGET GROUPS — {phone}*\n"
+            f"════════════════════════\n\n"
+            f"⚪ No groups found.\n\n"
+            f"💡 Type `.addgroup <url>` to begin!"
         )
         return
     
-    enabled = len([g for g in groups if g.get("enabled", True)])
-    text = f"📁 GROUPS — {phone}\n"
-    text += f"══════════════════════════\n\n"
-    text += f"🟢 {enabled} active \u25aa {len(groups) - enabled} paused \u25aa {len(groups)}/{MAX_GROUPS_PER_USER} slots\n\n"
+    enabled_count = len([g for g in groups if g.get("enabled", True)])
+    total_count = len(groups)
     
-    for i, group in enumerate(groups, 1):
+    header = f"📁 *TARGET GROUPS — {phone}*\n"
+    header += f"════════════════════════\n\n"
+    header += f"🟢 Active: {enabled_count} ▪ 🔴 Paused: {total_count - enabled_count}\n\n"
+    
+    # Professional Summarization if list is long
+    display_groups = groups[:15]
+    
+    text = header
+    for i, group in enumerate(display_groups, 1):
         title = group.get("chat_title", "Unknown")
         enabled = group.get("enabled", True)
-        reason = group.get("pause_reason")
+        topic = f" (T:{group.get('topic_id')})" if group.get('topic_id') else ""
+        icon = "🟢" if enabled else "🔴"
         
-        if enabled:
-            icon = "🟢"
-            status_suffix = ""
-        else:
-            icon = "🔴"
-            status_suffix = f" (Paused: {reason})" if reason else " (Paused)"
-            
-        text += f"  {i}. {icon} {title}{status_suffix}\n"
+        # Trim long titles
+        if len(title) > 20: title = title[:17] + "..."
+        
+        text += f"  {i}. {icon} `{title}`{topic}\n"
     
-    text += f"\n══════════════════════════\n"
-    text += "💡 .rmgroup <number> to remove."
+    if len(groups) > 15:
+        text += f"  ...\n  _And {len(groups) - 15} more groups._\n"
+        
+    text += f"\n══════════════════════\n"
+    text += f"Slots: {total_count}/{MAX_GROUPS_PER_USER} ▪ `.rmgroup <idx>`"
     
     await reply_to_command(client, message, text)
 
@@ -553,9 +570,58 @@ async def handle_resume(client: TelegramClient, user_id: int, message):
     count = await resume_user_groups(user_id)
     
     if count > 0:
-        await reply_to_command(client, message, f"✅ Resumed {count} group(s)!\nWorker will pick them up in the next cycle. ⚡")
+        await reply_to_command(client, message, f"✅ *RESUMED* — {count} groups are now active! ⚡")
     else:
-        await reply_to_command(client, message, "⚪ No paused groups found to resume.")
+        await reply_to_command(client, message, "⚪ No paused groups found.")
+
+async def handle_pause(client: TelegramClient, user_id: int, message):
+    """Handle .pause command to disable all active groups."""
+    from models.group import pause_user_groups
+    count = await pause_user_groups(user_id)
+    
+    if count > 0:
+        await reply_to_command(client, message, f"🔴 *PAUSED* — {count} groups have been disabled.")
+    else:
+        await reply_to_command(client, message, "⚪ No active groups found to pause.")
+
+async def handle_clear(client: TelegramClient, user_id: int, message):
+    """Handle .clear command to remove ALL groups."""
+    from models.group import clear_user_groups
+    count = await clear_user_groups(user_id)
+    
+    if count > 0:
+        await reply_to_command(client, message, f"🗑️ *WIPED* — All {count} groups have been removed from your list.")
+    else:
+        await reply_to_command(client, message, "⚪ Your group list is already empty.")
+
+async def handle_logs(client: TelegramClient, user_id: int, message):
+    """Handle .logs command to show recent activity for this account."""
+    phone = getattr(client, 'phone', 'Unknown')
+    from db.models import get_recent_failed_logs
+    
+    # Get recent logs (both success and fail if possible, or just failed for now)
+    # Reusing get_recent_failed_logs as it contains the most important info
+    logs = await get_recent_failed_logs(user_id, phone, limit=10)
+    
+    if not logs:
+        await reply_to_command(client, message, f"📋 *ACTIVITY LOGS — {phone}*\n\n⚪ No recent issues found. Everything looks normal!")
+        return
+        
+    text = f"📋 *RECENT ACTIVITY — {phone}*\n"
+    text += f"═══════════════════════\n\n"
+    
+    for log in logs:
+        ts = log.get("sent_at")
+        time_str = ts.strftime("%H:%M") if ts else "??"
+        status = log.get("status", "unknown")
+        error = log.get("error", "OK")
+        if ":" in error: error = error.split(":")[0] # Trim long errors
+        
+        icon = "🟢" if status == "success" else "🔴"
+        text += f"  `{time_str}` {icon} {error[:25]}\n"
+        
+    text += f"\n💡 Only showing important status updates."
+    await reply_to_command(client, message, text)
 
 
 async def handle_interval(client: TelegramClient, user_id: int, message, text: str):
