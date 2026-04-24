@@ -62,7 +62,9 @@ class AdaptiveDelayController:
         self.last_flood_at = None
 
     def get_gap(self) -> int:
-        return int(self.base_gap * self.multiplier)
+        """Apply adaptive multiplier and random jitter for human-like behavior."""
+        jitter = random.uniform(0.8, 1.2)
+        return int(self.base_gap * self.multiplier * jitter)
 
     def on_flood(self, wait_seconds: int):
         self.last_flood_at = datetime.utcnow()
@@ -477,11 +479,18 @@ class UserSender:
                     await asyncio.sleep(60)
                     continue
                 
-                messages.sort(key=lambda x: x.id)
-                
                 config = await self._get_cached_config()
                 copy_mode = config.get("copy_mode", False)
+                shuffle_mode = config.get("shuffle_mode", False)
                 interval_minutes = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
+                
+                # ── STEP 3.1: LEVEL UP - SHUFFLE MODE ──────────────────────
+                # If shuffle is enabled, we re-order groups every single cycle.
+                # This prevents "ordered pattern" detection by group admins/bots.
+                if shuffle_mode:
+                    self.logger.info("🔀 Shuffle Mode: Randomized group order for this cycle.")
+                    random.shuffle(groups)
+
                 
                 # Prime dialog cache to prevent "Could not find entity" errors for private groups
                 try:
@@ -490,38 +499,61 @@ class UserSender:
                 except Exception as e:
                     self.logger.warning(f"Error priming dialogs: {e}")
 
-                # 4. Simple Nested Loop (Messages -> Groups)
-                for msg_idx, msg in enumerate(messages):
+                # 4. Built Tasks based on Send Mode
+                send_mode = config.get("send_mode", "sequential")
+                tasks = []
+                
+                if send_mode == "sequential":
+                    # Ad 1 to all, then Ad 2 to all...
+                    for msg in messages:
+                        for group in groups:
+                            tasks.append((msg, group))
+                elif send_mode == "rotate":
+                    # Grp 1 -> Ad 1, Grp 2 -> Ad 2...
+                    for i, group in enumerate(groups):
+                        msg = messages[i % len(messages)]
+                        tasks.append((msg, group))
+                elif send_mode == "random":
+                    # Each group gets a random ad
+                    for group in groups:
+                        msg = random.choice(messages)
+                        tasks.append((msg, group))
+                
+                self.logger.info(f"📋 Distribution: {len(tasks)} tasks queued ({send_mode} mode)")
+
+                # 5. Process tasks with adaptive delays
+                for i, (msg, group) in enumerate(tasks):
                     if not self.running: break
                     
-                    for grp_idx, group in enumerate(groups):
-                        if not self.running: break
+                    # PROACTIVE CHECK: Don't start a send if Night Mode just began
+                    if await is_night_mode():
+                        self.logger.info("🌙 Night Mode detected mid-cycle. Pausing...")
+                        break
+                    
+                    chat_title = group.get('chat_title', 'Unknown')
+                    self.logger.info(f"📤 [{i+1}/{len(tasks)}] Forwarding msg {msg.id} to {chat_title}...")
+                    await self.update_status(f"Sending to {chat_title} ({i+1}/{len(tasks)})")
+                    
+                    flood_triggered, flood_wait = await self.forward_single_message(msg, group, copy_mode=copy_mode)
+                    
+                    if flood_triggered:
+                        # Escalation: if flood triggered, slightly increase multiplier for next sends
+                        self.adaptive_group_gap.multiplier = min(self.adaptive_group_gap.multiplier * 1.1, 5.0)
+                        await self.update_status(f"FloodWait ({flood_wait}s)")
+                        await asyncio.sleep(flood_wait)
                         
-                        # PROACTIVE CHECK: Don't start a send if Night Mode just began
-                        if await is_night_mode():
-                            self.logger.info("🌙 Night Mode detected mid-cycle. Pausing...")
-                            break
+                    # Apply Gap between groups
+                    if i < len(tasks) - 1:
+                        # If we just finished all groups for one message in sequential mode, use larger gap
+                        is_last_group_for_msg = (send_mode == "sequential" and (i + 1) % len(groups) == 0)
                         
-                        chat_title = group.get('chat_title', 'Unknown')
-                        self.logger.info(f"📤 Forwarding msg {msg.id} to {chat_title}...")
-                        await self.update_status(f"Sending to {chat_title}")
-                        
-                        flood_triggered, flood_wait = await self.forward_single_message(msg, group, copy_mode=copy_mode)
-                        
-                        if flood_triggered:
-                            await self.update_status(f"FloodWait ({flood_wait}s)")
-                            await asyncio.sleep(flood_wait)
-                            
-                        # Group Gap Delay (Adaptive)
-                        if grp_idx < len(groups) - 1:
+                        if is_last_group_for_msg:
+                            current_gap = self.adaptive_msg_gap.get_gap()
+                            await self.update_status(f"Msg Gap ({current_gap}s)")
+                        else:
                             current_gap = self.adaptive_group_gap.get_gap()
                             await self.update_status(f"Group Gap ({current_gap}s)")
-                            await asyncio.sleep(current_gap)
-                            
-                    # Message Gap Delay (Adaptive)
-                    if msg_idx < len(messages) - 1:
-                        current_gap = self.adaptive_msg_gap.get_gap()
-                        await self.update_status(f"Msg Gap ({current_gap}s)")
+                        
                         await asyncio.sleep(current_gap)
                 
                 # 5. Cycle complete, respect user interval
@@ -539,6 +571,23 @@ class UserSender:
                     sleep_chunk = min(60, wait_seconds - elapsed)
                     await asyncio.sleep(sleep_chunk)
                     elapsed += sleep_chunk
+                
+                # ── STEP 6: LEVEL UP - PERFORMANCE & HYGIENE ─────────────
+                
+                # A. Memory Management: Clear Telethon entity cache
+                # For long-running workers, this prevents RAM bloat.
+                try:
+                    self.client._entity_cache.clear()
+                    self.logger.info("🧹 Memory Hygiene: Entity cache cleared.")
+                except Exception: pass
+                
+                # B. Burst Jitter: Occasionally take a longer random break
+                # Simulates a human stepping away (5-15 mins).
+                if random.random() < 0.2: # 20% chance after each full loop
+                    burst_delay = random.randint(300, 900)
+                    self.logger.info(f"🧘 Burst Break: Taking a human-like break for {burst_delay//60}m...")
+                    await self.update_status(f"Burst Break ({burst_delay//60}m)")
+                    await asyncio.sleep(burst_delay)
 
             except asyncio.CancelledError:
                 break
@@ -617,19 +666,58 @@ class UserSender:
                 asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", f"Entity error: {e}", phone=self.phone))
                 return (False, 0)
             
-            # ── STEP 2: Human-like typing (safe — errors are swallowed) ─────
+            # ── STEP 2: Stealth: Read History Simulation (Level Up) ────────
+            # Mimics a user opening the group to check messages before posting.
+            if random.random() > 0.4:
+                try:
+                    from telethon.tl.functions.messages import ReadHistoryRequest
+                    await self.client(ReadHistoryRequest(peer=entity, max_id=0))
+                    # Natural pause after reading
+                    await asyncio.sleep(random.uniform(1.5, 4.0))
+                except Exception:
+                    pass
+
+            # ── STEP 3: SlowMode & Permission Pre-Check (Level Up) ──────────
+            # Prevent hit-and-run failures by checking group rules first.
+            try:
+                if hasattr(entity, 'broadcast') or getattr(entity, 'megagroup', False):
+                    from telethon.tl.functions.channels import GetFullChannelRequest
+                    full_chat_info = await self.client(GetFullChannelRequest(entity))
+                    full_chat = full_chat_info.full_chat
+                    
+                    # 1. Respect Slow Mode
+                    slowmode = getattr(full_chat, 'slowmode_seconds', 0)
+                    if slowmode and slowmode > 0:
+                        self.logger.info(f"⏳ Slowmode: {slowmode}s for {chat_title}. Adjusting...")
+                        if slowmode > 3600:
+                            self.logger.warning(f"⏩ Slowmode too high ({slowmode}s). Skipping group.")
+                            return (False, 0)
+                    
+                    # 2. Check if we are muted (can_send_messages)
+                    if hasattr(full_chat, 'available_min_id'): # Check if restricted
+                         # Note: Telethon doesn't always expose 'can_send' easily in FullChat
+                         # But we catch ChatWriteForbiddenError in Step 4 anyway.
+                         pass
+            except Exception:
+                pass
+
+            # ── STEP 4: Human-like typing ──────────────────────────────────
             if random.random() > 0.1:
                 try:
-                    typing_duration = random.uniform(2, 5)
+                    # Varied duration based on mode
+                    typing_duration = random.uniform(3, 7)
                     async with self.client.action(entity, 'typing'):
                         await asyncio.sleep(typing_duration)
                 except Exception:
-                    pass  # Typing failure is harmless, never let it crash
+                    pass 
 
-            # ── STEP 3: Random micro-delay before sending ───────────────────
-            await asyncio.sleep(random.uniform(0.1, 0.5))
+            # ── STEP 5: Random micro-delay before sending ───────────────────
+            await asyncio.sleep(random.uniform(0.5, 1.5))
 
-            # ── STEP 4: Send the message ────────────────────────────────────
+            # ── STEP 6: Topic Awareness ──────────────────────────────────────
+            topic_id = group.get("topic_id")
+
+            # ── STEP 7: Send the message ─────────────────────────────────────
             if copy_mode:
                 # Safeguard: skip empty messages (no text and no media)
                 if not message.text and not message.media:
@@ -640,16 +728,18 @@ class UserSender:
                     entity=entity,
                     message=message.text or None,
                     file=message.media,
-                    formatting_entities=message.entities if message.text else None
+                    formatting_entities=message.entities if message.text else None,
+                    reply_to=topic_id
                 )
-                log_action = "Copied"
+                log_action = f"Copied (Topic {topic_id})" if topic_id else "Copied"
             else:
                 await self.client.forward_messages(
                     entity=entity,
                     messages=message.id,
-                    from_peer=InputPeerSelf()
+                    from_peer=InputPeerSelf(),
+                    reply_to=topic_id
                 )
-                log_action = "Forwarded"
+                log_action = f"Forwarded (Topic {topic_id})" if topic_id else "Forwarded"
             
             self.logger.info(f"{log_action} message {message.id} to {chat_title}")
             self.adaptive_group_gap.on_success()
@@ -680,9 +770,9 @@ class UserSender:
             self.logger.error(f"🚨 PeerFlood on {chat_title} — account is restricted by Telegram!")
             asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "peer_flood", "PeerFlood", phone=self.phone))
             # PeerFlood is account-wide — retrying other groups will only make it worse.
-            # Sleep for 2 hours to let the restriction lift naturally.
-            await self.update_status("🚨 PeerFlood (2h cooldown)")
-            return (True, 7200)  # 2 hour cooling
+            # Sleep for 4 hours to let the restriction lift naturally.
+            await self.update_status("🚨 PeerFlood (4h cooldown)")
+            return (True, 14400)  # 4 hour cooling
             
         except (ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError) as e:
             self.logger.warning(f"❌ Removing invalid/expired group {chat_title}: {type(e).__name__}")

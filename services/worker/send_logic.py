@@ -97,19 +97,43 @@ async def send_message_to_group(
                                 "failed", f"Entity error: {e}")
             return ("failed", 0)
 
-        # ── 2. Human-like typing ────────────────────────────────────────
+        # ── 2. Stealth: Read History Simulation (Level Up) ──────────
+        # Mimics a user opening the group before posting.
+        if random.random() > 0.4:
+            try:
+                from telethon.tl.functions.messages import ReadHistoryRequest
+                await client(ReadHistoryRequest(peer=entity, max_id=0))
+                await asyncio.sleep(random.uniform(2.0, 5.0))
+            except Exception: pass
+
+        # ── 3. SlowMode & Permission Pre-Check (Level Up) ────────────
+        try:
+            if hasattr(entity, 'broadcast') or getattr(entity, 'megagroup', False):
+                from telethon.tl.functions.channels import GetFullChannelRequest
+                full_chat_info = await client(GetFullChannelRequest(entity))
+                slowmode = getattr(full_chat_info.full_chat, 'slowmode_seconds', 0)
+                if slowmode and slowmode > 300: # If > 5 mins, skip for now
+                    logger.info(f"⏳ Group {group_id} has high slowmode ({slowmode}s). Skipping.")
+                    return ("failing", 0)
+        except Exception: pass
+
+        # ── 4. Human-like typing ────────────────────────────────────
         if random.random() > 0.1:
             try:
-                typing_duration = random.uniform(3, 8)
+                typing_duration = random.uniform(4, 9)
                 async with client.action(entity, "typing"):
                     await asyncio.sleep(typing_duration)
             except Exception:
                 pass  # Typing failure is harmless
 
-        # ── 3. Micro-delay ──────────────────────────────────────────────
-        await asyncio.sleep(random.uniform(0.5, 2.5))
+        # ── 5. Micro-delay ──────────────────────────────────────────
+        await asyncio.sleep(random.uniform(1.0, 3.0))
 
-        # ── 4. Send the message ─────────────────────────────────────────
+        # ── 6. Topic Awareness ──────────────────────────────────────
+        group_doc = await db.groups.find_one({"user_id": user_id, "chat_id": group_id})
+        topic_id = group_doc.get("topic_id") if group_doc else None
+
+        # ── 7. Send the message ─────────────────────────────────────────
         # Load the message from Saved Messages
         saved_msg = await client.get_messages("me", ids=message_id)
         if not saved_msg:
@@ -128,12 +152,14 @@ async def send_message_to_group(
                 message=saved_msg.text or None,
                 file=saved_msg.media,
                 formatting_entities=saved_msg.entities if saved_msg.text else None,
+                reply_to=topic_id
             )
         else:
             await client.forward_messages(
                 entity=entity,
                 messages=message_id,
                 from_peer=InputPeerSelf(),
+                reply_to=topic_id
             )
 
         await log_job_event(job_id, user_id, phone, group_id, message_id, "sent")

@@ -516,17 +516,100 @@ async def get_account_stats(user_id: int, phone: str) -> Dict[str, Any]:
     session = await db.sessions.find_one({"user_id": user_id, "phone": phone})
     
     if not session:
-        return {"success_rate": 0, "last_active": None}
+        return {"success_rate": 0, "last_active": None, "total_sent": 0, "today_sent": 0}
     
     total = session.get("stats_total", 0)
     success = session.get("stats_success", 0)
     rate = (success / total * 100) if total > 0 else 0
     
+    # Get 24h stats
+    since_24h = datetime.utcnow() - timedelta(hours=24)
+    today_total = await db.send_logs.count_documents({
+        "user_id": user_id, 
+        "phone": phone, 
+        "sent_at": {"$gte": since_24h}
+    })
+    today_success = await db.send_logs.count_documents({
+        "user_id": user_id, 
+        "phone": phone, 
+        "sent_at": {"$gte": since_24h},
+        "status": "success"
+    })
+    
     return {
         "success_rate": round(rate, 1),
         "last_active": session.get("last_active_at"),
-        "total_sent": total
+        "total_sent": total,
+        "today_sent": today_total,
+        "today_success": today_success,
+        "today_rate": round((today_success / today_total * 100), 1) if today_total > 0 else 0
     }
+
+
+async def get_multi_account_stats(user_id: int, phones: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Fetch stats for multiple accounts in parallel using aggregation."""
+    if not phones:
+        return {}
+        
+    db = get_database()
+    since_24h = datetime.utcnow() - timedelta(hours=24)
+    
+    # 1. Fetch sessions
+    sessions = await db.sessions.find({"user_id": user_id, "phone": {"$in": phones}}).to_list(length=len(phones))
+    session_map = {s["phone"]: s for s in sessions}
+    
+    # 2. Aggregate 24h logs for all requested phones
+    pipeline = [
+        {"$match": {
+            "user_id": user_id,
+            "phone": {"$in": phones},
+            "sent_at": {"$gte": since_24h}
+        }},
+        {"$group": {
+            "_id": "$phone",
+            "today_total": {"$sum": 1},
+            "today_success": {"$sum": {"$cond": [{"$eq": ["$status", "success"]}, 1, 0]}}
+        }}
+    ]
+    
+    log_stats = await db.send_logs.aggregate(pipeline).to_list(length=len(phones))
+    log_map = {item["_id"]: item for item in log_stats}
+    
+    results = {}
+    for phone in phones:
+        sess = session_map.get(phone, {})
+        logs = log_map.get(phone, {"today_total": 0, "today_success": 0})
+        
+        total = sess.get("stats_total", 0)
+        success = sess.get("stats_success", 0)
+        rate = (success / total * 100) if total > 0 else 0
+        
+        today_total = logs["today_total"]
+        today_success = logs["today_success"]
+        today_rate = (today_success / today_total * 100) if today_total > 0 else 0
+        
+        results[phone] = {
+            "success_rate": round(rate, 1),
+            "last_active": sess.get("last_active_at"),
+            "total_sent": total,
+            "today_sent": today_total,
+            "today_success": today_success,
+            "today_rate": round(today_rate, 1)
+        }
+    
+    return results
+
+async def get_recent_failed_logs(user_id: int, phone: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Get recent failed send attempts for debugging."""
+    db = get_database()
+    cursor = db.send_logs.find({
+        "user_id": user_id,
+        "phone": phone,
+        "status": {"$in": ["failed", "peer_flood", "flood_wait", "failing"]}
+    }).sort("sent_at", -1).limit(limit)
+    
+    return await cursor.to_list(length=limit)
+
 
 
 async def get_send_stats(hours: int = 24) -> Dict[str, int]:

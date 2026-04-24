@@ -15,13 +15,14 @@ async def add_group(
     chat_title: str,
     account_phone: str = None,
     member_count: int = 0,
+    topic_id: int = None,
 ) -> dict:
     """Add or update a group linked to a specific account phone."""
     db = get_database()
     now = datetime.utcnow()
 
     result = await db.groups.find_one_and_update(
-        {"user_id": user_id, "chat_id": chat_id},
+        {"user_id": user_id, "chat_id": chat_id, "topic_id": topic_id},
         {
             "$set": {
                 "chat_title": chat_title,
@@ -29,6 +30,7 @@ async def add_group(
                 "updated_at": now,
                 "account_phone": account_phone,
                 "member_count": member_count,
+                "topic_id": topic_id,
             },
             "$setOnInsert": {
                 "user_id": user_id,

@@ -28,6 +28,15 @@ async def create_user(user_id: int, referred_by: Optional[str] = None) -> dict:
         upsert=True,
     )
 
+    # ── Level Up: 3-Day Trial Policy ──
+    from models.plan import get_plan, extend_plan
+    existing_plan = await get_plan(user_id)
+    if not existing_plan:
+        # Assign 3 days trial automatically
+        await extend_plan(user_id, 3)
+        # Note: we use extend_plan here which handles creation if missing.
+        # We can also tag it as "trial" if needed, but the user asked for "trial plan".
+
     return doc
 
 

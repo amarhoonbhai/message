@@ -51,3 +51,39 @@ Your plan may have expired or wasn't assigned yet.
 
 🎁 Redeem a code or contact support to activate your plan.
 """
+async def safe_reply(update, text: str, reply_markup=None, parse_mode="Markdown"):
+    """
+    Safely send or edit a message, handling common Telegram errors
+    like 'Message is not modified' or 'User blocked the bot'.
+    """
+    from telegram.error import BadRequest, Forbidden
+    
+    try:
+        if update.callback_query:
+            try:
+                await update.callback_query.edit_message_text(
+                    text=text,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode
+                )
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    return # Safe to ignore
+                # Fallback to sending new message if edit fails (e.g. too old)
+                await update.effective_chat.send_message(
+                    text=text,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode
+                )
+        else:
+            await update.effective_chat.send_message(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode
+            )
+    except Forbidden:
+        # User blocked the bot — we can't do anything, but shouldn't crash
+        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"safe_reply failed: {e}")

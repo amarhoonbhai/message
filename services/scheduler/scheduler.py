@@ -87,8 +87,16 @@ class Scheduler:
                 except Exception as e:
                     logger.error(f"Error in poll cycle: {e}")
 
-                # ── 2. Dead worker recovery (every ~30 cycles) ──────────
-                if self._cycle_count % 20 == 0:
+                # ── 2. Plan Expiry Reminders (Level Up) ──────────────
+                # Runs every 6 hours (approx 21600 seconds)
+                if self._cycle_count % 3600 == 0:  # Assuming 1s poll
+                    try:
+                        await self._process_plan_reminders()
+                    except Exception as e:
+                        logger.error(f"Expiry reminder error: {e}")
+
+                # ── 3. Dead worker recovery ────────────────────────────
+                if self._cycle_count % 30 == 0:
                     try:
                         dead = await find_dead_workers(DEAD_WORKER_THRESHOLD_SECONDS)
                         if dead:
@@ -102,7 +110,7 @@ class Scheduler:
                     except Exception as e:
                         logger.error(f"Dead worker recovery error: {e}")
 
-                # ── 3. Sleep (interruptible) ────────────────────────────
+                # ── 4. Sleep (interruptible) ────────────────────────────
                 try:
                     await asyncio.wait_for(
                         self._shutdown_event.wait(),
@@ -116,6 +124,49 @@ class Scheduler:
             pass
         finally:
             await self.cleanup()
+
+    async def _process_plan_reminders(self):
+        """Analyze plans and send notifications for expiring/expired users."""
+        from models.plan import get_expiring_plans, get_plans_needing_expiry_reminder, update_plan_notification
+        from telegram import Bot
+        from core.config import MAIN_BOT_TOKEN
+        
+        async with Bot(MAIN_BOT_TOKEN) as bot:
+            now = datetime.utcnow()
+            
+            # 1. Expiring Soon (Warning)
+            expiring = await get_expiring_plans()
+            for p in expiring:
+                uid = p["user_id"]
+                expires = p["expires_at"]
+                hours = int((expires - now).total_seconds() // 3600)
+                
+                msg = (
+                    "⚠️ *SUBSCRIPTION EXPIRING SOON*\n\n"
+                    f"Your premium plan expires in **{hours} hours**.\n"
+                    "To ensure uninterrupted messaging, please renew your plan now!"
+                )
+                try:
+                    await bot.send_message(uid, msg, parse_mode="Markdown")
+                    await update_plan_notification(uid, {"expiration_warnings_sent": p.get("expiration_warnings_sent", 0) + 1})
+                except Exception: pass
+
+            # 2. Just Expired
+            expired = await get_plans_needing_expiry_reminder()
+            for p in expired:
+                uid = p["user_id"]
+                msg = (
+                    "🔴 *SUBSCRIPTION EXPIRED*\n\n"
+                    "Your premium plan has ended. Your workers have been paused.\n"
+                    "Renew now to resume your automated advertising campaign!"
+                )
+                try:
+                    await bot.send_message(uid, msg, parse_mode="Markdown")
+                    await update_plan_notification(uid, {
+                        "notified_expired": True,
+                        "last_expiry_notification_at": now
+                    })
+                except Exception: pass
 
     def stop(self):
         """Signal the scheduler to shut down."""

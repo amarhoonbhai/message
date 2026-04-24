@@ -14,13 +14,15 @@ from telethon.errors import (
     InviteHashInvalidError,
     InviteHashExpiredError,
 )
-from telethon.tl.types import InputPeerSelf, InputPeerChannel, InputPeerChat
+from telethon.tl.types import InputPeerSelf, InputPeerChannel, InputPeerChat, Channel, Chat, DialogFilter
 from telethon.tl.functions.messages import GetDialogFiltersRequest
+from telethon.tl.functions.chatlists import CheckChatlistInviteRequest, JoinChatlistInviteRequest
 
 from core.config import MAX_GROUPS_PER_USER, MIN_INTERVAL_MINUTES
 from models.session import get_session
 from models.user import get_user_config, update_user_config
 from models.group import get_user_groups, add_group, remove_group, get_group_count, toggle_group
+from db.models import get_account_stats, get_recent_failed_logs
 from models.plan import get_plan
 
 logger = logging.getLogger(__name__)
@@ -45,8 +47,11 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         if cmd == ".help":
             await handle_help(client, user_id, message)
             return True
-        elif cmd == ".status" or cmd == ".stats":
+        elif cmd == ".status":
             await handle_status(client, user_id, message, text)
+            return True
+        elif cmd == ".stats":
+            await handle_stats(client, user_id, message)
             return True
         elif cmd == ".userstatus":
             await handle_userstatus(client, user_id, message, text)
@@ -237,6 +242,52 @@ async def handle_status(client: TelegramClient, user_id: int, message, text: str
 Type `.help` for available commands
 """
     await reply_to_command(client, message, text)
+    
+async def handle_stats(client: TelegramClient, user_id: int, message):
+    """Handle .stats command - show activity and sender health."""
+    from db.models import get_account_stats, get_recent_failed_logs
+    
+    phone = getattr(client, 'phone', 'Unknown')
+    stats = await get_account_stats(user_id, phone)
+    recent_fails = await get_recent_failed_logs(user_id, phone, limit=5)
+    
+    today_sent = stats.get("today_sent", 0)
+    today_success = stats.get("today_success", 0)
+    today_rate = stats.get("today_rate", 0)
+    total_sent = stats.get("total_sent", 0)
+    overall_rate = stats.get("success_rate", 0)
+    
+    # Activity Level Badge
+    if today_sent > 100: activity = "🔥 HIGH"
+    elif today_sent > 10: activity = "⚡ ACTIVE"
+    elif today_sent > 0: activity = "🟢 STABLE"
+    else: activity = "⚪ IDLE"
+    
+    text = f"📈 *SENDER ACTIVITY: {phone}*\n"
+    text += f"══════════════════════════\n\n"
+    
+    text += f"📊 *TODAY'S METRICS*\n"
+    text += f"├ Activity: {activity}\n"
+    text += f"├ Transmitted: {today_sent} ads\n"
+    text += f"├ Successful: {today_success}\n"
+    text += f"└ Success Rate: {today_rate}%\n\n"
+    
+    text += f"🏆 *OVERALL HEALTH*\n"
+    text += f"├ Lifetime Transmissions: {total_sent}\n"
+    text += f"└ Overall Delivery Rate: {overall_rate}%\n\n"
+    
+    if recent_fails:
+        text += f"⚠️ *RECENT FAILURES*\n"
+        for fail in recent_fails:
+            reason = fail.get("error", "Unknown").split(":")[0][:20]
+            ts = fail.get("sent_at")
+            time_str = ts.strftime("%H:%M") if ts else "??"
+            text += f"├ `{time_str}` — {reason}\n"
+        text += "└ _Check logs for full details_\n\n"
+    
+    text += f"💡 Activity is tracked per account.\n"
+    
+    await reply_to_command(client, message, text)
 
 
 async def handle_groups(client: TelegramClient, user_id: int, message):
@@ -329,7 +380,7 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             continue
         
         # Parse group identifier
-        group_identifier = parse_group_input(group_input)
+        group_identifier, topic_id = parse_group_input(group_input)
         
         if not group_identifier:
             failed.append((group_input, "Invalid URL"))
@@ -352,10 +403,16 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
                 
             # Save to database
             # Link to the current account's phone for multi-account support
-            success = await add_group(user_id, chat_id, chat_title, account_phone=getattr(client, 'phone', None), member_count=member_count)
+            success = await add_group(
+                user_id, chat_id, chat_title, 
+                account_phone=getattr(client, 'phone', None), 
+                member_count=member_count,
+                topic_id=topic_id
+            )
             
             if success:
-                added.append(chat_title)
+                display_name = f"{chat_title}" + (f" (Topic {topic_id})" if topic_id else "")
+                added.append(display_name)
             else:
                 failed.append((group_input, "Already exists or limit reached"))
                 
@@ -739,24 +796,39 @@ async def handle_rmpaused(client: TelegramClient, user_id: int, message):
         
     await reply_to_command(client, message, f"✅ Removed {count} paused group(s).")
 
-def parse_group_input(input_str: str) -> str:
-    """Parse group URL or username to identifier."""
+def parse_group_input(input_str: str) -> tuple[str, Optional[int]]:
+    """Parse group URL or username to identifier and optional topic ID."""
     input_str = input_str.strip()
     
     # Handle @username
     if input_str.startswith("@"):
-        return input_str
+        return input_str, None
     
     # Handle t.me links with + (newer invite links)
     if "t.me/+" in input_str or "telegram.me/+" in input_str:
-        return input_str
+        return input_str, None
     
     # Handle joinchat links
     if "joinchat/" in input_str:
-        return input_str
+        return input_str, None
     
-    # Handle message links (extract chat identifier)
-    # https://t.me/c/123456789/123 -> 123456789
+    # Handle topic links (most important for forums)
+    # https://t.me/c/12345/678 (678 is topic) or https://t.me/username/678
+    topic_match = re.search(r"t\.me/(?:c/)?([a-zA-Z0-9_+%-]+)/(\d+)$", input_str)
+    if topic_match:
+        ident = topic_match.group(1)
+        if "/c/" in input_str and ident.isdigit():
+            ident = f"-100{ident}"
+        elif not ident.startswith("-100") and ident.isdigit():
+            ident = f"-100{ident}"
+        return ident, int(topic_match.group(2))
+
+    # Basic URL cleaning
+    if "t.me/" in input_str:
+        ident = input_str.split('/')[-1].split('?')[0]
+        return ident, None
+        
+    return input_str, None
     # https://t.me/groupname/123 -> groupname
     message_link_pattern = r"(?:https?://)?(?:t\.me|telegram\.me)/(?:c/)?([a-zA-Z0-9_-]+)/(\d+)"
     match = re.match(message_link_pattern, input_str)
@@ -766,6 +838,7 @@ def parse_group_input(input_str: str) -> str:
     # Handle various domain variations and protocols
     patterns = [
         r"(?:https?://)?(?:t\.me|telegram\.me|telegram\.dog)/([a-zA-Z0-9_]+)",
+        r"(?:https?://)?(?:t\.me|telegram\.me)/addlist/([a-zA-Z0-9_-]+)",
         r"tg://resolve\?domain=([a-zA-Z0-9_]+)",
         r"tg://join\?invite=([a-zA-Z0-9_-]+)",
     ]
@@ -775,6 +848,8 @@ def parse_group_input(input_str: str) -> str:
         if match:
             if "invite=" in pattern:
                 return f"https://t.me/+{match.group(1)}"
+            if "addlist/" in pattern:
+                return f"addlist:{match.group(1)}"
             return match.group(1)
     
     # If it looks like a numeric ID
@@ -870,98 +945,177 @@ async def handle_folders(client: TelegramClient, user_id: int, message):
 
 
 async def handle_addfolder(client: TelegramClient, user_id: int, message, text: str):
-    """Add all groups from a specific Telegram folder."""
+    """Add all groups from a specific Telegram folder or Share Link."""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        await reply_to_command(client, message, "○ Usage: `.addfolder <folder_name>`\n\nExample: `.addfolder Crypto`")
+        await reply_to_command(client, message, "○ Usage: `.addfolder <folder_name OR share_link>`\n\nExample: `.addfolder Crypto` or `.addfolder t.me/addlist/...`")
         return
         
-    folder_name = parts[1].strip()
-    await reply_to_command(client, message, f"🔍 Searching for folder: `{folder_name}`...")
+    folder_input = parts[1].strip()
+    
+    # 1. Handle Share Links (Chatlists)
+    if "t.me/addlist" in folder_input or "telegram.me/addlist" in folder_input:
+        await handle_addlist_link(client, user_id, message, folder_input)
+        return
+
+    await reply_to_command(client, message, f"🔍 Searching for folder: `{folder_input}`...")
     
     try:
-        from telethon.tl.functions.messages import GetDialogFiltersRequest
         filters = await client(GetDialogFiltersRequest())
         
         target_filter = None
         for f in filters:
-            if hasattr(f, 'title') and f.title and f.title.lower() == folder_name.lower():
+            if hasattr(f, 'title') and f.title and f.title.lower() == folder_input.lower():
                 target_filter = f
                 break
                 
         if not target_filter:
-            await reply_to_command(client, message, f"❌ Folder `{folder_name}` not found.\n\nType `.folders` to see all available folders.")
+            await reply_to_command(client, message, f"❌ Folder `{folder_input}` not found.\n\nType `.folders` to see all available folders.")
             return
             
-        # Get peers from filter
+        # 2. Get peers from filter
         peers = getattr(target_filter, 'include_peers', [])
+        
+        # 3. IF NO EXPLICIT PEERS, handle FLAGS (e.g. "Groups" folder)
         if not peers:
-            await reply_to_command(client, message, f"⚪ Folder `{folder_name}` is empty or contains no groups.")
+            await reply_to_command(client, message, f"📂 Folder `{folder_input}` uses categories. Scanning dialogs...")
+            peers = await fetch_peers_by_flags(client, target_filter)
+            
+        if not peers:
+            await reply_to_command(client, message, f"⚪ Folder `{folder_input}` is empty or contains no supported groups.")
             return
             
-        await reply_to_command(client, message, f"⏳ Found {len(peers)} items in `{folder_name}`. Resolving...")
-        
-        # Check current group count
-        count = await get_group_count(user_id)
-        available_slots = MAX_GROUPS_PER_USER - count
-        
-        if available_slots <= 0:
-            await reply_to_command(client, message, f"❌ Maximum groups ({MAX_GROUPS_PER_USER}) reached.")
-            return
-            
-        added = []
-        failed = []
-        
-        # Limit to available slots
-        to_process = peers
-        if len(peers) > available_slots:
-            to_process = peers[:available_slots]
-            await reply_to_command(client, message, f"⚠️ Note: only {available_slots} slots available. Processing first {available_slots} chats...")
-            
-        for peer in to_process:
-            try:
-                # Resolve entity
-                entity = await client.get_entity(peer)
-                
-                # We only want groups or channels (not users/bots)
-                from telethon.tl.types import Channel, Chat
-                if not isinstance(entity, (Channel, Chat)):
-                    continue
-                    
-                chat_id = entity.id
-                chat_title = entity.title
-                
-                # Get member count
-                member_count = 0
-                try:
-                    from telethon.tl.functions.channels import GetFullChannelRequest
-                    full_chat = await client(GetFullChannelRequest(entity))
-                    member_count = full_chat.full_chat.participants_count
-                except Exception:
-                    pass
-                
-                success = await add_group(user_id, chat_id, chat_title, account_phone=getattr(client, 'phone', None), member_count=member_count)
-                if success:
-                    added.append(chat_title)
-                else:
-                    failed.append(chat_title)
-                    
-            except Exception as e:
-                logger.warning(f"Failed to resolve/add peer from folder: {e}")
-                
-        # Final response
-        res = f"✅ *FOLDER IMPORT COMPLETE*\n"
-        res += f"📁 Folder: `{folder_name}`\n"
-        res += f"🎯 Groups Added: {len(added)}\n"
-        
-        if failed:
-            res += f"❌ Skip (exists): {len(failed)}\n"
-            
-        new_total = await get_group_count(user_id)
-        res += f"\nTotal Groups: {new_total}/{MAX_GROUPS_PER_USER}"
-        
-        await reply_to_command(client, message, res)
+        await process_folder_peers(client, user_id, message, folder_input, peers)
         
     except Exception as e:
         logger.error(f"Error adding folder: {e}")
         await reply_to_command(client, message, f"❌ Error: {str(e)}")
+
+async def handle_addlist_link(client: TelegramClient, user_id: int, message, link: str):
+    """Import groups from a shared folder link (Chatlist)."""
+    try:
+        from telethon.tl.functions.chatlists import CheckChatlistInviteRequest, JoinChatlistInviteRequest
+        
+        # Extract slug correctly (handle queries or trailing slashes)
+        import re
+        slug_match = re.search(r"addlist/([a-zA-Z0-9_-]+)", link)
+        if not slug_match:
+            await reply_to_command(client, message, f"❌ Invalid shared folder link.")
+            return
+            
+        slug = slug_match.group(1)
+        await reply_to_command(client, message, f"🔗 Checking shared folder link...")
+        
+        # Check the invite
+        invite = await client(CheckChatlistInviteRequest(slug))
+        title = invite.chatlist.title
+        peers = invite.peers
+        
+        if not peers:
+            await reply_to_command(client, message, f"⚪ Shared folder `{title}` is empty.")
+            return
+            
+        await reply_to_command(client, message, f"📂 Found {len(peers)} items in shared folder `{title}`.\nImporting...")
+        
+        # Join the chatlist (actually joins the groups)
+        await client(JoinChatlistInviteRequest(slug, peers))
+        
+        # Now process like a folder
+        await process_folder_peers(client, user_id, message, title, peers)
+        
+    except Exception as e:
+        logger.error(f"Error adding chatlist: {e}")
+        await reply_to_command(client, message, f"❌ Chatlist Error: {str(e)}")
+
+async def fetch_peers_by_flags(client: TelegramClient, f: DialogFilter) -> list:
+    """Fetch all peers matching a DialogFilter's flags."""
+    peers = []
+    try:
+        async for dialog in client.iter_dialogs(limit=500):
+            entity = dialog.entity
+            is_group = isinstance(entity, (Chat, Channel)) and not getattr(entity, 'broadcast', False)
+            is_broadcast = isinstance(entity, Channel) and getattr(entity, 'broadcast', False)
+            
+            # Match flags
+            match = False
+            if f.groups and (is_group or is_broadcast): match = True
+            if f.broadcasts and is_broadcast: match = True
+            if f.contacts and getattr(entity, 'contact', False): match = True
+            if f.non_contacts and not getattr(entity, 'contact', False) and not getattr(entity, 'bot', False) and not entity.is_self: match = True
+            
+            # Exclusions (basic)
+            if match:
+                if f.exclude_muted and dialog.dialog.notify_settings.silent: match = False
+                if f.exclude_read and dialog.unread_count == 0: match = False
+                if f.exclude_archived and dialog.archived: match = False
+                
+            if match:
+                peers.append(entity)
+    except Exception as e:
+        logger.warning(f"Error fetching peers by flags: {e}")
+    return peers
+
+async def process_folder_peers(client, user_id, message, folder_name, peers):
+    """Common logic to resolve and add multiple peers from a foldery source."""
+    # Check current group count
+    count = await get_group_count(user_id)
+    available_slots = MAX_GROUPS_PER_USER - count
+    
+    if available_slots <= 0:
+        await reply_to_command(client, message, f"❌ Maximum groups ({MAX_GROUPS_PER_USER}) reached.")
+        return
+        
+    added = []
+    failed = []
+    
+    # Limit to available slots
+    to_process = peers
+    if len(peers) > available_slots:
+        to_process = peers[:available_slots]
+        await reply_to_command(client, message, f"⚠️ Only {available_slots} slots available. Skipping remaining {len(peers)-available_slots}...")
+        
+    for peer in to_process:
+        try:
+            # Resolve entity if it's not already resolved
+            if isinstance(peer, (Channel, Chat)):
+                entity = peer
+            else:
+                entity = await client.get_entity(peer)
+            
+            # We only want groups or channels
+            if not isinstance(entity, (Channel, Chat)):
+                continue
+                
+            chat_id = entity.id
+            chat_title = entity.title
+            
+            # Get member count
+            member_count = 0
+            try:
+                from telethon.tl.functions.channels import GetFullChannelRequest
+                full_chat = await client(GetFullChannelRequest(entity))
+                member_count = full_chat.full_chat.participants_count
+            except Exception:
+                pass
+            
+            success = await add_group(user_id, chat_id, chat_title, account_phone=getattr(client, 'phone', None), member_count=member_count)
+            if success:
+                added.append(chat_title)
+            else:
+                failed.append(chat_title)
+                
+        except Exception as e:
+            logger.warning(f"Failed to add peer: {e}")
+            
+    # Final response
+    res = f"✅ *IMPORT COMPLETE*\n"
+    res += f"📁 Source: `{folder_name}`\n"
+    res += f"🎯 Added: {len(added)}\n"
+    
+    if failed:
+        res += f"❌ Skip (exists): {len(failed)}\n"
+        
+    new_total = await get_group_count(user_id)
+    res += f"\nTotal Groups: {new_total}/{MAX_GROUPS_PER_USER}"
+    
+    await reply_to_command(client, message, res)
