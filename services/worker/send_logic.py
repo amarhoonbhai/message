@@ -57,44 +57,49 @@ async def send_message_to_group(
         # ── 1. Pre-validate entity ──────────────────────────────────────
         entity = None
         try:
+            # Try getting from cache/ID first
             entity = await client.get_entity(group_id)
         except (ChannelInvalidError, UsernameNotOccupiedError,
                 UsernameInvalidError, InviteHashExpiredError) as e:
             logger.warning(f"❌ Group {group_id} invalid ({type(e).__name__}). Removing.")
             asyncio.create_task(remove_group(user_id, group_id))
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "removed", f"Pre-check: {type(e).__name__}")
+                                "removed", f"Link dead: {type(e).__name__}")
             return ("removed", 0)
 
         except (ChatWriteForbiddenError, ChannelPrivateError,
                 ChatAdminRequiredError, UserBannedInChannelError) as e:
             logger.warning(f"⚠️ Group {group_id} restricted ({type(e).__name__}). Marking as failing.")
-            asyncio.create_task(mark_group_failing(user_id, group_id, f"Pre-check: {type(e).__name__}"))
+            asyncio.create_task(mark_group_failing(user_id, group_id, f"Locked: {type(e).__name__}"))
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "failing", f"Pre-check: {type(e).__name__}")
+                                "failing", f"Restricted: {type(e).__name__}")
             return ("failing", 0)
 
-        except ValueError as e:
-            logger.info(f"Entity not in cache for {group_id}, trying to fetch from dialogs...")
+        except ValueError:
+            # Not in cache! Try resolving raw ID or via recent dialogs
+            logger.info(f"Entity not in cache for {group_id}, attempt recovery...")
             try:
-                # Fetch recent dialogs to populate cache
-                async for dialog in client.iter_dialogs(limit=200):
-                    if dialog.id == group_id:
-                        entity = dialog.entity
-                        break
-                if not entity:
-                    raise ValueError(f"Could not find entity {group_id} in dialogs either.")
-            except Exception as dialog_e:
-                logger.warning(f"Entity not found for {group_id} despite dialogs fallback: {dialog_e}")
+                # 1. Try resolving numerical ID if it's not already an entity
+                entity = await client.get_entity(int(group_id))
+            except Exception:
+                try:
+                    # 2. Try fetching from dialogs summary (faster than full scan)
+                    async for dialog in client.iter_dialogs(limit=100):
+                        if dialog.id == int(group_id):
+                            entity = dialog.entity
+                            break
+                except Exception: pass
+            
+            if not entity:
+                logger.warning(f"🚨 Entity {group_id} not found after recovery attempts.")
                 asyncio.create_task(mark_group_failing(user_id, group_id, "Entity Not Found"))
                 await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                    "failing", "Entity Not Found")
+                                    "failing", "Entity Not Found (Membership Required)")
                 return ("failing", 0)
 
         except Exception as e:
-            logger.warning(f"Entity resolve error for {group_id}: {e}")
-            await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "failed", f"Entity error: {e}")
+            logger.warning(f"Unexpected entity resolve error for {group_id}: {e}")
+            # If it's a generic connection error, don't mark as failing, just fail this attempt
             return ("failed", 0)
 
         # ── 2. Stealth: Read History Simulation (Level Up) ──────────

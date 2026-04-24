@@ -864,71 +864,57 @@ async def handle_rmpaused(client: TelegramClient, user_id: int, message):
         
     await reply_to_command(client, message, f"✅ Removed {count} paused group(s).")
 
-def parse_group_input(input_str: str) -> tuple[str, Optional[int]]:
-    """Parse group URL or username to identifier and optional topic ID."""
+def parse_group_input(input_str: str) -> tuple[Optional[str], Optional[int]]:
+    """
+    Parse group URL, username, or ID into a (identifier, topic_id) tuple.
+    Returns (None, None) if parsing fails.
+    """
     input_str = input_str.strip()
+    if not input_str:
+        return None, None
     
-    # Handle @username
-    if input_str.startswith("@"):
-        return input_str, None
-    
-    # Handle t.me links with + (newer invite links)
-    if "t.me/+" in input_str or "telegram.me/+" in input_str:
-        return input_str, None
-    
-    # Handle joinchat links
-    if "joinchat/" in input_str:
-        return input_str, None
-    
-    # Handle topic links (most important for forums)
-    # https://t.me/c/12345/678 (678 is topic) or https://t.me/username/678
+    # 1. Topic/Forum Pattern (t.me/c/123/456 or t.me/username/456)
     topic_match = re.search(r"t\.me/(?:c/)?([a-zA-Z0-9_+%-]+)/(\d+)$", input_str)
     if topic_match:
         ident = topic_match.group(1)
-        if "/c/" in input_str and ident.isdigit():
-            ident = f"-100{ident}"
-        elif not ident.startswith("-100") and ident.isdigit():
-            ident = f"-100{ident}"
-        return ident, int(topic_match.group(2))
-
-    # Basic URL cleaning
-    if "t.me/" in input_str:
-        ident = input_str.split('/')[-1].split('?')[0]
-        return ident, None
+        topic_id = int(topic_match.group(2))
         
-    return input_str, None
-    # https://t.me/groupname/123 -> groupname
-    message_link_pattern = r"(?:https?://)?(?:t\.me|telegram\.me)/(?:c/)?([a-zA-Z0-9_-]+)/(\d+)"
-    match = re.match(message_link_pattern, input_str)
-    if match:
-        return match.group(1)
+        # If it's a private channel ID (serial), add -100 prefix
+        if ident.isdigit() and not ident.startswith("-100"):
+            ident = f"-100{ident}"
+        elif not ident.startswith("@") and not ident.isdigit():
+            ident = f"@{ident}"
+            
+        return ident, topic_id
 
-    # Handle various domain variations and protocols
-    patterns = [
-        r"(?:https?://)?(?:t\.me|telegram\.me|telegram\.dog)/([a-zA-Z0-9_]+)",
-        r"(?:https?://)?(?:t\.me|telegram\.me)/addlist/([a-zA-Z0-9_-]+)",
-        r"tg://resolve\?domain=([a-zA-Z0-9_]+)",
-        r"tg://join\?invite=([a-zA-Z0-9_-]+)",
-    ]
-    
-    for pattern in patterns:
-        match = re.match(pattern, input_str)
-        if match:
-            if "invite=" in pattern:
-                return f"https://t.me/+{match.group(1)}"
-            if "addlist/" in pattern:
-                return f"addlist:{match.group(1)}"
-            return match.group(1)
-    
-    # If it looks like a numeric ID
+    # 2. Addlist/Chatlist (addlist:slug)
+    if "addlist/" in input_str:
+        slug = input_str.split("addlist/")[1].split("?")[0]
+        return f"addlist:{slug}", None
+
+    # 3. Direct Join/Invite Links
+    if any(x in input_str for x in ["t.me/+", "joinchat/", "t.me/joinchat/"]):
+        return input_str, None
+
+    # 4. Standard username links or raw usernames
+    if "t.me/" in input_str:
+        ident = input_str.split("/")[-1].split("?")[0]
+        if not ident.startswith("@") and not ident.isdigit():
+            ident = f"@{ident}"
+        return ident, None
+    # 5. Raw username with @
+    if input_str.startswith("@"):
+        return input_str, None
+
+    # 6. Raw Numeric ID
     if re.match(r"^-?\d+$", input_str):
-        return input_str
+        return input_str, None
 
-    # If it looks like a username without @
+    # 7. Fallback for raw alphanumeric strings (assume username)
     if re.match(r"^[a-zA-Z0-9_]+$", input_str):
-        return f"@{input_str}"
+        return f"@{input_str}", None
     
-    return None
+    return None, None
 async def handle_nightmode(client: TelegramClient, user_id: int, message, text: str):
     """Handle .nightmode on/off/auto command (Owner only)."""
     from core.config import OWNER_ID
