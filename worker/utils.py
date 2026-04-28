@@ -82,15 +82,145 @@ class UserLogAdapter(logging.LoggerAdapter):
         phone = self.extra.get('phone', 'Unknown')
         return f"[User {user_id}][{phone}] {msg}", kwargs
 
+
+# ═══════════════════════════════════════════════════════
+#  CENTRAL LOG CHANNEL — Styled Helpers
+# ═══════════════════════════════════════════════════════
+
+_log_bot = None  # Singleton bot instance
+
+async def _get_log_bot():
+    """Get or create a cached Bot instance for the log channel."""
+    global _log_bot
+    if _log_bot is None:
+        from config import MAIN_BOT_TOKEN
+        if not MAIN_BOT_TOKEN:
+            return None
+        from telegram import Bot
+        _log_bot = Bot(token=MAIN_BOT_TOKEN)
+    return _log_bot
+
+
 async def send_central_log(text: str):
     """Send an update log to the central LOG_CHANNEL_ID using MAIN_BOT_TOKEN."""
-    from config import MAIN_BOT_TOKEN, LOG_CHANNEL_ID
-    if not LOG_CHANNEL_ID or not MAIN_BOT_TOKEN:
+    from config import LOG_CHANNEL_ID
+    if not LOG_CHANNEL_ID:
         return
     try:
-        from telegram import Bot
-        bot = Bot(token=MAIN_BOT_TOKEN)
-        await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
+        bot = await _get_log_bot()
+        if bot:
+            await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
     except Exception as e:
         logging.getLogger(__name__).warning(f"Failed to send central log: {e}")
+
+
+def mask_phone(phone: str) -> str:
+    """Mask a phone number for privacy: +91****82"""
+    if not phone or len(phone) < 6:
+        return "****"
+    return f"{phone[:3]}****{phone[-2:]}"
+
+
+def build_live_update(phone: str, chat_title: str, action: str, index: int, total: int) -> str:
+    """Build a styled live update message for a single successful send."""
+    now_ist = datetime.now(IST)
+    time_str = now_ist.strftime("%I:%M %p")
+    masked = mask_phone(phone)
+    progress_pct = int((index / total) * 100) if total > 0 else 0
+
+    # Progress bar visual
+    filled = progress_pct // 10
+    bar = "█" * filled + "░" * (10 - filled)
+
+    return (
+        f"<b>┌─── 🟢 LIVE UPDATE ───</b>\n"
+        f"<b>│</b>\n"
+        f"<b>│</b> 👤 Account: <code>{masked}</code>\n"
+        f"<b>│</b> 📢 Target:  <code>{chat_title}</code>\n"
+        f"<b>│</b> ⚡ Action:  {action}\n"
+        f"<b>│</b> 📊 Progress: [{bar}] {progress_pct}%\n"
+        f"<b>│</b> ⏱ Time:    {time_str} IST\n"
+        f"<b>│</b>\n"
+        f"<b>└─── {index}/{total} ───</b>"
+    )
+
+
+def build_cycle_report(phone: str, success_groups: list, failed_groups: list, send_mode: str, interval: int) -> str:
+    """Build a premium styled cycle summary report."""
+    now_ist = datetime.now(IST)
+    time_str = now_ist.strftime("%d %b %Y • %I:%M %p IST")
+    masked = mask_phone(phone)
+    total = len(success_groups) + len(failed_groups)
+    rate = int((len(success_groups) / total) * 100) if total > 0 else 0
+
+    # Header
+    text = (
+        f"<b>╔══════════════════════════╗</b>\n"
+        f"<b>║   📊 CYCLE REPORT        ║</b>\n"
+        f"<b>╚══════════════════════════╝</b>\n\n"
+        f"👤 <b>Account:</b> <code>{masked}</code>\n"
+        f"🕐 <b>Completed:</b> {time_str}\n"
+        f"⚙️ <b>Mode:</b> {send_mode.title()} | <b>Interval:</b> {interval}m\n\n"
+    )
+
+    # Stats bar
+    text += f"<b>━━━ DELIVERY STATS ━━━</b>\n"
+    text += f"  ✅ Delivered:  <b>{len(success_groups)}</b>\n"
+    text += f"  ❌ Failed:     <b>{len(failed_groups)}</b>\n"
+    text += f"  📈 Success:    <b>{rate}%</b>\n\n"
+
+    # Success list
+    if success_groups:
+        text += f"<b>✅ SENT SUCCESSFULLY ({len(success_groups)}):</b>\n"
+        for i, g in enumerate(success_groups[:15], 1):
+            text += f"  {i}. {g}\n"
+        if len(success_groups) > 15:
+            text += f"  <i>...+{len(success_groups)-15} more groups</i>\n"
+        text += "\n"
+
+    # Failed list
+    if failed_groups:
+        text += f"<b>❌ COULD NOT SEND ({len(failed_groups)}):</b>\n"
+        for i, g in enumerate(failed_groups[:10], 1):
+            text += f"  {i}. {g}\n"
+        if len(failed_groups) > 10:
+            text += f"  <i>...+{len(failed_groups)-10} more groups</i>\n"
+        text += "\n"
+
+    text += f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
+    return text
+
+
+def build_error_log(phone: str, chat_title: str, error_type: str, detail: str = "") -> str:
+    """Build a styled error/warning log entry."""
+    now_ist = datetime.now(IST)
+    time_str = now_ist.strftime("%I:%M %p")
+    masked = mask_phone(phone)
+
+    return (
+        f"<b>⚠️ ALERT</b> | {time_str} IST\n"
+        f"👤 <code>{masked}</code>\n"
+        f"📢 <code>{chat_title}</code>\n"
+        f"🔴 {error_type}"
+        + (f"\n📝 <i>{detail[:60]}</i>" if detail else "")
+    )
+
+
+def build_cleanup_log(phone: str, removed_count: int, removed_titles: list = None) -> str:
+    """Build a styled auto-cleanup log."""
+    masked = mask_phone(phone)
+    now_ist = datetime.now(IST)
+    time_str = now_ist.strftime("%I:%M %p")
+
+    text = (
+        f"<b>🧹 AUTO-CLEANUP</b> | {time_str} IST\n"
+        f"👤 <code>{masked}</code>\n"
+        f"🗑 Removed <b>{removed_count}</b> failing/paused group(s)\n"
+    )
+    if removed_titles:
+        for t in removed_titles[:5]:
+            text += f"  • {t}\n"
+        if len(removed_titles) > 5:
+            text += f"  <i>...+{len(removed_titles)-5} more</i>\n"
+    return text
 

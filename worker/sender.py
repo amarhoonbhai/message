@@ -390,13 +390,22 @@ class UserSender:
                     if removed_count > 0:
                         self.logger.info(f"🧹 Auto-cleanup: Removed {removed_count} stale failing group(s).")
                     
-                    # AUTO-RESUME: Automatically re-enable paused groups every cycle
-                    # This gives "failing" groups another chance, especially useful after 
-                    # the "Smart Assignment" fix.
-                    from models.group import resume_user_groups
-                    resumed = await resume_user_groups(self.user_id)
-                    if resumed > 0:
-                        self.logger.info(f"🔄 Auto-resume: Re-enabled {resumed} group(s).")
+                    # AUTO-REMOVE PAUSED: Remove groups that are disabled (paused)
+                    # instead of resuming them — keeps the list clean
+                    from models.group import get_user_groups as _get_paused_groups
+                    paused_groups = await _get_paused_groups(self.user_id)
+                    paused_list = [g for g in paused_groups if not g.get("enabled", True)]
+                    if paused_list:
+                        removed_titles = []
+                        for pg in paused_list:
+                            await remove_group(self.user_id, pg["chat_id"])
+                            removed_titles.append(pg.get("chat_title", "Unknown"))
+                        self.logger.info(f"🗑️ Auto-remove: Deleted {len(paused_list)} paused group(s).")
+                        
+                        # Log cleanup to central channel
+                        from worker.utils import send_central_log, build_cleanup_log
+                        cleanup_msg = build_cleanup_log(self.phone, len(paused_list), removed_titles)
+                        asyncio.create_task(send_central_log(cleanup_msg))
                 except Exception as e:
                     self.logger.warning(f"Maintenance tasks error: {e}")
                 
@@ -544,6 +553,10 @@ class UserSender:
                     
                     if success:
                         success_groups.append(chat_title)
+                        # LIVE UPDATE to log channel
+                        from worker.utils import send_central_log, build_live_update
+                        live_msg = build_live_update(self.phone, chat_title, "Forwarded" if not copy_mode else "Copied", i+1, len(tasks))
+                        asyncio.create_task(send_central_log(live_msg))
                     else:
                         failed_groups.append(chat_title)
                     
@@ -567,24 +580,11 @@ class UserSender:
                         
                         await asyncio.sleep(current_gap)
                 
-                # Send Cycle Summary Log
+                # Send Styled Cycle Summary Log
                 if success_groups or failed_groups:
-                    from worker.utils import send_central_log
-                    masked_phone = f"{self.phone[:4]}****{self.phone[-2:]}" if self.phone and len(self.phone) >= 6 else "****"
-                    log_text = f"📊 <b>CYCLE REPORT</b> | 👤 <code>{masked_phone}</code>\n\n"
-                    if success_groups:
-                        log_text += f"✅ <b>Sent Successfully ({len(success_groups)}):</b>\n"
-                        for g in success_groups[:10]:
-                            log_text += f" • {g}\n"
-                        if len(success_groups) > 10:
-                            log_text += f" • <i>...and {len(success_groups)-10} more</i>\n"
-                    if failed_groups:
-                        log_text += f"\n❌ <b>Failed to Send ({len(failed_groups)}):</b>\n"
-                        for g in failed_groups[:10]:
-                            log_text += f" • {g}\n"
-                        if len(failed_groups) > 10:
-                            log_text += f" • <i>...and {len(failed_groups)-10} more</i>\n"
-                    asyncio.create_task(send_central_log(log_text))
+                    from worker.utils import send_central_log, build_cycle_report
+                    report = build_cycle_report(self.phone, success_groups, failed_groups, send_mode, actual_interval)
+                    asyncio.create_task(send_central_log(report))
                 
                 # 5. Cycle complete, respect user interval
                 actual_interval = max(interval_minutes, MIN_INTERVAL_MINUTES)
@@ -801,6 +801,9 @@ class UserSender:
             self.error_streak += 1
             self.logger.error(f"🚨 PeerFlood on {chat_title} — account is restricted by Telegram!")
             asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "peer_flood", "PeerFlood", phone=self.phone))
+            # Log critical error to channel
+            from worker.utils import send_central_log, build_error_log
+            asyncio.create_task(send_central_log(build_error_log(self.phone, chat_title, "🚨 PEER FLOOD", "Account restricted by Telegram — 4h cooldown")))
             # PeerFlood is account-wide — retrying other groups will only make it worse.
             # Sleep for 4 hours to let the restriction lift naturally.
             await self.update_status("🚨 PeerFlood (4h cooldown)")
@@ -823,6 +826,9 @@ class UserSender:
             self.logger.error(f"🛑 Account {self.phone} is deactivated by Telegram!")
             asyncio.create_task(mark_session_disabled(self.user_id, self.phone, reason="User Deactivated"))
             asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", "UserDeactivated", phone=self.phone))
+            # Log critical error to channel
+            from worker.utils import send_central_log, build_error_log
+            asyncio.create_task(send_central_log(build_error_log(self.phone, chat_title, "🛑 ACCOUNT DEACTIVATED", "Session permanently disabled")))
             self.running = False
             return (False, False, 0)
             
