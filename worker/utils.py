@@ -81,3 +81,16 @@ class UserLogAdapter(logging.LoggerAdapter):
         user_id = self.extra.get('user_id', 'Unknown')
         phone = self.extra.get('phone', 'Unknown')
         return f"[User {user_id}][{phone}] {msg}", kwargs
+
+async def send_central_log(text: str):
+    """Send an update log to the central LOG_CHANNEL_ID using MAIN_BOT_TOKEN."""
+    from config import MAIN_BOT_TOKEN, LOG_CHANNEL_ID
+    if not LOG_CHANNEL_ID or not MAIN_BOT_TOKEN:
+        return
+    try:
+        from telegram import Bot
+        bot = Bot(token=MAIN_BOT_TOKEN)
+        await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Failed to send central log: {e}")
+

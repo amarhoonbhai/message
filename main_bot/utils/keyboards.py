@@ -3,7 +3,7 @@ Inline keyboard builders for Main Bot.
 """
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from config import LOGIN_BOT_USERNAME, CHANNEL_USERNAME, SUPPORT_URL
+from config import LOGIN_BOT_USERNAME, CHANNEL_USERNAME, SUPPORT_URL, LOG_CHANNEL_URL
 
 
 def get_welcome_keyboard() -> InlineKeyboardMarkup:
@@ -19,6 +19,9 @@ def get_welcome_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("📌 Join Community", url=f"https://t.me/{CHANNEL_USERNAME}"),
             InlineKeyboardButton("📘 Help & Docs", callback_data="help"),
+        ],
+        [
+            InlineKeyboardButton("📢 Updates Logs Channel", url=LOG_CHANNEL_URL),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -53,6 +56,9 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🔄 Toggle Send Mode", callback_data="toggle_send_mode"),
+        ],
+        [
+            InlineKeyboardButton("📢 Updates Logs Channel", url=LOG_CHANNEL_URL),
         ],
         [
             InlineKeyboardButton("🏠 Back to Home", callback_data="home"),

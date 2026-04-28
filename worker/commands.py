@@ -406,8 +406,44 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             continue
         
         try:
-            # Get the entity (group/channel)
-            entity = await client.get_entity(group_identifier)
+            entity = None
+            
+            # Handle invite links manually
+            if isinstance(group_identifier, str) and any(x in group_identifier for x in ["t.me/+", "joinchat/", "t.me/joinchat/"]):
+                import re
+                hash_match = re.search(r"(?:joinchat/|\+)([\w-]+)", group_identifier)
+                if hash_match:
+                    invite_hash = hash_match.group(1)
+                    from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
+                    from telethon.tl.types import ChatInviteAlready, ChatInvite
+                    try:
+                        invite = await client(CheckChatInviteRequest(invite_hash))
+                        if isinstance(invite, ChatInviteAlready):
+                            entity = invite.chat
+                        else:
+                            updates = await client(ImportChatInviteRequest(invite_hash))
+                            if updates.chats:
+                                entity = updates.chats[0]
+                    except Exception as e:
+                        failed.append((group_input, f"Invite Error: {str(e)[:15]}"))
+                        continue
+            
+            if not entity:
+                try:
+                    # Get the entity (group/channel)
+                    entity = await client.get_entity(group_identifier)
+                except ValueError:
+                    # Not in cache, try scanning dialogs
+                    found = False
+                    async for dialog in client.iter_dialogs(limit=300):
+                        if str(dialog.id) == str(group_identifier) or (dialog.entity and dialog.entity.username and dialog.entity.username.lower() == str(group_identifier).lstrip('@').lower()):
+                            entity = dialog.entity
+                            found = True
+                            break
+                    if not found:
+                        failed.append((group_input, "Not found in cache. Open group first."))
+                        continue
+
             chat_id = entity.id
             chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
             
@@ -881,7 +917,9 @@ def parse_group_input(input_str: str) -> tuple[Optional[str], Optional[int]]:
         
         # If it's a private channel ID (serial), add -100 prefix
         if ident.isdigit() and not ident.startswith("-100"):
-            ident = f"-100{ident}"
+            ident = int(f"-100{ident}")
+        elif ident.lstrip("-").isdigit():
+            ident = int(ident)
         elif not ident.startswith("@") and not ident.isdigit():
             ident = f"@{ident}"
             
@@ -908,7 +946,7 @@ def parse_group_input(input_str: str) -> tuple[Optional[str], Optional[int]]:
 
     # 6. Raw Numeric ID
     if re.match(r"^-?\d+$", input_str):
-        return input_str, None
+        return int(input_str), None
 
     # 7. Fallback for raw alphanumeric strings (assume username)
     if re.match(r"^[a-zA-Z0-9_]+$", input_str):
@@ -1088,7 +1126,21 @@ async def handle_addlist_link(client: TelegramClient, user_id: int, message, lin
         
         # Only Join if it's a new invite
         if not isinstance(invite, ChatlistInviteAlready):
-            await client(JoinChatlistInviteRequest(slug, peers))
+            try:
+                await client(JoinChatlistInviteRequest(slug, peers))
+            except Exception as e:
+                if "CHATLISTS_TOO_MUCH" in str(e) or "chatlists too much" in str(e).lower():
+                    await reply_to_command(client, message, "⚠️ **Folder Limit Reached!**\nTrying to join groups individually... This may take a moment.")
+                    from telethon.tl.functions.channels import JoinChannelRequest
+                    import asyncio
+                    for p in peers:
+                        try:
+                            await client(JoinChannelRequest(p))
+                            await asyncio.sleep(0.5)
+                        except Exception as join_e:
+                            logger.error(f"Failed to manually join {p}: {join_e}")
+                else:
+                    raise e
         
         # Now process like a folder
         await process_folder_peers(client, user_id, message, title, peers)
