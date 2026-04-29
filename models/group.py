@@ -95,26 +95,80 @@ async def get_group_count(user_id: int) -> int:
     return await db.groups.count_documents({"user_id": user_id})
 
 
+# Failure reasons that indicate the GROUP itself is dead/inaccessible
+# (not just the account being temporarily restricted)
+GROUP_LEVEL_FAIL_REASONS = [
+    "ChatWriteForbiddenError", "ChannelPrivateError", "ChatAdminRequiredError",
+    "UserBannedInChannelError", "ChannelInvalidError", "UsernameNotOccupiedError",
+    "UsernameInvalidError", "InviteHashExpiredError",
+    "Pre-check:", "Entity error:", "Entity Not Found",
+    "RPC: CHAT_ADMIN_REQUIRED", "RPC: CHAT_WRITE_FORBIDDEN",
+    "RPC: USER_BANNED_IN_CHANNEL", "RPC: CHANNEL_INVALID",
+    "RPC: USERNAME_NOT_OCCUPIED", "RPC: USERNAME_INVALID",
+    "RPC: INVITE_HASH_EXPIRED",
+]
+
+# Account-level failures — group is fine, but the sending account is restricted
+ACCOUNT_LEVEL_FAIL_KEYWORDS = [
+    "403", "FORBIDDEN", "AUTH_KEY", "PeerFlood", "RPCError 403",
+]
+
+
+def _is_group_level_failure(reason: str) -> bool:
+    """Check if the failure reason indicates a group-level issue (not account-level)."""
+    if not reason:
+        return False
+    for keyword in GROUP_LEVEL_FAIL_REASONS:
+        if keyword in reason:
+            return True
+    # If it matches account-level keywords, it's NOT group-level
+    for keyword in ACCOUNT_LEVEL_FAIL_KEYWORDS:
+        if keyword in reason:
+            return False
+    # Unknown reasons are treated as group-level by default
+    return True
+
+
 async def mark_group_failing(user_id: int, chat_id: int, reason: str):
     """
     Mark a group as failing. Sets `first_fail_at` only if not already set,
     so we track how long it has been failing continuously.
+    
+    Groups are disabled but NOT marked for auto-removal if the failure
+    is account-level (e.g. 403 restriction on the sending account).
     """
     db = get_database()
-    await db.groups.update_one(
-        {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": False}},
-        {"$set": {
-            "first_fail_at": datetime.utcnow(),
-            "fail_reason": reason,
-            "enabled": False,
-            "pause_reason": reason,
-        }},
-    )
-    # If already marked, just update reason
-    await db.groups.update_one(
-        {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": True}},
-        {"$set": {"fail_reason": reason, "enabled": False, "pause_reason": reason}},
-    )
+    is_group_fail = _is_group_level_failure(reason)
+
+    if is_group_fail:
+        # Group-level failure: mark with first_fail_at for potential auto-removal
+        await db.groups.update_one(
+            {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": False}},
+            {"$set": {
+                "first_fail_at": datetime.utcnow(),
+                "fail_reason": reason,
+                "fail_type": "group",
+                "enabled": False,
+                "pause_reason": reason,
+            }},
+        )
+        # If already marked, just update reason
+        await db.groups.update_one(
+            {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": True}},
+            {"$set": {"fail_reason": reason, "fail_type": "group", "enabled": False, "pause_reason": reason}},
+        )
+    else:
+        # Account-level failure: disable the group but do NOT set first_fail_at
+        # so it won't be auto-removed. It will recover when the account recovers.
+        await db.groups.update_one(
+            {"user_id": user_id, "chat_id": chat_id},
+            {"$set": {
+                "enabled": False,
+                "pause_reason": f"Account issue: {reason}",
+                "fail_reason": reason,
+                "fail_type": "account",
+            }},
+        )
 
 
 async def clear_group_fail(user_id: int, chat_id: int):
@@ -122,19 +176,50 @@ async def clear_group_fail(user_id: int, chat_id: int):
     db = get_database()
     await db.groups.update_one(
         {"user_id": user_id, "chat_id": chat_id},
-        {"$unset": {"first_fail_at": "", "fail_reason": ""},
+        {"$unset": {"first_fail_at": "", "fail_reason": "", "fail_type": ""},
          "$set": {"enabled": True, "pause_reason": None}},
     )
 
 
+async def resume_account_paused_groups(user_id: int) -> int:
+    """
+    Re-enable all groups that were paused due to account-level failures.
+    Called when the account starts successfully sending again.
+    Returns count of groups re-enabled.
+    """
+    db = get_database()
+    result = await db.groups.update_many(
+        {
+            "user_id": user_id,
+            "fail_type": "account",
+            "enabled": False,
+        },
+        {
+            "$set": {"enabled": True, "pause_reason": None},
+            "$unset": {"fail_reason": "", "fail_type": ""},
+        }
+    )
+    return result.modified_count
+
+
 async def remove_stale_failing_groups(user_id: int) -> int:
-    """Remove groups that have been failing for more than 24 hours. Returns count removed."""
+    """
+    Remove groups that have been failing for more than 24 hours.
+    ONLY removes groups with group-level failures (dead/private/banned groups).
+    Groups paused due to account-level restrictions are preserved.
+    Returns count removed.
+    """
     from datetime import timedelta
     db = get_database()
     cutoff = datetime.utcnow() - timedelta(hours=24)
     result = await db.groups.delete_many({
         "user_id": user_id,
         "first_fail_at": {"$lte": cutoff},
+        # Only delete group-level failures, NOT account-level ones
+        "$or": [
+            {"fail_type": "group"},
+            {"fail_type": {"$exists": False}},  # Legacy entries without fail_type
+        ]
     })
     return result.deleted_count
 

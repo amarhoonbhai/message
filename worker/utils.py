@@ -88,16 +88,26 @@ class UserLogAdapter(logging.LoggerAdapter):
 # ═══════════════════════════════════════════════════════
 
 _log_bot = None  # Singleton bot instance
+_log_bot_init_failed = False  # Prevent repeated init attempts on permanent failures
 
 async def _get_log_bot():
     """Get or create a cached Bot instance for the log channel."""
-    global _log_bot
+    global _log_bot, _log_bot_init_failed
+    if _log_bot_init_failed:
+        return None
     if _log_bot is None:
         from config import MAIN_BOT_TOKEN
         if not MAIN_BOT_TOKEN:
+            logging.getLogger(__name__).warning("MAIN_BOT_TOKEN is empty — cannot send to log channel")
+            _log_bot_init_failed = True
             return None
-        from telegram import Bot
-        _log_bot = Bot(token=MAIN_BOT_TOKEN)
+        try:
+            from telegram import Bot
+            _log_bot = Bot(token=MAIN_BOT_TOKEN)
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Failed to initialize log Bot: {e}")
+            _log_bot_init_failed = True
+            return None
     return _log_bot
 
 
@@ -105,13 +115,28 @@ async def send_central_log(text: str):
     """Send an update log to the central LOG_CHANNEL_ID using MAIN_BOT_TOKEN."""
     from config import LOG_CHANNEL_ID
     if not LOG_CHANNEL_ID:
+        logging.getLogger(__name__).debug("LOG_CHANNEL_ID is not set — skipping central log")
         return
     try:
         bot = await _get_log_bot()
-        if bot:
-            await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
+        if not bot:
+            return
+        # Truncate messages over 4096 chars (Telegram limit)
+        if len(text) > 4096:
+            text = text[:4090] + "\n..."
+        await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
     except Exception as e:
-        logging.getLogger(__name__).warning(f"Failed to send central log: {e}")
+        _logger = logging.getLogger(__name__)
+        error_str = str(e)
+        # Log full error details for debugging
+        _logger.error(f"Failed to send central log to {LOG_CHANNEL_ID}: {error_str}")
+        # If it's a parse error, retry without HTML formatting
+        if "parse" in error_str.lower() or "can't" in error_str.lower():
+            try:
+                await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text)
+                _logger.info("Retried without HTML parse_mode — success")
+            except Exception as retry_e:
+                _logger.error(f"Retry without parse_mode also failed: {retry_e}")
 
 
 def mask_phone(phone: str) -> str:

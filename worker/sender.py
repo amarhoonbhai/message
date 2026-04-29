@@ -585,6 +585,14 @@ class UserSender:
                 # Reset PeerFlood counter on successful cycle
                 if len(success_groups) > 0:
                     self._peer_flood_count = 0
+                    # Auto-recover groups paused due to account restrictions
+                    try:
+                        from models.group import resume_account_paused_groups
+                        recovered = await resume_account_paused_groups(self.user_id)
+                        if recovered > 0:
+                            self.logger.info(f"🔄 Auto-recovered {recovered} groups paused by account restriction")
+                    except Exception as e:
+                        self.logger.warning(f"Group recovery check failed: {e}")
                 
                 # 7. Wait for next cycle
                 wait_seconds = actual_interval * 60
@@ -775,8 +783,35 @@ class UserSender:
         except RPCError as e:
             self.error_streak += 1
             error_msg = str(e).upper()
+            error_code = getattr(e, 'code', 0)
             
-            # Smart RPC categorization
+            # ── CRITICAL: Account-level 403 Forbidden ──────────────────────
+            # This means the ACCOUNT is restricted by Telegram, not the group.
+            # Stop wasting cycles and cooldown the entire account.
+            if error_code == 403 or "FORBIDDEN" in error_msg:
+                self._peer_flood_count += 1
+                cooldown_hours = min(2 ** (self._peer_flood_count - 1), 8)
+                cooldown_secs = cooldown_hours * 3600
+                self.logger.error(
+                    f"🚫 403 FORBIDDEN on {chat_title} — account restricted! "
+                    f"Cooldown {cooldown_hours}h (#{self._peer_flood_count})"
+                )
+                asyncio.create_task(mark_group_failing(
+                    self.user_id, chat_id, f"RPCError 403 (account restricted)"
+                ))
+                asyncio.create_task(db_log_send(
+                    self.user_id, chat_id, message.id, "failed",
+                    f"RPCError 403: Account restricted", phone=self.phone
+                ))
+                from worker.utils import send_central_log, build_error_log
+                asyncio.create_task(send_central_log(build_error_log(
+                    self.phone, chat_title, "🚫 403 FORBIDDEN",
+                    f"Account restricted — {cooldown_hours}h cooldown (#{self._peer_flood_count})"
+                )))
+                await self.update_status(f"🚫 403 Restricted ({cooldown_hours}h cooldown)")
+                return (False, True, cooldown_secs)
+            
+            # Smart RPC categorization (group-level errors)
             if any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN", "USER_BANNED_IN_CHANNEL"]):
                 self.logger.warning(f"⚠️ Group {chat_title} failing due to RPC: {e}")
                 asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"RPC: {error_msg[:40]}"))

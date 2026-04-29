@@ -311,19 +311,39 @@ async def get_group_count(user_id: int) -> int:
 
 
 async def mark_group_failing(user_id: int, chat_id: int, reason: str):
-    """Mark a group as failing. Sets first_fail_at only if not already set."""
+    """Mark a group as failing. Sets first_fail_at only if not already set.
+    
+    Distinguishes between group-level and account-level failures.
+    Account-level failures (403, PeerFlood) do NOT set first_fail_at,
+    so the group won't be auto-removed when the account recovers.
+    """
+    from models.group import _is_group_level_failure
     db = get_database()
     now = datetime.utcnow()
-    # Set first_fail_at only if not already marked
-    await db.groups.update_one(
-        {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": False}},
-        {"$set": {"first_fail_at": now, "fail_reason": reason, "enabled": False, "pause_reason": reason}},
-    )
-    # If already marked, just update reason
-    await db.groups.update_one(
-        {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": True}},
-        {"$set": {"fail_reason": reason, "enabled": False, "pause_reason": reason}},
-    )
+    is_group_fail = _is_group_level_failure(reason)
+
+    if is_group_fail:
+        # Group-level failure: mark with first_fail_at for potential auto-removal
+        await db.groups.update_one(
+            {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": False}},
+            {"$set": {"first_fail_at": now, "fail_reason": reason, "fail_type": "group", "enabled": False, "pause_reason": reason}},
+        )
+        # If already marked, just update reason
+        await db.groups.update_one(
+            {"user_id": user_id, "chat_id": chat_id, "first_fail_at": {"$exists": True}},
+            {"$set": {"fail_reason": reason, "fail_type": "group", "enabled": False, "pause_reason": reason}},
+        )
+    else:
+        # Account-level failure: disable but do NOT set first_fail_at
+        await db.groups.update_one(
+            {"user_id": user_id, "chat_id": chat_id},
+            {"$set": {
+                "enabled": False,
+                "pause_reason": f"Account issue: {reason}",
+                "fail_reason": reason,
+                "fail_type": "account",
+            }},
+        )
 
 
 async def clear_group_fail(user_id: int, chat_id: int):
@@ -331,18 +351,48 @@ async def clear_group_fail(user_id: int, chat_id: int):
     db = get_database()
     await db.groups.update_one(
         {"user_id": user_id, "chat_id": chat_id},
-        {"$unset": {"first_fail_at": "", "fail_reason": ""},
+        {"$unset": {"first_fail_at": "", "fail_reason": "", "fail_type": ""},
          "$set": {"enabled": True, "pause_reason": None}},
     )
 
 
+async def resume_account_paused_groups(user_id: int) -> int:
+    """
+    Re-enable all groups that were paused due to account-level failures.
+    Called when the account starts successfully sending again.
+    Returns count of groups re-enabled.
+    """
+    db = get_database()
+    result = await db.groups.update_many(
+        {
+            "user_id": user_id,
+            "fail_type": "account",
+            "enabled": False,
+        },
+        {
+            "$set": {"enabled": True, "pause_reason": None},
+            "$unset": {"fail_reason": "", "fail_type": ""},
+        }
+    )
+    return result.modified_count
+
+
 async def remove_stale_failing_groups(user_id: int) -> int:
-    """Remove groups failing for more than 24 hours. Returns count removed."""
+    """Remove groups failing for more than 24 hours.
+    
+    ONLY removes groups with group-level failures (dead/private/banned).
+    Groups paused due to account-level restrictions (403) are preserved.
+    """
     db = get_database()
     cutoff = datetime.utcnow() - timedelta(hours=24)
     result = await db.groups.delete_many({
         "user_id": user_id,
         "first_fail_at": {"$lte": cutoff},
+        # Only delete group-level failures, NOT account-level ones
+        "$or": [
+            {"fail_type": "group"},
+            {"fail_type": {"$exists": False}},  # Legacy entries without fail_type
+        ]
     })
     return result.deleted_count
 
