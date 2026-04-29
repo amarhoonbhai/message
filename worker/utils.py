@@ -145,13 +145,37 @@ def build_live_update(phone: str, chat_title: str, action: str, index: int, tota
     )
 
 
-def build_cycle_report(phone: str, success_groups: list, failed_groups: list, send_mode: str, interval: int) -> str:
-    """Build a premium styled cycle summary report."""
+def build_cycle_report(phone: str, success_groups: list, failed_groups: list, send_mode: str, interval: int, cycle_duration: float = 0, skipped: int = 0) -> str:
+    """Build a premium styled cycle summary report — V6 with metrics."""
     now_ist = datetime.now(IST)
     time_str = now_ist.strftime("%d %b %Y • %I:%M %p IST")
     masked = mask_phone(phone)
     total = len(success_groups) + len(failed_groups)
     rate = int((len(success_groups) / total) * 100) if total > 0 else 0
+
+    # Duration formatting
+    if cycle_duration > 0:
+        dur_min = int(cycle_duration // 60)
+        dur_sec = int(cycle_duration % 60)
+        dur_str = f"{dur_min}m {dur_sec}s" if dur_min > 0 else f"{dur_sec}s"
+        throughput = f"{(len(success_groups) / (cycle_duration / 60)):.1f}" if cycle_duration > 0 else "N/A"
+    else:
+        dur_str = "N/A"
+        throughput = "N/A"
+
+    # Speed rating
+    if cycle_duration > 0 and total > 0:
+        avg_per_group = cycle_duration / total
+        if avg_per_group < 30:
+            speed_badge = "⚡ BLAZING"
+        elif avg_per_group < 60:
+            speed_badge = "🚀 FAST"
+        elif avg_per_group < 120:
+            speed_badge = "🟢 NORMAL"
+        else:
+            speed_badge = "🐢 SLOW"
+    else:
+        speed_badge = "—"
 
     # Header
     text = (
@@ -167,11 +191,19 @@ def build_cycle_report(phone: str, success_groups: list, failed_groups: list, se
     text += f"<b>━━━ DELIVERY STATS ━━━</b>\n"
     text += f"  ✅ Delivered:  <b>{len(success_groups)}</b>\n"
     text += f"  ❌ Failed:     <b>{len(failed_groups)}</b>\n"
+    if skipped > 0:
+        text += f"  ⏭ Skipped:    <b>{skipped}</b> (dedup)\n"
     text += f"  📈 Success:    <b>{rate}%</b>\n\n"
+
+    # V6: Performance metrics
+    text += f"<b>━━━ PERFORMANCE ━━━</b>\n"
+    text += f"  ⏱ Duration:   <b>{dur_str}</b>\n"
+    text += f"  📊 Throughput: <b>{throughput} groups/min</b>\n"
+    text += f"  {speed_badge}\n\n"
 
     # Success list
     if success_groups:
-        text += f"<b>✅ SENT SUCCESSFULLY ({len(success_groups)}):</b>\n"
+        text += f"<b>✅ SENT ({len(success_groups)}):</b>\n"
         for i, g in enumerate(success_groups[:15], 1):
             text += f"  {i}. {g}\n"
         if len(success_groups) > 15:
@@ -180,7 +212,7 @@ def build_cycle_report(phone: str, success_groups: list, failed_groups: list, se
 
     # Failed list
     if failed_groups:
-        text += f"<b>❌ COULD NOT SEND ({len(failed_groups)}):</b>\n"
+        text += f"<b>❌ FAILED ({len(failed_groups)}):</b>\n"
         for i, g in enumerate(failed_groups[:10], 1):
             text += f"  {i}. {g}\n"
         if len(failed_groups) > 10:
@@ -215,7 +247,7 @@ def build_cleanup_log(phone: str, removed_count: int, removed_titles: list = Non
     text = (
         f"<b>🧹 AUTO-CLEANUP</b> | {time_str} IST\n"
         f"👤 <code>{masked}</code>\n"
-        f"🗑 Removed <b>{removed_count}</b> failing/paused group(s)\n"
+        f"🗑 Removed <b>{removed_count}</b> failing group(s)\n"
     )
     if removed_titles:
         for t in removed_titles[:5]:
@@ -223,4 +255,18 @@ def build_cleanup_log(phone: str, removed_count: int, removed_titles: list = Non
         if len(removed_titles) > 5:
             text += f"  <i>...+{len(removed_titles)-5} more</i>\n"
     return text
+
+
+def build_session_start_log(phone: str, group_count: int, plan_status: str) -> str:
+    """Build a styled session start notification."""
+    now_ist = datetime.now(IST)
+    time_str = now_ist.strftime("%I:%M %p IST")
+    masked = mask_phone(phone)
+
+    return (
+        f"<b>🟢 SESSION STARTED</b> | {time_str}\n"
+        f"👤 <code>{masked}</code>\n"
+        f"📂 Groups: <b>{group_count}</b>\n"
+        f"💎 Plan: <b>{plan_status}</b>"
+    )
 

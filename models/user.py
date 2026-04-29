@@ -70,13 +70,14 @@ async def update_user_profile(user_id: int, username: str = None, first_name: st
 
 async def get_user_config(user_id: int) -> dict:
     """Get user settings (interval, shuffle, etc)."""
+    from core.config import DEFAULT_INTERVAL_MINUTES
     db = get_database()
-    doc = await db.user_configs.find_one({"user_id": user_id})
+    doc = await db.config.find_one({"user_id": user_id})
     if not doc:
         # Return defaults
         return {
             "user_id": user_id,
-            "interval_min": 60,
+            "interval_min": DEFAULT_INTERVAL_MINUTES,
             "shuffle_mode": False,
             "copy_mode": False,
             "send_mode": "sequential",
@@ -90,7 +91,7 @@ async def update_user_config(user_id: int, **kwargs):
     """Update specific user settings."""
     db = get_database()
     kwargs["updated_at"] = datetime.utcnow()
-    await db.user_configs.update_one(
+    await db.config.update_one(
         {"user_id": user_id},
         {"$set": kwargs},
         upsert=True

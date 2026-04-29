@@ -544,7 +544,7 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
                 continue
         else:
             # Try to resolve url/username
-            group_identifier = parse_group_input(item)
+            group_identifier, _ = parse_group_input(item)
             if not group_identifier:
                 failed_inputs.append(f"{item} (Invalid URL)")
                 continue
@@ -962,7 +962,7 @@ async def handle_nightmode(client: TelegramClient, user_id: int, message, text: 
         
     parts = text.split()
     if len(parts) < 2:
-        from models.job import get_global_settings
+        from db.models import get_global_settings
         settings = await get_global_settings()
         current = settings.get("night_mode_force", "auto").upper()
         await reply_to_command(client, message, 
@@ -980,7 +980,7 @@ async def handle_nightmode(client: TelegramClient, user_id: int, message, text: 
         await reply_to_command(client, message, "❌ Use: .nightmode on/off/auto")
         return
         
-    from models.job import update_global_settings
+    from db.models import update_global_settings
     await update_global_settings(night_mode_force=val)
     
     await reply_to_command(client, message, 
@@ -990,7 +990,7 @@ async def handle_nightmode(client: TelegramClient, user_id: int, message, text: 
 
 async def get_night_mode_label() -> str:
     """Helper to get a human-friendly night mode status label."""
-    from models.job import get_global_settings
+    from db.models import get_global_settings
     # Fix: Import is_night_mode from worker.utils instead of send_logic
     from worker.utils import is_night_mode as check_night_mode
     
@@ -1163,7 +1163,7 @@ async def fetch_peers_by_flags(client: TelegramClient, f: DialogFilter) -> list:
             if f.groups and (is_group or is_broadcast): match = True
             if f.broadcasts and is_broadcast: match = True
             if f.contacts and getattr(entity, 'contact', False): match = True
-            if f.non_contacts and not getattr(entity, 'contact', False) and not getattr(entity, 'bot', False) and not entity.is_self: match = True
+            if f.non_contacts and not getattr(entity, 'contact', False) and not getattr(entity, 'bot', False) and not getattr(entity, 'is_self', False): match = True
             
             # Exclusions (basic)
             if match:

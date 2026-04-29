@@ -14,6 +14,7 @@ Usage:
 import asyncio
 import logging
 import signal
+from datetime import datetime
 
 from core.logger import setup_service_logging
 from core.database import init_database, close_connection

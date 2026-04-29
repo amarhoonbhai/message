@@ -130,6 +130,13 @@ class WorkerManager:
                     await self.stop_sender(key)
                     stopped_count += 1
             
+            # V6: Reset restart counters for senders that have been running 5+ min
+            for key in list(self.restart_counts.keys()):
+                if key in self.senders:
+                    sender = self.senders[key]
+                    if sender.error_streak == 0 and sender._last_cycle_duration is not None:
+                        self.restart_counts.pop(key, None)
+            
             if started_count > 0 or stopped_count > 0 or skipped_disabled > 0:
                 logger.info(
                     f"Sync: +{started_count} started | -{stopped_count} stopped "
@@ -195,10 +202,8 @@ class WorkerManager:
                         delay = 30 * (2 ** attempts)
                         self.restart_counts[key] = attempts + 1
                         logger.info(f"Scheduling restart #{attempts + 1} for {key[1]} in {delay}s...")
-                        asyncio.get_event_loop().call_later(
-                            delay,
-                            lambda k=key: asyncio.ensure_future(self._restart_sender(k))
-                        )
+                        # V6: Fixed — replaced deprecated call_later with create_task
+                        asyncio.create_task(self._restart_sender_with_delay(key, delay))
                     else:
                         logger.error(f"Account {key[1]} [User {key[0]}] exceeded max restarts ({self.MAX_RESTART_ATTEMPTS})")
         except asyncio.CancelledError:
@@ -209,6 +214,11 @@ class WorkerManager:
         if key in self.tasks:
             del self.tasks[key]
     
+    async def _restart_sender_with_delay(self, key: tuple, delay: int):
+        """V6: Wait then restart — replaces deprecated call_later."""
+        await asyncio.sleep(delay)
+        await self._restart_sender(key)
+
     async def _restart_sender(self, key: tuple):
         """Restart a crashed sender after backoff delay."""
         if not self.running:
@@ -239,7 +249,7 @@ class WorkerManager:
 async def run_worker():
     """Run the worker manager."""
     logger.info("=" * 50)
-    logger.info("Group Message Scheduler - Worker Service V3.3")
+    logger.info("Kurup Ads V6 Elite — Worker Service")
     logger.info("=" * 50)
     
     manager = WorkerManager()

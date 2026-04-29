@@ -96,8 +96,12 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sends = stats.get("total_sent", 0)
             total_sends += sends
             
+            # V6: Show live worker status
+            worker_status = s.get("worker_status", "")
+            status_line = f" ▪ _{worker_status}_" if worker_status else ""
+            
             escaped_phone = escape_markdown(phone)
-            account_section += f"  {status_icon} `{escaped_phone}`\n"
+            account_section += f"  {status_icon} `{escaped_phone}`{status_line}\n"
             account_section += f"     ├─ 📊 Sent: {sends} ▪ Rate: {rate}%\n"
             account_section += f"     └─ ⏱️ Active: {last_active}\n"
     else:

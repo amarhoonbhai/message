@@ -108,7 +108,17 @@ class UserSender:
         self.adaptive_msg_gap = AdaptiveDelayController(MESSAGE_GAP_SECONDS)
         self.last_heartbeat = None
         self.error_streak = 0
-        self.first_run = True  # Flag for staggered first cycle
+        
+        # V6: Smart dialog priming — only once on startup
+        self._dialogs_primed = False
+        # V6: Cycle dedup — prevent double-sends on crash/restart
+        self._cycle_id = None
+        self._sent_this_cycle = set()  # {(msg_id, chat_id)} already sent
+        # V6: PeerFlood exponential backoff tracking
+        self._peer_flood_count = 0
+        # V6: Cycle timing metrics
+        self._cycle_start_time = None
+        self._last_cycle_duration = None
     
     async def update_status(self, status: str):
         """Update worker status in database with throttling for smoothness."""
@@ -143,7 +153,7 @@ class UserSender:
                 return val
         
         config = await get_user_config(self.user_id)
-        self.config_cache[cache_key] = (config, datetime.utcnow() + timedelta(minutes=5))
+        self.config_cache[cache_key] = (config, datetime.utcnow() + timedelta(seconds=60))
         return config
 
     async def _cached_is_plan_active(self):
@@ -312,10 +322,17 @@ class UserSender:
 
             self.logger.info("✅ Event handlers registered")
 
-            # ── PHASE 2b: STARTUP STAGGER ──────────────────────────────────
-            startup_delay = random.randint(5, 15)
-            self.logger.info(f"🏁 Waiting {startup_delay}s (anti-burst) before loop...")
-            await asyncio.sleep(startup_delay)
+            # ── PHASE 2b: PRIME DIALOGS (once) ─────────────────────────────
+            # Pre-load entity cache to prevent "Could not find entity" errors.
+            # Only done once per session lifetime — not every cycle.
+            try:
+                self.logger.info("📂 Priming dialog cache...")
+                async for _ in self.client.iter_dialogs(limit=300):
+                    pass
+                self._dialogs_primed = True
+                self.logger.info("✅ Dialog cache primed")
+            except Exception as e:
+                self.logger.warning(f"Dialog priming failed (non-fatal): {e}")
 
             # ── PHASE 2c: START BACKGROUND TASKS & MAIN LOOP ───────────────
             watchdog_task = asyncio.create_task(self._connection_watchdog())
@@ -377,11 +394,15 @@ class UserSender:
             self.logger.error(f"Auto-reply error: {e}")
 
     async def run_loop(self):
-        """Main sender loop - Simplified nested loop."""
+        """Main sender loop — V6 Powerhouse."""
         while self.running:
             try:
-                # 0. Log session status
-                self.logger.info(f"Starting new sending cycle...")
+                # 0. Fresh config + session activity
+                self.config_cache.clear()
+                self._cycle_start_time = datetime.utcnow()
+                self._cycle_id = int(self._cycle_start_time.timestamp())
+                self._sent_this_cycle.clear()
+                self.logger.info(f"Starting new sending cycle (#{self._cycle_id})...")
                 asyncio.create_task(update_session_activity(self.user_id, self.phone))
                 
                 # AUTO-CLEANUP: Remove groups failing for > 24h
@@ -389,45 +410,21 @@ class UserSender:
                     removed_count = await remove_stale_failing_groups(self.user_id)
                     if removed_count > 0:
                         self.logger.info(f"🧹 Auto-cleanup: Removed {removed_count} stale failing group(s).")
-                    
-                    # AUTO-REMOVE PAUSED: Remove groups that are disabled (paused)
-                    # instead of resuming them — keeps the list clean
-                    from models.group import get_user_groups as _get_paused_groups
-                    paused_groups = await _get_paused_groups(self.user_id)
-                    paused_list = [g for g in paused_groups if not g.get("enabled", True)]
-                    if paused_list:
-                        removed_titles = []
-                        for pg in paused_list:
-                            await remove_group(self.user_id, pg["chat_id"])
-                            removed_titles.append(pg.get("chat_title", "Unknown"))
-                        self.logger.info(f"🗑️ Auto-remove: Deleted {len(paused_list)} paused group(s).")
-                        
-                        # Log cleanup to central channel
-                        from worker.utils import send_central_log, build_cleanup_log
-                        cleanup_msg = build_cleanup_log(self.phone, len(paused_list), removed_titles)
-                        asyncio.create_task(send_central_log(cleanup_msg))
                 except Exception as e:
                     self.logger.warning(f"Maintenance tasks error: {e}")
                 
                 # AUTO-RECOVERY: If error streak is dangerously high
                 if self.error_streak >= 20:
-                    cooldown = min(self.error_streak * 30, 1800)  # Max 30 min
+                    cooldown = min(self.error_streak * 30, 1800)
                     self.logger.warning(f"🛑 High error streak. Cooling down for {cooldown//60}m...")
                     await self.update_status(f"Cooldown ({cooldown//60}m)")
                     await asyncio.sleep(cooldown)
                     self.error_streak = 0
                     self.config_cache.clear()
                 
-                if self.first_run:
-                    stagger_delay = random.uniform(5, 30)
-                    self.logger.info(f"⏳ First-run stagger: waiting {stagger_delay:.1f}s...")
-                    await self.update_status(f"Staggering ({int(stagger_delay)}s)")
-                    await asyncio.sleep(stagger_delay)
-                    self.first_run = False
-                
                 # 1. Check plan validity
                 if not await self._cached_is_plan_active():
-                    self.logger.info(f"Plan expired or inactive, sleeping 5 min...")
+                    self.logger.info("Plan expired or inactive, sleeping 1 min...")
                     await self.update_status("Inactive Plan")
                     self.error_streak = 0
                     await asyncio.sleep(60)
@@ -441,20 +438,13 @@ class UserSender:
                     await asyncio.sleep(min(wait_seconds, 3600))
                     continue
                 
-                # 3. Get groups
+                # 3. Get groups — smart assignment
                 all_raw_groups = await get_user_groups(self.user_id, enabled_only=True)
                 
-                # SMART GROUP ASSIGNMENT
-                # 1. Groups explicitly linked to this phone
                 my_groups = [g for g in all_raw_groups if g.get("account_phone") == self.phone]
-                
-                # 2. Groups linked to OTHER phones (skip these)
                 other_groups_count = len([g for g in all_raw_groups if g.get("account_phone") and g.get("account_phone") != self.phone])
-                
-                # 3. Orphan groups (no phone linked - legacy or shared)
                 orphan_groups = [g for g in all_raw_groups if g.get("account_phone") is None]
                 
-                # DISTRIBUTED LOAD BALANCING (Modulo for orphans only)
                 all_sessions = await get_all_user_sessions(self.user_id)
                 all_sessions.sort(key=lambda s: s["phone"])
                 session_phones = [s["phone"] for s in all_sessions]
@@ -474,17 +464,13 @@ class UserSender:
                         groups.extend(orphan_groups)
 
                 if other_groups_count > 0:
-                    self.logger.info(f"🛡️ Smart Assignment: Skipping {other_groups_count} groups managed by other accounts.")
-                
-                if my_groups:
-                    self.logger.info(f"🎯 Assigned {len(my_groups)} groups linked directly to this account.")
+                    self.logger.info(f"🛡️ Skipping {other_groups_count} groups managed by other accounts.")
 
                 if not groups:
                     await self.update_status("Sleeping (No assigned groups)")
                     await asyncio.sleep(60)
                     continue
 
-                # Get messages
                 messages = await self.get_all_saved_messages()
                 if not messages:
                     await self.update_status("Sleeping (No ads)")
@@ -496,128 +482,121 @@ class UserSender:
                 shuffle_mode = config.get("shuffle_mode", False)
                 interval_minutes = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
                 
-                # ── STEP 3.1: LEVEL UP - SHUFFLE MODE ──────────────────────
-                # If shuffle is enabled, we re-order groups every single cycle.
-                # This prevents "ordered pattern" detection by group admins/bots.
                 if shuffle_mode:
-                    self.logger.info("🔀 Shuffle Mode: Randomized group order for this cycle.")
+                    self.logger.info("🔀 Shuffle Mode: Randomized group order.")
                     random.shuffle(groups)
 
-                
-                # Prime dialog cache to prevent "Could not find entity" errors for private groups
-                try:
-                    async for _ in self.client.iter_dialogs(limit=300):
+                # Re-prime dialogs only if initial priming failed
+                if not self._dialogs_primed:
+                    try:
+                        async for _ in self.client.iter_dialogs(limit=300):
+                            pass
+                        self._dialogs_primed = True
+                    except Exception:
                         pass
-                except Exception as e:
-                    self.logger.warning(f"Error priming dialogs: {e}")
 
-                # 4. Built Tasks based on Send Mode
+                # 4. Build tasks based on Send Mode
                 send_mode = config.get("send_mode", "sequential")
                 tasks = []
                 
                 if send_mode == "sequential":
-                    # Ad 1 to all, then Ad 2 to all...
                     for msg in messages:
                         for group in groups:
                             tasks.append((msg, group))
                 elif send_mode == "rotate":
-                    # Grp 1 -> Ad 1, Grp 2 -> Ad 2...
                     for i, group in enumerate(groups):
                         msg = messages[i % len(messages)]
                         tasks.append((msg, group))
                 elif send_mode == "random":
-                    # Each group gets a random ad
                     for group in groups:
                         msg = random.choice(messages)
                         tasks.append((msg, group))
                 
-                self.logger.info(f"📋 Distribution: {len(tasks)} tasks queued ({send_mode} mode)")
+                self.logger.info(f"📋 {len(tasks)} tasks ({send_mode}) | {len(groups)} groups × {len(messages)} ads")
 
                 success_groups = []
                 failed_groups = []
+                skipped_dedup = 0
 
                 # 5. Process tasks with adaptive delays
                 for i, (msg, group) in enumerate(tasks):
                     if not self.running: break
                     
-                    # PROACTIVE CHECK: Don't start a send if Night Mode just began
-                    if await is_night_mode():
+                    # Night mode check every 10 tasks
+                    if i % 10 == 0 and i > 0 and await is_night_mode():
                         self.logger.info("🌙 Night Mode detected mid-cycle. Pausing...")
                         break
                     
+                    chat_id = group.get("chat_id")
                     chat_title = group.get('chat_title', 'Unknown')
-                    self.logger.info(f"📤 [{i+1}/{len(tasks)}] Forwarding msg {msg.id} to {chat_title}...")
-                    await self.update_status(f"Sending to {chat_title} ({i+1}/{len(tasks)})")
+                    
+                    # V6: Cycle deduplication
+                    dedup_key = (msg.id, chat_id)
+                    if dedup_key in self._sent_this_cycle:
+                        skipped_dedup += 1
+                        continue
+                    
+                    self.logger.info(f"📤 [{i+1}/{len(tasks)}] → {chat_title}")
+                    await self.update_status(f"Sending ({i+1}/{len(tasks)})")
                     
                     success, flood_triggered, flood_wait = await self.forward_single_message(msg, group, copy_mode=copy_mode)
                     
                     if success:
                         success_groups.append(chat_title)
-                        # LIVE UPDATE to log channel
-                        from worker.utils import send_central_log, build_live_update
-                        live_msg = build_live_update(self.phone, chat_title, "Forwarded" if not copy_mode else "Copied", i+1, len(tasks))
-                        asyncio.create_task(send_central_log(live_msg))
+                        self._sent_this_cycle.add(dedup_key)
                     else:
                         failed_groups.append(chat_title)
                     
                     if flood_triggered:
-                        # Escalation: if flood triggered, slightly increase multiplier for next sends
                         self.adaptive_group_gap.multiplier = min(self.adaptive_group_gap.multiplier * 1.1, 5.0)
                         await self.update_status(f"FloodWait ({flood_wait}s)")
                         await asyncio.sleep(flood_wait)
                         
-                    # Apply Gap between groups
+                    # Apply gap between groups
                     if i < len(tasks) - 1:
-                        # If we just finished all groups for one message in sequential mode, use larger gap
                         is_last_group_for_msg = (send_mode == "sequential" and (i + 1) % len(groups) == 0)
-                        
                         if is_last_group_for_msg:
                             current_gap = self.adaptive_msg_gap.get_gap()
                             await self.update_status(f"Msg Gap ({current_gap}s)")
                         else:
                             current_gap = self.adaptive_group_gap.get_gap()
-                            await self.update_status(f"Group Gap ({current_gap}s)")
-                        
                         await asyncio.sleep(current_gap)
                 
-                # Send Styled Cycle Summary Log
+                # 6. Cycle complete — metrics and report
+                actual_interval = max(interval_minutes, MIN_INTERVAL_MINUTES)
+                cycle_duration = (datetime.utcnow() - self._cycle_start_time).total_seconds()
+                self._last_cycle_duration = cycle_duration
+                
                 if success_groups or failed_groups:
                     from worker.utils import send_central_log, build_cycle_report
-                    report = build_cycle_report(self.phone, success_groups, failed_groups, send_mode, actual_interval)
+                    report = build_cycle_report(
+                        self.phone, success_groups, failed_groups,
+                        send_mode, actual_interval,
+                        cycle_duration=cycle_duration, skipped=skipped_dedup
+                    )
                     asyncio.create_task(send_central_log(report))
                 
-                # 5. Cycle complete, respect user interval
-                actual_interval = max(interval_minutes, MIN_INTERVAL_MINUTES)
-                self.logger.info(f"🔄 Loop complete! Waiting {actual_interval}m for next cycle...")
+                self.logger.info(
+                    f"✅ Cycle done in {cycle_duration:.0f}s | "
+                    f"✓{len(success_groups)} ✗{len(failed_groups)} | "
+                    f"Next in {actual_interval}m"
+                )
                 
+                # Reset PeerFlood counter on successful cycle
+                if len(success_groups) > 0:
+                    self._peer_flood_count = 0
+                
+                # 7. Wait for next cycle
                 wait_seconds = actual_interval * 60
                 elapsed = 0
                 while elapsed < wait_seconds and self.running:
                     if await is_night_mode():
-                        break # Let outer loop handle night mode
-                    
+                        break
                     rem_min = int((wait_seconds - elapsed) / 60)
                     await self.update_status(f"Next cycle in {rem_min}m")
                     sleep_chunk = min(60, wait_seconds - elapsed)
                     await asyncio.sleep(sleep_chunk)
                     elapsed += sleep_chunk
-                
-                # ── STEP 6: LEVEL UP - PERFORMANCE & HYGIENE ─────────────
-                
-                # A. Memory Management: Clear Telethon entity cache
-                # For long-running workers, this prevents RAM bloat.
-                try:
-                    self.client._entity_cache.clear()
-                    self.logger.info("🧹 Memory Hygiene: Entity cache cleared.")
-                except Exception: pass
-                
-                # B. Burst Jitter: Occasionally take a longer random break
-                # Simulates a human stepping away (5-15 mins).
-                if random.random() < 0.2: # 20% chance after each full loop
-                    burst_delay = random.randint(300, 900)
-                    self.logger.info(f"🧘 Burst Break: Taking a human-like break for {burst_delay//60}m...")
-                    await self.update_status(f"Burst Break ({burst_delay//60}m)")
-                    await asyncio.sleep(burst_delay)
 
             except asyncio.CancelledError:
                 break
@@ -696,53 +675,13 @@ class UserSender:
                 asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", f"Entity error: {e}", phone=self.phone))
                 return (False, False, 0)
             
-            # ── STEP 2: Stealth: Read History Simulation (Level Up) ────────
-            # Mimics a user opening the group to check messages before posting.
-            if random.random() > 0.4:
+            # ── V6: Lightweight typing (30% chance, 1-2s) ────────────────
+            if random.random() < 0.3:
                 try:
-                    from telethon.tl.functions.messages import ReadHistoryRequest
-                    await self.client(ReadHistoryRequest(peer=entity, max_id=0))
-                    # Natural pause after reading
-                    await asyncio.sleep(random.uniform(1.5, 4.0))
+                    async with self.client.action(entity, 'typing'):
+                        await asyncio.sleep(random.uniform(1.0, 2.0))
                 except Exception:
                     pass
-
-            # ── STEP 3: SlowMode & Permission Pre-Check (Level Up) ──────────
-            # Prevent hit-and-run failures by checking group rules first.
-            try:
-                if hasattr(entity, 'broadcast') or getattr(entity, 'megagroup', False):
-                    from telethon.tl.functions.channels import GetFullChannelRequest
-                    full_chat_info = await self.client(GetFullChannelRequest(entity))
-                    full_chat = full_chat_info.full_chat
-                    
-                    # 1. Respect Slow Mode
-                    slowmode = getattr(full_chat, 'slowmode_seconds', 0)
-                    if slowmode and slowmode > 0:
-                        self.logger.info(f"⏳ Slowmode: {slowmode}s for {chat_title}. Adjusting...")
-                        if slowmode > 3600:
-                            self.logger.warning(f"⏩ Slowmode too high ({slowmode}s). Skipping group.")
-                            return (False, False, 0)
-                    
-                    # 2. Check if we are muted (can_send_messages)
-                    if hasattr(full_chat, 'available_min_id'): # Check if restricted
-                         # Note: Telethon doesn't always expose 'can_send' easily in FullChat
-                         # But we catch ChatWriteForbiddenError in Step 4 anyway.
-                         pass
-            except Exception:
-                pass
-
-            # ── STEP 4: Human-like typing ──────────────────────────────────
-            if random.random() > 0.1:
-                try:
-                    # Varied duration based on mode
-                    typing_duration = random.uniform(3, 7)
-                    async with self.client.action(entity, 'typing'):
-                        await asyncio.sleep(typing_duration)
-                except Exception:
-                    pass 
-
-            # ── STEP 5: Random micro-delay before sending ───────────────────
-            await asyncio.sleep(random.uniform(0.5, 1.5))
 
             # ── STEP 6: Topic Awareness ──────────────────────────────────────
             topic_id = group.get("topic_id")
@@ -799,15 +738,16 @@ class UserSender:
             
         except PeerFloodError:
             self.error_streak += 1
-            self.logger.error(f"🚨 PeerFlood on {chat_title} — account is restricted by Telegram!")
+            self._peer_flood_count += 1
+            # V6: Exponential backoff — 1h, 2h, 4h, 8h (max)
+            cooldown_hours = min(2 ** (self._peer_flood_count - 1), 8)
+            cooldown_secs = cooldown_hours * 3600
+            self.logger.error(f"🚨 PeerFlood on {chat_title} — cooldown {cooldown_hours}h (flood #{self._peer_flood_count})")
             asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "peer_flood", "PeerFlood", phone=self.phone))
-            # Log critical error to channel
             from worker.utils import send_central_log, build_error_log
-            asyncio.create_task(send_central_log(build_error_log(self.phone, chat_title, "🚨 PEER FLOOD", "Account restricted by Telegram — 4h cooldown")))
-            # PeerFlood is account-wide — retrying other groups will only make it worse.
-            # Sleep for 4 hours to let the restriction lift naturally.
-            await self.update_status("🚨 PeerFlood (4h cooldown)")
-            return (False, True, 14400)  # 4 hour cooling
+            asyncio.create_task(send_central_log(build_error_log(self.phone, chat_title, "🚨 PEER FLOOD", f"Account restricted — {cooldown_hours}h cooldown (#{self._peer_flood_count})")))
+            await self.update_status(f"🚨 PeerFlood ({cooldown_hours}h cooldown)")
+            return (False, True, cooldown_secs)
             
         except (ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError) as e:
             self.logger.warning(f"❌ Removing invalid/expired group {chat_title}: {type(e).__name__}")

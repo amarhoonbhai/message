@@ -64,8 +64,8 @@ CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "PHilobots")
 PAYMENT_UPI_ID = os.getenv("PAYMENT_UPI_ID", "rain@slc")
 SUPPORT_HANDLE = os.getenv("SUPPORT_HANDLE", "@spinify")
 SUPPORT_URL = os.getenv("SUPPORT_URL", "https://t.me/spinify")
-LOG_CHANNEL_ID = _safe_int(os.getenv("LOG_CHANNEL_ID", "-1003818032027"))
-LOG_CHANNEL_URL = os.getenv("LOG_CHANNEL_URL", "https://t.me/your_log_channel")
+LOG_CHANNEL_ID = _safe_int(os.getenv("LOG_CHANNEL_ID", "0"))
+LOG_CHANNEL_URL = os.getenv("LOG_CHANNEL_URL", "https://t.me/spinifylogs")
 
 # ============== Scheduling Rules ==============
 MAX_GROUPS_PER_USER = 100
