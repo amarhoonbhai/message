@@ -194,7 +194,18 @@ class WorkerManager:
         try:
             exc = task.exception()
             if exc:
-                logger.error(f"Account {key[1]} [User {key[0]}] crashed: {exc}")
+                exc_str = str(exc)
+                if "different IP addresses simultaneously" in exc_str:
+                    logger.error(
+                        f"🚨 SESSION CONFLICT: Account {key[1]} [User {key[0]}] used elsewhere! "
+                        f"Check if another bot instance is running."
+                    )
+                elif "auth key is unreg" in exc_str.lower():
+                    logger.error(f"🛑 BANNED: Account {key[1]} [User {key[0]}] has been deactivated by Telegram.")
+                elif "password is required" in exc_str.lower():
+                    logger.error(f"🔑 2FA REQUIRED: Account {key[1]} [User {key[0]}] needs a cloud password.")
+                else:
+                    logger.error(f"Account {key[1]} [User {key[0]}] crashed: {exc}")
                 
                 if self.running:
                     attempts = self.restart_counts.get(key, 0)

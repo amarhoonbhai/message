@@ -24,7 +24,11 @@ from telethon.errors import (
     ChannelInvalidError,
     UsernameNotOccupiedError,
     UsernameInvalidError,
-    InviteHashExpiredError
+    InviteHashExpiredError,
+    AuthKeyDuplicatedError,
+    FrozenParticipantMissingError,
+    AuthKeyUnregisteredError,
+    SessionPasswordNeededError
 )
 from telethon.tl.types import InputPeerSelf, InputUserSelf, MessageService
 from telethon.tl.functions.users import GetFullUserRequest
@@ -119,6 +123,7 @@ class UserSender:
         # V6: Cycle timing metrics
         self._cycle_start_time = None
         self._last_cycle_duration = None
+        self._last_plan_log = None  # Throttling for "Plan expired" logs
     
     async def update_status(self, status: str):
         """Update worker status in database with throttling for smoothness."""
@@ -230,6 +235,18 @@ class UserSender:
             await self.client.connect()
         except (ConnectionError, OSError) as conn_err:
             self.logger.warning(f"Network connection failed: {conn_err}")
+            return False
+        except AuthKeyDuplicatedError:
+            self.logger.error("🚨 CRITICAL: Session duplicated! Another instance of this bot is likely running.")
+            await mark_session_disabled(self.user_id, self.phone, "auth_key_duplicated")
+            return False
+        except AuthKeyUnregisteredError:
+            self.logger.error("🛑 CRITICAL: Account BANNED! (AuthKeyUnregisteredError)")
+            await mark_session_disabled(self.user_id, self.phone, "account_banned")
+            return False
+        except SessionPasswordNeededError:
+            self.logger.error("🔑 2FA REQUIRED: Account needs cloud password.")
+            await mark_session_disabled(self.user_id, self.phone, "2fa_required")
             return False
 
         if not await self.client.is_user_authorized():
@@ -424,11 +441,17 @@ class UserSender:
                 
                 # 1. Check plan validity
                 if not await self._cached_is_plan_active():
-                    self.logger.info("Plan expired or inactive, sleeping 1 min...")
+                    now = datetime.utcnow()
+                    if self._last_plan_log is None or (now - self._last_plan_log).total_seconds() > 3600:
+                        self.logger.info("Plan expired or inactive, sleeping until renewed...")
+                        self._last_plan_log = now
+                        
                     await self.update_status("Inactive Plan")
                     self.error_streak = 0
                     await asyncio.sleep(60)
                     continue
+                
+                self._last_plan_log = None # Reset when active
                 
                 # 2. Check night mode
                 if await is_night_mode():
@@ -814,8 +837,13 @@ class UserSender:
             # Smart RPC categorization (group-level errors)
             if any(x in error_msg for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN", "USER_BANNED_IN_CHANNEL"]):
                 self.logger.warning(f"⚠️ Group {chat_title} failing due to RPC: {e}")
-                asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"RPC: {error_msg[:40]}"))
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failing", f"RPC: {error_msg}", phone=self.phone))
+                # For specific "Banned in channel", remove it immediately
+                if "USER_BANNED_IN_CHANNEL" in error_msg:
+                    asyncio.create_task(remove_group(self.user_id, chat_id))
+                    asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "removed", "Banned from group", phone=self.phone))
+                else:
+                    asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"RPC: {error_msg[:40]}"))
+                    asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failing", f"RPC: {error_msg}", phone=self.phone))
             elif any(x in error_msg for x in ["CHANNEL_INVALID", "USERNAME_NOT_OCCUPIED", "USERNAME_INVALID", "INVITE_HASH_EXPIRED"]):
                 self.logger.warning(f"❌ Removing group {chat_title} due to fatal RPC error: {e}")
                 asyncio.create_task(remove_group(self.user_id, chat_id))
@@ -831,6 +859,12 @@ class UserSender:
             else:
                 self.logger.error(f"RPC Error forwarding to {chat_title}: {e}")
                 asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", str(e), phone=self.phone))
+            return (False, False, 0)
+            
+        except FrozenParticipantMissingError:
+            self.logger.error(f"🛑 Account {self.phone} is FROZEN by Telegram! (FrozenParticipantMissingError)")
+            # Mark failing to stop attempts for now
+            asyncio.create_task(mark_group_failing(self.user_id, chat_id, "Account Frozen"))
             return (False, False, 0)
             
         except Exception as e:
