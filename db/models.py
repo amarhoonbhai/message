@@ -254,7 +254,8 @@ async def add_group(user_id: int, chat_id: int, chat_title: str, account_phone: 
         "chat_title": chat_title,
         "account_phone": account_phone,
         "enabled": True,
-        "added_at": datetime.utcnow()
+        "added_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
     }
     
     await db.groups.update_one(
@@ -264,6 +265,18 @@ async def add_group(user_id: int, chat_id: int, chat_title: str, account_phone: 
     )
     
     return True
+
+async def update_all_groups_status(user_id: int, enabled: bool, account_phone: str = None):
+    """Enable or disable all groups for a user (optionally filtered by account)."""
+    db = get_database()
+    query = {"user_id": user_id}
+    if account_phone:
+        query["account_phone"] = account_phone
+        
+    await db.groups.update_many(
+        query,
+        {"$set": {"enabled": enabled, "updated_at": datetime.utcnow()}}
+    )
 
 
 async def get_user_groups(user_id: int, enabled_only: bool = False, phone: str = None) -> List[Dict[str, Any]]:

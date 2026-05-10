@@ -73,6 +73,12 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
         elif cmd == ".pause" or cmd == ".stop":
             await handle_pause(client, user_id, message)
             return True
+        elif cmd == ".pauseall":
+            await handle_pauseall(client, user_id, message)
+            return True
+        elif cmd == ".resumeall":
+            await handle_resumeall(client, user_id, message)
+            return True
         elif cmd == ".clear":
             await handle_clear(client, user_id, message)
             return True
@@ -139,12 +145,14 @@ async def handle_help(client: TelegramClient, user_id: int, message):
     """Handle .help command with professional styling."""
     from core.config import MIN_INTERVAL_MINUTES
     text = (
-        "💎 *KURUP ADS V5 ELITE — COMMANDS* 💎\n\n"
+        "💎 *KURUP ADS V6 ELITE — COMMANDS* 💎\n\n"
         "📢 *GROUP MANAGEMENT*\n"
         "├ `.addgroup <url>` — Add target group\n"
         "├ `.addfolder <name>` — Add Telegram folder\n"
         "├ `.rmgroup <idx>` — Remove group by index\n"
         "├ `.rmpaused` — Remove all paused groups\n"
+        "├ `.pauseall` — Pause ALL groups at once\n"
+        "├ `.resumeall` — Resume ALL groups at once\n"
         "├ `.clear` — Remove *EVERYTHING* from list\n"
         "├ `.groups` — Show your target list\n"
         "└ `.folders` — List your account folders\n\n"
@@ -899,6 +907,29 @@ async def handle_rmpaused(client: TelegramClient, user_id: int, message):
         count += 1
         
     await reply_to_command(client, message, f"✅ Removed {count} paused group(s).")
+
+
+async def handle_pauseall(client: TelegramClient, user_id: int, message):
+    """Pause ALL groups at once."""
+    from db.models import update_all_groups_status, get_group_count
+    count = await get_group_count(user_id)
+    if count == 0:
+        await reply_to_command(client, message, "⚪ You have no groups to pause.")
+        return
+    await update_all_groups_status(user_id, enabled=False)
+    await reply_to_command(client, message, f"⏸ Paused ALL {count} group(s). Use `.resumeall` to resume.")
+
+
+async def handle_resumeall(client: TelegramClient, user_id: int, message):
+    """Resume ALL groups at once."""
+    from db.models import update_all_groups_status, get_group_count
+    count = await get_group_count(user_id)
+    if count == 0:
+        await reply_to_command(client, message, "⚪ You have no groups to resume.")
+        return
+    await update_all_groups_status(user_id, enabled=True)
+    await reply_to_command(client, message, f"▶️ Resumed ALL {count} group(s). Messaging will start on next cycle.")
+
 
 def parse_group_input(input_str: str) -> tuple[Optional[str], Optional[int]]:
     """
