@@ -1,4 +1,4 @@
-# Kurup Ads V6 Elite - Group Message Scheduler
+# Group Message Scheduler V3.3
 
 A premium Telegram system that auto-forwards Saved Messages to up to 100 groups with safe delays and fixed night mode.
 
