@@ -487,6 +487,15 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             failed.append((group_input, "Invalid invite"))
         except Exception as e:
             failed.append((group_input, str(e)[:20]))
+            
+        # V6: Safe Bulk Joining Delay
+        # If processing multiple groups, apply a safety gap to prevent hitting Telegram limits
+        if len(group_inputs) > 1:
+            is_invite_link = isinstance(group_identifier, str) and any(x in group_identifier for x in ["joinchat/", "t.me/+"])
+            delay = random.uniform(5.0, 10.0) if is_invite_link else random.uniform(2.0, 5.0)
+            await reply_to_command(client, message, f"⏳ Applying safety gap ({delay:.1f}s)...")
+            import asyncio
+            await asyncio.sleep(delay)
     
     # Build response
     response = ""
@@ -659,10 +668,15 @@ async def handle_logs(client: TelegramClient, user_id: int, message):
         time_str = ts.strftime("%H:%M") if ts else "??"
         status = log.get("status", "unknown")
         error = log.get("error", "OK")
-        if ":" in error: error = error.split(":")[0] # Trim long errors
         
+        # Determine visual severity from our new mapped error messages
         icon = "🟢" if status == "success" else "🔴"
-        text += f"  `{time_str}` {icon} {error[:25]}\n"
+        if "skipped" in status.lower() or "Topic closed" in error:
+            icon = "⚪"
+        elif "Wait" in error or "Rate limited" in error or "slow mode" in error.lower():
+            icon = "🟡"
+            
+        text += f"  `{time_str}` {icon} {error[:45]}\n"
         
     text += f"\n💡 Only showing important status updates."
     await reply_to_command(client, message, text)

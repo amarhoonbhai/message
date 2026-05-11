@@ -1,6 +1,6 @@
-# Group Message Scheduler V3.3
+# Kurup Ads V6 Elite - Group Message Scheduler
 
-A premium Telegram system that auto-forwards Saved Messages to up to 15 groups with safe delays and fixed night mode.
+A premium Telegram system that auto-forwards Saved Messages to up to 100 groups with safe delays and fixed night mode.
 
 ## Features
 
@@ -67,9 +67,9 @@ python -m worker.worker
 
 | Rule | Value |
 |------|-------|
-| Max groups per user | 15 |
-| Group gap | 10 seconds |
-| Message gap | 120 seconds |
+| Max groups per user | 100 |
+| Group gap | 45 seconds |
+| Message gap | 210 seconds |
 | Min user interval | 15 minutes |
 | Default interval | 15 minutes |
 | Night mode | 00:00–06:00 IST (fixed) |

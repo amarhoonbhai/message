@@ -32,6 +32,8 @@ from telethon.errors import (
 
 from models.group import remove_group, toggle_group, mark_group_failing, clear_group_fail
 from models.job import log_job_event
+from shared.telegram_error_mapper import map_telegram_error
+from core.database import get_database
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +137,7 @@ async def send_message_to_group(
         await asyncio.sleep(random.uniform(1.0, 3.0))
 
         # ── 6. Topic Awareness ──────────────────────────────────────
+        db = get_database()
         group_doc = await db.groups.find_one({"user_id": user_id, "chat_id": group_id})
         topic_id = group_doc.get("topic_id") if group_doc else None
 
@@ -174,77 +177,47 @@ async def send_message_to_group(
         asyncio.create_task(clear_group_fail(user_id, group_id))
         return ("sent", 0)
 
-    except FloodWaitError as e:
-        logger.warning(f"FloodWait: {e.seconds}s on group {group_id}")
-        await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "flood", f"FloodWait {e.seconds}s")
-        return ("flood", e.seconds)
-
-    except PeerFloodError:
-        logger.error(f"🚨 PeerFlood on group {group_id} — account restricted!")
-        await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "flood", "PeerFlood Restriction")
-        return ("flood", 7200)  # 2-hour cooldown
-
-    except (ChannelInvalidError, UsernameNotOccupiedError,
-            UsernameInvalidError, InviteHashExpiredError) as e:
-        reason = type(e).__name__
-        logger.warning(f"❌ Removing group {group_id}: {reason}")
-        asyncio.create_task(remove_group(user_id, group_id))
-        await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "removed", f"Dead link: {reason}")
-        return ("removed", 0)
-
-    except (ChatWriteForbiddenError, ChannelPrivateError,
-            ChatAdminRequiredError, UserBannedInChannelError) as e:
-        reason = type(e).__name__
-        logger.warning(f"⚠️ Group {group_id} failing: {reason}")
-        asyncio.create_task(mark_group_failing(user_id, group_id, reason))
-        await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "failing", f"Permission: {reason}")
-        return ("failing", 0)
-
-    except InputUserDeactivatedError:
-        logger.error(f"🛑 Account {phone} is deactivated!")
-        from models.session import mark_session_disabled
-        asyncio.create_task(
-            mark_session_disabled(user_id, phone, reason="UserDeactivated")
-        )
-        await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "failed", "Account Banned/Deactivated")
-        return ("deactivated", 0)
-
-    except RPCError as e:
-        # Extract the most meaningful part of the RPC error
-        raw_error = str(e).upper()
-        if "(" in raw_error:
-            # e.g. "FILE_REFERENCE_EXPIRED (400)" -> "FILE_REFERENCE_EXPIRED"
-            error_code = raw_error.split("(")[0].strip()
-        else:
-            error_code = raw_error[:30]
-
-        # 1. MESSAGE_ID_INVALID: The ad message was deleted from Saved Messages
-        if any(x in error_code for x in ["MESSAGE_ID_INVALID", "OPERATION ON SUCH MESSAGE"]):
-            await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "skipped", "Ad Deleted from Saved Messages")
-            return ("failed", 0)
-
-        # 2. Permission issues
-        elif any(x in error_code for x in ["CHAT_ADMIN_REQUIRED", "CHAT_WRITE_FORBIDDEN",
-                                           "USER_BANNED_IN_CHANNEL", "TOPIC_CLOSED", "SEND_MESSAGES_FORBIDDEN"]):
-            asyncio.create_task(mark_group_failing(user_id, group_id, error_code))
-            await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "failing", error_code)
+    except Exception as e:
+        mapped = map_telegram_error(e)
+        err_code = mapped["error_code"]
+        disp_msg = mapped["display_message"]
+        
+        if err_code == "FLOOD_WAIT":
+            seconds = getattr(e, 'seconds', 30)
+            logger.warning(f"FloodWait: {seconds}s on group {group_id}")
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "flood", disp_msg)
+            return ("flood", seconds)
+            
+        elif err_code == "PEER_FLOOD":
+            logger.error(f"🚨 PeerFlood on group {group_id} — account restricted!")
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "flood", disp_msg)
+            return ("flood", 7200)  # 2-hour cooldown
+            
+        elif err_code == "ACCOUNT_DEACTIVATED":
+            logger.error(f"🛑 Account {phone} is deactivated!")
+            from models.session import mark_session_disabled
+            asyncio.create_task(mark_session_disabled(user_id, phone, reason="User Deactivated"))
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "failed", disp_msg)
+            return ("deactivated", 0)
+            
+        elif err_code == "LINK_INVALID" or (err_code == "PERMISSION_DENIED" and "BANNED" in str(e).upper()):
+            logger.warning(f"❌ Removing group {group_id}: {disp_msg}")
+            asyncio.create_task(remove_group(user_id, group_id))
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "removed", disp_msg)
+            return ("removed", 0)
+            
+        elif err_code == "PERMISSION_DENIED" or err_code == "FORBIDDEN":
+            logger.warning(f"⚠️ Group {group_id} restricted: {disp_msg}")
+            asyncio.create_task(mark_group_failing(user_id, group_id, disp_msg))
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "failing", disp_msg)
             return ("failing", 0)
             
+        elif err_code in ["MESSAGE_DELETED", "TOPIC_CLOSED", "EMPTY_MESSAGE", "ENTITY_NOT_FOUND", "DISCUSSION_GROUP_REQUIRED", "SLOWMODE"]:
+            logger.warning(f"⚠️ {disp_msg} — skipping group {group_id}")
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "skipped", disp_msg)
+            return ("failed", 0) # Return failed to task_worker to ensure stats track it as non-success
+            
         else:
-            logger.error(f"RPCError on group {group_id}: {e}")
-            await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "failed", error_code)
+            logger.error(f"Error on group {group_id}: {disp_msg} ({type(e).__name__})")
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "failed", disp_msg)
             return ("failed", 0)
-
-    except Exception as e:
-        logger.error(f"Unexpected error on group {group_id}: {e}")
-        await log_job_event(job_id, user_id, phone, group_id, message_id,
-                            "failed", str(e)[:50])
-        return ("failed", 0)

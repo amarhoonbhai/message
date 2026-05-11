@@ -170,9 +170,14 @@ async def send_job(ctx: dict, job_id: str):
             elif status == "flood":
                 flood_total += flood_seconds
                 if flood_seconds > 0:
-                    sleep_time = min(flood_seconds + 5, 7200)
-                    logger.warning(f"⏳ FloodWait: sleeping {sleep_time}s")
-                    await asyncio.sleep(sleep_time)
+                    if flood_seconds > 60:
+                        logger.warning(f"🛑 FloodWait too long ({flood_seconds}s). Aborting job {job_id} to free worker slot.")
+                        await fail_job(job_id, f"FloodWait {flood_seconds}s")
+                        return
+                    else:
+                        sleep_time = flood_seconds + 5
+                        logger.warning(f"⏳ FloodWait: sleeping {sleep_time}s")
+                        await asyncio.sleep(sleep_time)
 
             # ── 4. Random delay between groups ──────────────────────────
             if i < len(groups) - 1:
