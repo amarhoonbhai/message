@@ -153,7 +153,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_preview = escape_markdown(reply_text[:25] + "..." if len(reply_text) > 25 else reply_text)
     
     dashboard_text = f"""
-📊 *KURUP ADS V6 DASHBOARD* — {user_name}
+📊 *DASHBOARD* — {user_name}
 
 📱 *ACCOUNTS* ({len(sessions) if sessions else 0})
 {account_section}

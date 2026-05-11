@@ -40,7 +40,7 @@ async def build_welcome_text(user) -> tuple[str, bool]:
     # Check for restricted view
     if not is_premium and user_id != OWNER_ID:
         text = f"""
-⚡ *KURUP ADS V6 ELITE* ⚡
+⚡ *GROUP MESSAGE SCHEDULER* ⚡
 
 *Welcome, {full_name}!*
 *User ID:* `{user_id}`
@@ -61,9 +61,9 @@ This is a *Fully Premium Bot*. Only users with an active paid plan can access th
 
     # Premium/Owner View
     text = f"""
-⚡ *KURUP ADS V6 ELITE* ⚡
+⚡ *GROUP MESSAGE SCHEDULER* ⚡
 
-*★ V6 ELITE — PRO ENGINE ★*
+*★ V3.3 — PRO ENGINE ★*
 
 *Welcome, {full_name}!*
 *Username:* {username}
