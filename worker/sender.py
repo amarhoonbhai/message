@@ -568,10 +568,6 @@ class UserSender:
                 failed_count = 0
                 skipped_count = 0
                 
-                # Fetch config for logs_chat_id
-                config = await self._get_cached_config()
-                logs_chat_id = config.get("logs_chat_id")
-                
                 # Build initial report
                 user_label = await self.get_user_label()
                 initial_report = build_progress_bar_report(
@@ -588,16 +584,6 @@ class UserSender:
                 
                 # Send to central log channel and get message ID
                 progress_msg_central_id = await send_central_log_return_id(initial_report)
-                
-                # Send to user log channel and get message ID
-                progress_msg_user_id = None
-                if logs_chat_id and self.client:
-                    try:
-                        msg_sent = await self.client.send_message(logs_chat_id, initial_report, parse_mode="html")
-                        if msg_sent:
-                            progress_msg_user_id = msg_sent.id
-                    except Exception as le:
-                        self.logger.warning(f"Failed to send initial user progress log: {le}")
                 
                 import time
                 last_progress_edit_time = time.time()
@@ -624,13 +610,6 @@ class UserSender:
                     # Update central progress log
                     if progress_msg_central_id:
                         await edit_central_log(progress_msg_central_id, report_text)
-                    
-                    # Update user progress log
-                    if progress_msg_user_id and logs_chat_id and self.client:
-                        try:
-                            await self.client.edit_message(logs_chat_id, progress_msg_user_id, report_text, parse_mode="html")
-                        except Exception:
-                            pass
                             
                     last_progress_edit_time = now_time
 
@@ -903,7 +882,7 @@ class UserSender:
             return f"User (ID: {self.user_id})"
 
     async def log_send(self, chat_id: int, saved_msg_id: int, status: str = "success", error: Optional[str] = None):
-        """Log sending attempt in DB and notify user-configured logs channel/chat."""
+        """Log sending attempt in DB and notify central log channel."""
         await db_log_send(self.user_id, chat_id, saved_msg_id, status, error, phone=self.phone)
         
         emoji = "🟢" if status == "success" else "🔴" if status in ("failed", "error", "removed", "failing") else "🟡"
@@ -916,28 +895,7 @@ class UserSender:
             
         user_label = await self.get_user_label()
 
-        # 1. Notify user-configured logs channel/chat (using Markdown for User Client)
-        try:
-            config = await get_user_config(self.user_id)
-            logs_chat_id = config.get("logs_chat_id")
-            if logs_chat_id and self.client:
-                chat_info = f"Chat: `{chat_id}`" if chat_title == "Unknown" else f"Group: **{chat_title}** (`{chat_id}`)"
-                log_text = (
-                    f"{emoji} **[LOG ENTRY]** {msg_status}\n"
-                    f"├ User: **{user_label}**\n"
-                    f"├ {chat_info}\n"
-                    f"├ Saved Msg ID: `{saved_msg_id}`\n"
-                )
-                if error:
-                    log_text += f"└ Error: `{error}`"
-                else:
-                    log_text += f"└ Action completed successfully."
-                
-                await self.client.send_message(logs_chat_id, log_text)
-        except Exception as le:
-            self.logger.warning(f"Failed to send log to user log channel: {le}")
-
-        # 2. Notify central LOG_CHANNEL_ID (using HTML format for the bot)
+        # Notify central LOG_CHANNEL_ID (using HTML format for the bot)
         try:
             chat_info_html = f"Chat: <code>{chat_id}</code>" if chat_title == "Unknown" else f"Group: <b>{chat_title}</b> (<code>{chat_id}</code>)"
             central_log_text = (

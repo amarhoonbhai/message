@@ -61,9 +61,6 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
         elif cmd == ".check":
             await handle_check(client, user_id, message, text, sender)
             return True
-        elif cmd == ".setlogs" or cmd == "/setlogs":
-            await handle_setlogs(client, user_id, message, text)
-            return True
         elif cmd == ".userstatus":
             await handle_userstatus(client, user_id, message, text)
             return True
@@ -179,7 +176,6 @@ async def handle_help(client: TelegramClient, user_id: int, message):
         "├ `.status` — Live account dashboard\n"
         "├ `.health` — Live group health diagnostics\n"
         "├ `.check` — Live send diagnostic check\n"
-        "├ `.setlogs <chat>` — Link logs channel/chat\n"
         "├ `.stats` — Performance & Success rate\n"
         "├ `.logs` — Recent activity feed\n"
         "├ `.pause` — Global pause all groups\n"
@@ -1648,54 +1644,5 @@ async def handle_check(client: TelegramClient, user_id: int, message, text: str,
 
     asyncio.create_task(delete_messages_later(status_msg, message, 60))
 
-
-async def handle_setlogs(client: TelegramClient, user_id: int, message, text: str):
-    """Handle .setlogs command to configure the logs channel/chat."""
-    parts = text.split()
-    if len(parts) < 2:
-        config = await get_user_config(user_id)
-        current = config.get("logs_chat_id")
-        status_str = f"📢 **Logs channel/chat:** `{current}`" if current else "📢 **Logs channel/chat:** `Not set`"
-        await reply_to_command(
-            client,
-            message,
-            f"{status_str}\n\n"
-            f"💡 **Usage:**\n"
-            f"├ `.setlogs <chat_id | channel_id | username>`\n"
-            f"└ `.setlogs off` — Disable logs channel notifications"
-        )
-        return
-
-    target = parts[1].strip()
-    if target.lower() in ("off", "none", "disable", "false"):
-        await update_user_config(user_id, logs_chat_id=None)
-        await reply_to_command(client, message, "✅ **Logs channel notifications have been DISABLED.**")
-        return
-
-    try:
-        # Resolve target to entity key
-        entity_key = int(target) if (target.isdigit() or (target.startswith("-") and target[1:].isdigit())) else target
-        entity = await client.get_entity(entity_key)
-        
-        # Test linkage
-        test_msg = await client.send_message(entity, "⚡ **Log Channel Linked Successfully!**\nSystem logs will be forwarded here.")
-        
-        # Save to DB config
-        await update_user_config(user_id, logs_chat_id=entity_key)
-        
-        await reply_to_command(
-            client,
-            message,
-            f"✅ **Logs channel linked!**\n"
-            f"Target: `{target}` (ID: `{entity.id}`)\n"
-            f"A confirmation message has been sent to that chat."
-        )
-    except Exception as e:
-        await reply_to_command(
-            client,
-            message,
-            f"❌ **Failed to resolve logs channel:** `{target}`\n"
-            f"Reason: `{type(e).__name__}: {str(e)}`"
-        )
 
 
