@@ -69,8 +69,8 @@ LOG_CHANNEL_URL = os.getenv("LOG_CHANNEL_URL", "https://t.me/spinifylogs")
 
 # ============== Scheduling Rules ==============
 MAX_GROUPS_PER_USER = 100
-GROUP_GAP_SECONDS = 45           # 45 seconds (Premium speed)
-MESSAGE_GAP_SECONDS = 210        # 3.5 minutes
+GROUP_GAP_SECONDS = _safe_int(os.getenv("GROUP_GAP_SECONDS", "45"))           # 45 seconds (Premium speed)
+MESSAGE_GAP_SECONDS = _safe_int(os.getenv("MESSAGE_GAP_SECONDS", "210"))        # 3.5 minutes
 MIN_INTERVAL_MINUTES = 15       # Minimum user interval
 DEFAULT_INTERVAL_MINUTES = 15   # Default interval
 

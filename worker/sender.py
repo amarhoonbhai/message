@@ -558,6 +558,8 @@ class UserSender:
                 success_groups = []
                 failed_groups = []
                 skipped_dedup = 0
+                last_send_time = None
+                last_msg_id = None
 
                 # 5. Process tasks with adaptive delays
                 for i, (msg, group) in enumerate(tasks):
@@ -585,10 +587,30 @@ class UserSender:
                         skipped_dedup += 1
                         continue
                     
+                    # Enforce timing gap before sending
+                    if last_send_time is not None:
+                        # Determine which gap to use
+                        if send_mode == "sequential" and last_msg_id is not None and msg.id != last_msg_id:
+                            target_gap = self.adaptive_msg_gap.get_gap()
+                            gap_type = "Msg Gap"
+                        else:
+                            target_gap = self.adaptive_group_gap.get_gap()
+                            gap_type = "Group Gap"
+                        
+                        elapsed = (datetime.utcnow() - last_send_time).total_seconds()
+                        if elapsed < target_gap:
+                            sleep_time = target_gap - elapsed
+                            await self.update_status(f"{gap_type} ({int(sleep_time)}s)")
+                            await asyncio.sleep(sleep_time)
+
                     self.logger.info(f"📤 [{i+1}/{len(tasks)}] → {chat_title}")
                     await self.update_status(f"Sending ({i+1}/{len(tasks)})")
                     
                     success, flood_triggered, flood_wait = await self.forward_single_message(msg, group, copy_mode=copy_mode)
+                    
+                    # Update timing indicators for next task
+                    last_send_time = datetime.utcnow()
+                    last_msg_id = msg.id
                     
                     if not self.running:
                         self.logger.info("Aborting cycle loop: session is stopping (possibly due to circuit breaker).")
@@ -604,16 +626,6 @@ class UserSender:
                         self.adaptive_group_gap.multiplier = min(self.adaptive_group_gap.multiplier * 1.1, 5.0)
                         await self.update_status(f"FloodWait ({flood_wait}s)")
                         await asyncio.sleep(flood_wait)
-                        
-                    # Apply gap between groups
-                    if i < len(tasks) - 1:
-                        is_last_group_for_msg = (send_mode == "sequential" and (i + 1) % len(groups) == 0)
-                        if is_last_group_for_msg:
-                            current_gap = self.adaptive_msg_gap.get_gap()
-                            await self.update_status(f"Msg Gap ({current_gap}s)")
-                        else:
-                            current_gap = self.adaptive_group_gap.get_gap()
-                        await asyncio.sleep(current_gap)
                 
                 # 6. Cycle complete — metrics and report
                 actual_interval = max(interval_minutes, MIN_INTERVAL_MINUTES)
