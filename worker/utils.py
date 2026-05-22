@@ -88,30 +88,6 @@ class UserLogAdapter(logging.LoggerAdapter):
 #  CENTRAL LOG CHANNEL — Styled Helpers
 # ═══════════════════════════════════════════════════════
 
-_log_bot = None  # Singleton bot instance
-_log_bot_init_failed = False  # Prevent repeated init attempts on permanent failures
-
-async def _get_log_bot():
-    """Get or create a cached Bot instance for the log channel."""
-    global _log_bot, _log_bot_init_failed
-    if _log_bot_init_failed:
-        return None
-    if _log_bot is None:
-        from config import MAIN_BOT_TOKEN
-        if not MAIN_BOT_TOKEN:
-            logging.getLogger(__name__).warning("MAIN_BOT_TOKEN is empty — cannot send to log channel")
-            _log_bot_init_failed = True
-            return None
-        try:
-            from telegram import Bot
-            _log_bot = Bot(token=MAIN_BOT_TOKEN)
-        except Exception as e:
-            logging.getLogger(__name__).error(f"Failed to initialize log Bot: {e}")
-            _log_bot_init_failed = True
-            return None
-    return _log_bot
-
-
 async def send_central_log(text: str):
     """Send an update log to the central LOG_CHANNEL_ID using MAIN_BOT_TOKEN."""
     from config import LOG_CHANNEL_ID
@@ -119,13 +95,18 @@ async def send_central_log(text: str):
         logging.getLogger(__name__).debug("LOG_CHANNEL_ID is not set — skipping central log")
         return
     try:
-        bot = await _get_log_bot()
-        if not bot:
+        from config import MAIN_BOT_TOKEN
+        if not MAIN_BOT_TOKEN:
+            logging.getLogger(__name__).warning("MAIN_BOT_TOKEN is empty — cannot send to log channel")
             return
+        from telegram import Bot
+        
         # Truncate messages over 4096 chars (Telegram limit)
         if len(text) > 4096:
             text = text[:4090] + "\n..."
-        await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
+            
+        async with Bot(token=MAIN_BOT_TOKEN) as bot:
+            await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
     except Exception as e:
         _logger = logging.getLogger(__name__)
         error_str = str(e)
@@ -134,7 +115,10 @@ async def send_central_log(text: str):
         # If it's a parse error, retry without HTML formatting
         if "parse" in error_str.lower() or "can't" in error_str.lower():
             try:
-                await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text)
+                from config import MAIN_BOT_TOKEN
+                from telegram import Bot
+                async with Bot(token=MAIN_BOT_TOKEN) as bot:
+                    await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text)
                 _logger.info("Retried without HTML parse_mode — success")
             except Exception as retry_e:
                 _logger.error(f"Retry without parse_mode also failed: {retry_e}")
@@ -300,13 +284,16 @@ async def send_central_log_return_id(text: str) -> Optional[int]:
         logging.getLogger(__name__).debug("LOG_CHANNEL_ID is not set — skipping central log")
         return None
     try:
-        bot = await _get_log_bot()
-        if not bot:
+        from config import MAIN_BOT_TOKEN
+        if not MAIN_BOT_TOKEN:
+            logging.getLogger(__name__).warning("MAIN_BOT_TOKEN is empty — cannot send to log channel")
             return None
+        from telegram import Bot
         if len(text) > 4096:
             text = text[:4090] + "\n..."
-        msg = await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
-        return msg.message_id
+        async with Bot(token=MAIN_BOT_TOKEN) as bot:
+            msg = await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
+            return msg.message_id
     except Exception as e:
         logging.getLogger(__name__).error(f"Failed to send log with ID: {e}")
         return None
@@ -319,13 +306,16 @@ async def edit_central_log(message_id: int, text: str) -> bool:
     if not LOG_CHANNEL_ID or not message_id:
         return False
     try:
-        bot = await _get_log_bot()
-        if not bot:
+        from config import MAIN_BOT_TOKEN
+        if not MAIN_BOT_TOKEN:
+            logging.getLogger(__name__).warning("MAIN_BOT_TOKEN is empty — cannot send to log channel")
             return False
+        from telegram import Bot
         if len(text) > 4096:
             text = text[:4090] + "\n..."
-        await bot.edit_message_text(chat_id=LOG_CHANNEL_ID, message_id=message_id, text=text, parse_mode="HTML")
-        return True
+        async with Bot(token=MAIN_BOT_TOKEN) as bot:
+            await bot.edit_message_text(chat_id=LOG_CHANNEL_ID, message_id=message_id, text=text, parse_mode="HTML")
+            return True
     except Exception as e:
         logging.getLogger(__name__).error(f"Failed to edit central log {message_id}: {e}")
         return False

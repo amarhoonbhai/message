@@ -23,7 +23,6 @@ def log_info(msg):
 
 class PlanNotifier:
     def __init__(self):
-        self.bot = Bot(token=MAIN_BOT_TOKEN)
         self.running = False
 
     async def start(self):
@@ -121,7 +120,8 @@ class PlanNotifier:
     async def send_message(self, user_id: int, text: str) -> bool:
         """Sends a message via the bot, returns True on success."""
         try:
-            await self.bot.send_message(chat_id=user_id, text=text, parse_mode="HTML")
+            async with Bot(token=MAIN_BOT_TOKEN) as bot:
+                await bot.send_message(chat_id=user_id, text=text, parse_mode="HTML")
             return True
         except TelegramError as e:
             logger.warning(f"Could not send notification to user {user_id}: {e}")
