@@ -129,6 +129,10 @@ class UserSender:
         # Performance entity caching (Positive and Negative Cache)
         self._entity_cache = {}  # {chat_id: Entity}
         self._failed_entities = {}  # {chat_id: (timestamp, reason)}
+        
+        # User profile cache (to avoid leaking phone numbers in logs)
+        self.first_name = ""
+        self.username = ""
     
     async def update_status(self, status: str):
         """Update worker status in database with throttling for smoothness."""
@@ -274,6 +278,15 @@ class UserSender:
         # Authorized — reset any previous failure counts
         await reset_session_auth_fails(self.user_id, self.phone)
         self.logger.info("✅ Authorized successfully")
+        
+        # Populate first_name and username
+        try:
+            me = await self.client.get_me()
+            if me:
+                self.first_name = me.first_name or ""
+                self.username = me.username or ""
+        except Exception as me_e:
+            self.logger.warning(f"Failed to fetch profile details in get_me(): {me_e}")
         return True
 
     async def _run_session(self):
@@ -609,8 +622,9 @@ class UserSender:
                 
                 if success_groups or failed_groups:
                     from worker.utils import send_central_log, build_cycle_report
+                    user_label = await self.get_user_label()
                     report = build_cycle_report(
-                        self.phone, success_groups, failed_groups,
+                        user_label, success_groups, failed_groups,
                         send_mode, actual_interval,
                         cycle_duration=cycle_duration, skipped=skipped_dedup
                     )
@@ -762,6 +776,34 @@ class UserSender:
         except Exception as e:
             self.logger.error(f"Error activating circuit breaker: {e}")
 
+    async def get_user_label(self) -> str:
+        """
+        Get a label for the user: Name (@username) (ID: user_id)
+        Ensures phone number is NOT shown in logs.
+        """
+        if not getattr(self, "first_name", "") and not getattr(self, "username", "") and self.client:
+            try:
+                me = await self.client.get_me()
+                if me:
+                    self.first_name = me.first_name or ""
+                    self.username = me.username or ""
+            except Exception as e:
+                self.logger.warning(f"Error fetching profile details: {e}")
+        
+        parts = []
+        first_name = getattr(self, "first_name", "")
+        username = getattr(self, "username", "")
+        if first_name:
+            parts.append(first_name)
+        if username:
+            parts.append(f"@{username}")
+        
+        label = " ".join(parts)
+        if label:
+            return f"{label} (ID: {self.user_id})"
+        else:
+            return f"User (ID: {self.user_id})"
+
     async def log_send(self, chat_id: int, saved_msg_id: int, status: str = "success", error: Optional[str] = None):
         """Log sending attempt in DB and notify user-configured logs channel/chat."""
         await db_log_send(self.user_id, chat_id, saved_msg_id, status, error, phone=self.phone)
@@ -774,6 +816,8 @@ class UserSender:
             entity = self._entity_cache[chat_id]
             chat_title = getattr(entity, 'title', None) or getattr(entity, 'first_name', None) or "Unknown"
             
+        user_label = await self.get_user_label()
+
         # 1. Notify user-configured logs channel/chat (using Markdown for User Client)
         try:
             config = await get_user_config(self.user_id)
@@ -782,7 +826,7 @@ class UserSender:
                 chat_info = f"Chat: `{chat_id}`" if chat_title == "Unknown" else f"Group: **{chat_title}** (`{chat_id}`)"
                 log_text = (
                     f"{emoji} **[LOG ENTRY]** {msg_status}\n"
-                    f"├ Account: `{self.phone}`\n"
+                    f"├ User: **{user_label}**\n"
                     f"├ {chat_info}\n"
                     f"├ Saved Msg ID: `{saved_msg_id}`\n"
                 )
@@ -800,7 +844,7 @@ class UserSender:
             chat_info_html = f"Chat: <code>{chat_id}</code>" if chat_title == "Unknown" else f"Group: <b>{chat_title}</b> (<code>{chat_id}</code>)"
             central_log_text = (
                 f"{emoji} <b>[LOG ENTRY]</b> {msg_status}\n"
-                f"├ Account: <code>{self.phone}</code>\n"
+                f"├ User: <b>{user_label}</b>\n"
                 f"├ {chat_info_html}\n"
                 f"├ Saved Msg ID: <code>{saved_msg_id}</code>\n"
             )
@@ -927,8 +971,9 @@ class UserSender:
                 asyncio.create_task(self.log_send(chat_id, message.id, "peer_flood", disp_msg))
                 
                 from worker.utils import send_central_log, build_error_log
+                user_label = await self.get_user_label()
                 asyncio.create_task(send_central_log(build_error_log(
-                    self.phone, chat_title, "🚨 PEER FLOOD", f"Account restricted — {cooldown_hours}h cooldown"
+                    user_label, chat_title, "🚨 PEER FLOOD", f"Account restricted — {cooldown_hours}h cooldown"
                 )))
                 
                 # Activate circuit breaker for PeerFlood
@@ -942,7 +987,8 @@ class UserSender:
                 asyncio.create_task(mark_session_disabled(self.user_id, self.phone, reason="User Deactivated"))
                 asyncio.create_task(self.log_send(chat_id, message.id, "failed", disp_msg))
                 from worker.utils import send_central_log, build_error_log
-                asyncio.create_task(send_central_log(build_error_log(self.phone, chat_title, "🛑 ACCOUNT DEACTIVATED", "Session permanently disabled")))
+                user_label = await self.get_user_label()
+                asyncio.create_task(send_central_log(build_error_log(user_label, chat_title, "🛑 ACCOUNT DEACTIVATED", "Session permanently disabled")))
                 self.running = False
                 return (False, False, 0)
                 

@@ -146,11 +146,10 @@ def mask_phone(phone: str) -> str:
     return f"{phone[:3]}****{phone[-2:]}"
 
 
-def build_live_update(phone: str, chat_title: str, action: str, index: int, total: int) -> str:
+def build_live_update(user_label: str, chat_title: str, action: str, index: int, total: int) -> str:
     """Build a styled live update message for a single successful send."""
     now_ist = datetime.now(IST)
     time_str = now_ist.strftime("%I:%M %p")
-    masked = mask_phone(phone)
     progress_pct = int((index / total) * 100) if total > 0 else 0
 
     # Progress bar visual
@@ -160,7 +159,7 @@ def build_live_update(phone: str, chat_title: str, action: str, index: int, tota
     return (
         f"<b>┌─── 🟢 LIVE UPDATE ───</b>\n"
         f"<b>│</b>\n"
-        f"<b>│</b> 👤 Account: <code>{masked}</code>\n"
+        f"<b>│</b> 👤 User:    <code>{user_label}</code>\n"
         f"<b>│</b> 📢 Target:  <code>{chat_title}</code>\n"
         f"<b>│</b> ⚡ Action:  {action}\n"
         f"<b>│</b> 📊 Progress: [{bar}] {progress_pct}%\n"
@@ -170,11 +169,10 @@ def build_live_update(phone: str, chat_title: str, action: str, index: int, tota
     )
 
 
-def build_cycle_report(phone: str, success_groups: list, failed_groups: list, send_mode: str, interval: int, cycle_duration: float = 0, skipped: int = 0) -> str:
+def build_cycle_report(user_label: str, success_groups: list, failed_groups: list, send_mode: str, interval: int, cycle_duration: float = 0, skipped: int = 0) -> str:
     """Build a premium styled cycle summary report — V6 with metrics."""
     now_ist = datetime.now(IST)
     time_str = now_ist.strftime("%d %b %Y • %I:%M %p IST")
-    masked = mask_phone(phone)
     total = len(success_groups) + len(failed_groups)
     rate = int((len(success_groups) / total) * 100) if total > 0 else 0
 
@@ -207,7 +205,7 @@ def build_cycle_report(phone: str, success_groups: list, failed_groups: list, se
         f"<b>╔══════════════════════════╗</b>\n"
         f"<b>║   📊 CYCLE REPORT        ║</b>\n"
         f"<b>╚══════════════════════════╝</b>\n\n"
-        f"👤 <b>Account:</b> <code>{masked}</code>\n"
+        f"👤 <b>User:</b> <code>{user_label}</code>\n"
         f"🕐 <b>Completed:</b> {time_str}\n"
         f"⚙️ <b>Mode:</b> {send_mode.title()} | <b>Interval:</b> {interval}m\n\n"
     )
@@ -248,30 +246,28 @@ def build_cycle_report(phone: str, success_groups: list, failed_groups: list, se
     return text
 
 
-def build_error_log(phone: str, chat_title: str, error_type: str, detail: str = "") -> str:
+def build_error_log(user_label: str, chat_title: str, error_type: str, detail: str = "") -> str:
     """Build a styled error/warning log entry."""
     now_ist = datetime.now(IST)
     time_str = now_ist.strftime("%I:%M %p")
-    masked = mask_phone(phone)
 
     return (
         f"<b>⚠️ ALERT</b> | {time_str} IST\n"
-        f"👤 <code>{masked}</code>\n"
+        f"👤 <code>{user_label}</code>\n"
         f"📢 <code>{chat_title}</code>\n"
         f"🔴 {error_type}"
         + (f"\n📝 <i>{detail[:60]}</i>" if detail else "")
     )
 
 
-def build_cleanup_log(phone: str, removed_count: int, removed_titles: list = None) -> str:
+def build_cleanup_log(user_label: str, removed_count: int, removed_titles: list = None) -> str:
     """Build a styled auto-cleanup log."""
-    masked = mask_phone(phone)
     now_ist = datetime.now(IST)
     time_str = now_ist.strftime("%I:%M %p")
 
     text = (
         f"<b>🧹 AUTO-CLEANUP</b> | {time_str} IST\n"
-        f"👤 <code>{masked}</code>\n"
+        f"👤 <code>{user_label}</code>\n"
         f"🗑 Removed <b>{removed_count}</b> failing group(s)\n"
     )
     if removed_titles:
@@ -282,16 +278,16 @@ def build_cleanup_log(phone: str, removed_count: int, removed_titles: list = Non
     return text
 
 
-def build_session_start_log(phone: str, group_count: int, plan_status: str) -> str:
+def build_session_start_log(user_label: str, group_count: int, plan_status: str) -> str:
     """Build a styled session start notification."""
     now_ist = datetime.now(IST)
     time_str = now_ist.strftime("%I:%M %p IST")
-    masked = mask_phone(phone)
 
     return (
         f"<b>🟢 SESSION STARTED</b> | {time_str}\n"
-        f"👤 <code>{masked}</code>\n"
+        f"👤 <code>{user_label}</code>\n"
         f"📂 Groups: <b>{group_count}</b>\n"
         f"💎 Plan: <b>{plan_status}</b>"
     )
+
 
