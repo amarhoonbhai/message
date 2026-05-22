@@ -48,7 +48,8 @@ from db.models import (
 from models.group import mark_group_failing, clear_group_fail, remove_stale_failing_groups
 from worker.utils import (
     is_night_mode, seconds_until_morning, format_time_remaining,
-    UserLogAdapter
+    UserLogAdapter, send_central_log_return_id, edit_central_log,
+    build_progress_bar_report
 )
 from shared.telegram_error_mapper import map_telegram_error
 from worker.commands import process_command  # Used by event handler
@@ -561,6 +562,78 @@ class UserSender:
                 last_send_time = None
                 last_msg_id = None
 
+                # --- Animated Progress Tracker Setup ---
+                total_tasks = len(tasks)
+                success_count = 0
+                failed_count = 0
+                skipped_count = 0
+                
+                # Fetch config for logs_chat_id
+                config = await self._get_cached_config()
+                logs_chat_id = config.get("logs_chat_id")
+                
+                # Build initial report
+                user_label = await self.get_user_label()
+                initial_report = build_progress_bar_report(
+                    user_label=user_label,
+                    send_mode=send_mode,
+                    index=0,
+                    total=total_tasks,
+                    success_count=0,
+                    failed_count=0,
+                    skipped_count=0,
+                    current_chat_title=None,
+                    completed=False
+                )
+                
+                # Send to central log channel and get message ID
+                progress_msg_central_id = await send_central_log_return_id(initial_report)
+                
+                # Send to user log channel and get message ID
+                progress_msg_user_id = None
+                if logs_chat_id and self.client:
+                    try:
+                        msg_sent = await self.client.send_message(logs_chat_id, initial_report, parse_mode="html")
+                        if msg_sent:
+                            progress_msg_user_id = msg_sent.id
+                    except Exception as le:
+                        self.logger.warning(f"Failed to send initial user progress log: {le}")
+                
+                import time
+                last_progress_edit_time = time.time()
+                
+                async def update_progress_msg(index: int, current_chat_title: Optional[str] = None, completed: bool = False):
+                    nonlocal last_progress_edit_time
+                    now_time = time.time()
+                    # Throttle edits to at least 2 seconds, except for critical updates (first, last, completed)
+                    if not completed and index > 0 and index < total_tasks and now_time - last_progress_edit_time < 2.0:
+                        return
+                    
+                    report_text = build_progress_bar_report(
+                        user_label=user_label,
+                        send_mode=send_mode,
+                        index=index,
+                        total=total_tasks,
+                        success_count=success_count,
+                        failed_count=failed_count,
+                        skipped_count=skipped_count + skipped_dedup,
+                        current_chat_title=current_chat_title,
+                        completed=completed
+                    )
+                    
+                    # Update central progress log
+                    if progress_msg_central_id:
+                        await edit_central_log(progress_msg_central_id, report_text)
+                    
+                    # Update user progress log
+                    if progress_msg_user_id and logs_chat_id and self.client:
+                        try:
+                            await self.client.edit_message(logs_chat_id, progress_msg_user_id, report_text, parse_mode="html")
+                        except Exception:
+                            pass
+                            
+                    last_progress_edit_time = now_time
+
                 # 5. Process tasks with adaptive delays
                 for i, (msg, group) in enumerate(tasks):
                     if not self.running: break
@@ -579,13 +652,19 @@ class UserSender:
                     _curr_group = await _db.groups.find_one({"user_id": self.user_id, "chat_id": chat_id})
                     if not _curr_group or not _curr_group.get("enabled", True):
                         self.logger.info(f"⏭️ Group {chat_title} paused/removed during cycle. Skipping.")
+                        skipped_count += 1
+                        await update_progress_msg(i + 1)
                         continue
 
                     # V6: Cycle deduplication
                     dedup_key = (msg.id, chat_id)
                     if dedup_key in self._sent_this_cycle:
                         skipped_dedup += 1
+                        await update_progress_msg(i + 1)
                         continue
+                    
+                    # Update progress bar to show we are currently sending to this group
+                    await update_progress_msg(i, current_chat_title=chat_title)
                     
                     # Enforce timing gap before sending
                     if last_send_time is not None:
@@ -619,13 +698,20 @@ class UserSender:
                     if success:
                         success_groups.append(chat_title)
                         self._sent_this_cycle.add(dedup_key)
+                        success_count += 1
                     else:
                         failed_groups.append(chat_title)
+                        failed_count += 1
+                    
+                    await update_progress_msg(i + 1)
                     
                     if flood_triggered:
                         self.adaptive_group_gap.multiplier = min(self.adaptive_group_gap.multiplier * 1.1, 5.0)
                         await self.update_status(f"FloodWait ({flood_wait}s)")
                         await asyncio.sleep(flood_wait)
+                
+                # Update progress bar to completed state
+                await update_progress_msg(total_tasks, completed=True)
                 
                 # 6. Cycle complete — metrics and report
                 actual_interval = max(interval_minutes, MIN_INTERVAL_MINUTES)

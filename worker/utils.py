@@ -3,6 +3,7 @@ Utility functions for the Worker service.
 """
 
 from datetime import datetime
+from typing import Optional
 import pytz
 
 from config import TIMEZONE, NIGHT_MODE_START_HOUR, NIGHT_MODE_END_HOUR
@@ -289,5 +290,88 @@ def build_session_start_log(user_label: str, group_count: int, plan_status: str)
         f"📂 Groups: <b>{group_count}</b>\n"
         f"💎 Plan: <b>{plan_status}</b>"
     )
+
+
+async def send_central_log_return_id(text: str) -> Optional[int]:
+    """Send an update log to the central LOG_CHANNEL_ID and return its message_id."""
+    from config import LOG_CHANNEL_ID
+    import logging
+    if not LOG_CHANNEL_ID:
+        logging.getLogger(__name__).debug("LOG_CHANNEL_ID is not set — skipping central log")
+        return None
+    try:
+        bot = await _get_log_bot()
+        if not bot:
+            return None
+        if len(text) > 4096:
+            text = text[:4090] + "\n..."
+        msg = await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
+        return msg.message_id
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to send log with ID: {e}")
+        return None
+
+
+async def edit_central_log(message_id: int, text: str) -> bool:
+    """Edit a previously sent message in the central LOG_CHANNEL_ID."""
+    from config import LOG_CHANNEL_ID
+    import logging
+    if not LOG_CHANNEL_ID or not message_id:
+        return False
+    try:
+        bot = await _get_log_bot()
+        if not bot:
+            return False
+        if len(text) > 4096:
+            text = text[:4090] + "\n..."
+        await bot.edit_message_text(chat_id=LOG_CHANNEL_ID, message_id=message_id, text=text, parse_mode="HTML")
+        return True
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to edit central log {message_id}: {e}")
+        return False
+
+
+def build_progress_bar_report(user_label: str, send_mode: str, index: int, total: int, success_count: int, failed_count: int, skipped_count: int, current_chat_title: Optional[str] = None, completed: bool = False) -> str:
+    """Builds a premium progress bar log report with dynamic animation."""
+    progress_pct = int((index / total) * 100) if total > 0 else 0
+    
+    # Generate progress bar using emojis
+    filled_blocks = progress_pct // 10
+    empty_blocks = 10 - filled_blocks
+    progress_bar = "🟩" * filled_blocks + "⬜" * empty_blocks
+    
+    status_header = "⏳ <b>[CYCLE PROGRESS] IN PROGRESS</b>" if not completed else "✅ <b>[CYCLE PROGRESS] COMPLETED</b>"
+    
+    now_ist = datetime.now(IST)
+    time_str = now_ist.strftime("%I:%M %p IST")
+    
+    # Emojis for status
+    mode_emoji = "🔄" if send_mode == "rotate" else "🔀" if send_mode == "random" else "➡️"
+    
+    text = (
+        f"{status_header}\n"
+        f"<b>━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+        f"👤 <b>User:</b> <code>{user_label}</code>\n"
+        f"⚙️ <b>Mode:</b> {mode_emoji} <code>{send_mode.upper()}</code>\n"
+        f"📊 <b>Progress:</b> <code>{progress_bar}</code> <b>{progress_pct}%</b> ({index}/{total})\n"
+        f"<b>━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+        f"🟢 <b>Delivered:</b> <code>{success_count}</code>\n"
+        f"🔴 <b>Failed:</b>    <code>{failed_count}</code>\n"
+    )
+    
+    if skipped_count > 0:
+        text += f"⏭️ <b>Skipped:</b>   <code>{skipped_count}</code>\n"
+        
+    text += f"<b>━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+    
+    if completed:
+        text += f"🏁 <b>Status:</b> Cycle completed at {time_str}!"
+    elif current_chat_title:
+        text += f"📤 <b>Current:</b> Sending to <b>{current_chat_title}</b>..."
+    else:
+        text += f"⏳ <b>Status:</b> Initializing..."
+        
+    return text
+
 
 
