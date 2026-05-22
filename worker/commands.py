@@ -22,7 +22,7 @@ from telethon.tl.functions.chatlists import CheckChatlistInviteRequest, JoinChat
 from core.config import MAX_GROUPS_PER_USER, MIN_INTERVAL_MINUTES
 from models.session import get_session
 from models.user import get_user_config, update_user_config
-from models.group import get_user_groups, add_group, remove_group, get_group_count, toggle_group
+from models.group import get_user_groups, add_group, remove_group, get_group_count, toggle_group, mark_group_failing, clear_group_fail
 from db.models import get_account_stats, get_recent_failed_logs
 from models.plan import get_plan
 from worker.utils import is_night_mode
@@ -30,7 +30,7 @@ from worker.utils import is_night_mode
 logger = logging.getLogger(__name__)
 
 
-async def process_command(client: TelegramClient, user_id: int, message) -> bool:
+async def process_command(client: TelegramClient, user_id: int, message, sender=None) -> bool:
     """
     Process a dot command from user's Saved Messages.
     Returns True if the message was a command and was processed.
@@ -54,6 +54,15 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
             return True
         elif cmd == ".stats":
             await handle_stats(client, user_id, message)
+            return True
+        elif cmd == ".health":
+            await handle_health(client, user_id, message, text, sender)
+            return True
+        elif cmd == ".check":
+            await handle_check(client, user_id, message, text, sender)
+            return True
+        elif cmd == ".setlogs" or cmd == "/setlogs":
+            await handle_setlogs(client, user_id, message, text)
             return True
         elif cmd == ".userstatus":
             await handle_userstatus(client, user_id, message, text)
@@ -125,20 +134,22 @@ async def process_command(client: TelegramClient, user_id: int, message) -> bool
     return False
 
 
-async def reply_to_command(client: TelegramClient, message, text: str):
-    """Send a reply to the message that triggered the command, auto-delete after 30s."""
+async def reply_to_command(client: TelegramClient, message, text: str, auto_delete: bool = True, delete_delay: int = 30):
+    """Send a reply to the message that triggered the command, auto-delete after delete_delay."""
     import asyncio
     reply = await message.reply(text)
     
-    async def _auto_delete():
-        await asyncio.sleep(30)
-        try:
-            await reply.delete()
-            await message.delete()
-        except Exception:
-            pass  # Message may already be deleted
-    
-    asyncio.create_task(_auto_delete())
+    if auto_delete:
+        async def _auto_delete():
+            await asyncio.sleep(delete_delay)
+            try:
+                await reply.delete()
+                await message.delete()
+            except Exception:
+                pass  # Message may already be deleted
+        
+        asyncio.create_task(_auto_delete())
+    return reply
 
 
 async def handle_help(client: TelegramClient, user_id: int, message):
@@ -166,6 +177,9 @@ async def handle_help(client: TelegramClient, user_id: int, message):
         "└ `.nightmode on/off` — 12AM-6AM Automation\n\n"
         "⚡ *DIAGNOSTICS & CONTROL*\n"
         "├ `.status` — Live account dashboard\n"
+        "├ `.health` — Live group health diagnostics\n"
+        "├ `.check` — Live send diagnostic check\n"
+        "├ `.setlogs <chat>` — Link logs channel/chat\n"
         "├ `.stats` — Performance & Success rate\n"
         "├ `.logs` — Recent activity feed\n"
         "├ `.pause` — Global pause all groups\n"
@@ -357,7 +371,8 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
 
 
 async def handle_addgroup(client: TelegramClient, user_id: int, message, text: str):
-    """Handle .addgroup <url> [url2] [url3] command - supports multiple groups."""
+    """Handle .addgroup <url> [url2] [url3] command - supports multiple groups with progressive progress edits."""
+    import asyncio
     # Parse URLs/usernames (split by spaces or newlines)
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
@@ -390,22 +405,41 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
         return
     
     # Limit to available slots
+    slot_limit_warning = ""
     if len(group_inputs) > available_slots:
         group_inputs = group_inputs[:available_slots]
-        await reply_to_command(client, message, 
-            f"▪ Only processing {available_slots} group(s) due to limit..."
-        )
+        slot_limit_warning = f"⚠️ *Note:* Only processing {available_slots} group(s) due to slot limit.\n\n"
     
-    await reply_to_command(client, message, f"➤ Checking {len(group_inputs)} group(s)...")
+    # Initialize a single status message for progressive feedback
+    status_msg = await reply_to_command(
+        client, 
+        message, 
+        f"{slot_limit_warning}⏳ Checking {len(group_inputs)} group(s)...",
+        auto_delete=False
+    )
     
     added = []
     failed = []
+    total = len(group_inputs)
     
-    for group_input in group_inputs:
+    for idx, group_input in enumerate(group_inputs, start=1):
         group_input = group_input.strip()
         if not group_input:
             continue
         
+        # Update progress before we check this group
+        current_status = f"{slot_limit_warning}⏳ **Importing Groups ({idx}/{total})**\n"
+        current_status += f"Checking: `{group_input}`...\n"
+        if added:
+            current_status += "\n✅ **Added:**\n" + "\n".join(f"  ▸ 🟢 {title}" for title in added)
+        if failed:
+            current_status += "\n\n❌ **Failed:**\n" + "\n".join(f"  ▸ 🔴 {name} — {reason}" for name, reason in failed)
+            
+        try:
+            await status_msg.edit(current_status)
+        except Exception:
+            pass
+            
         # Parse group identifier
         group_identifier, topic_id = parse_group_input(group_input)
         
@@ -490,15 +524,26 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             
         # V6: Safe Bulk Joining Delay
         # If processing multiple groups, apply a safety gap to prevent hitting Telegram limits
-        if len(group_inputs) > 1:
+        if idx < total:
             is_invite_link = isinstance(group_identifier, str) and any(x in group_identifier for x in ["joinchat/", "t.me/+"])
             delay = random.uniform(5.0, 10.0) if is_invite_link else random.uniform(2.0, 5.0)
-            await reply_to_command(client, message, f"⏳ Applying safety gap ({delay:.1f}s)...")
-            import asyncio
+            
+            current_status = f"{slot_limit_warning}⏳ **Importing Groups ({idx}/{total})**\n"
+            current_status += f"⏳ Applying safety gap ({delay:.1f}s)...\n"
+            if added:
+                current_status += "\n✅ **Added:**\n" + "\n".join(f"  ▸ 🟢 {title}" for title in added)
+            if failed:
+                current_status += "\n\n❌ **Failed:**\n" + "\n".join(f"  ▸ 🔴 {name} — {reason}" for name, reason in failed)
+                
+            try:
+                await status_msg.edit(current_status)
+            except Exception:
+                pass
+                
             await asyncio.sleep(delay)
-    
-    # Build response
-    response = ""
+            
+    # Build final response
+    response = f"{slot_limit_warning}"
     
     if added:
         response += f"✅ Added {len(added)} group(s):\n"
@@ -508,16 +553,30 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     if failed:
         response += f"\n❌ Failed {len(failed)}:\n"
         for name, reason in failed:
-            response += f"  ▸ 🔴 {name[:15]}... — {reason}\n"
+            response += f"  ▸ 🔴 {name} — {reason}\n"
     
-    if not response:
-        response = "⚪ No groups were added."
+    if not added and not failed:
+        response += "⚪ No groups were added."
     
     # Add current count
     new_count = await get_group_count(user_id)
     response += f"\n📁 Total: {new_count}/{MAX_GROUPS_PER_USER} slots used."
     
-    await reply_to_command(client, message, response.strip())
+    try:
+        await status_msg.edit(response.strip())
+    except Exception:
+        pass
+        
+    # Schedule auto delete for the final status message and the trigger command message
+    async def _auto_delete_final():
+        await asyncio.sleep(30)
+        try:
+            await status_msg.delete()
+            await message.delete()
+        except Exception:
+            pass  # Message may already be deleted
+            
+    asyncio.create_task(_auto_delete_final())
 
 
 async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: str):
@@ -1289,3 +1348,354 @@ async def process_folder_peers(client, user_id, message, folder_name, peers):
     res += f"\nTotal Groups: {new_total}/{MAX_GROUPS_PER_USER}"
     
     await reply_to_command(client, message, res)
+
+
+async def handle_health(client: TelegramClient, user_id: int, message, text: str, sender=None):
+    """
+    Handle .health command.
+    Checks and displays group health status.
+    If argument is 'check', 'live', or 'run', performs a live diagnostic check.
+    """
+    parts = text.lower().split()
+    is_live = len(parts) > 1 and parts[1] in ("check", "live", "run")
+    phone = getattr(client, 'phone', None)
+    
+    groups = await get_user_groups(user_id)
+    if not groups:
+        await reply_to_command(
+            client,
+            message,
+            f"📊 *GROUP HEALTH — {phone}*\n══════════════════════════\n\n⚪ No target groups found to check."
+        )
+        return
+
+    if not is_live:
+        # Show DB summary
+        total = len(groups)
+        healthy = 0
+        group_fail = 0
+        account_fail = 0
+        user_paused = 0
+        
+        for g in groups:
+            enabled = g.get("enabled", True)
+            fail_type = g.get("fail_type")
+            if enabled:
+                healthy += 1
+            elif fail_type == "group":
+                group_fail += 1
+            elif fail_type == "account":
+                account_fail += 1
+            else:
+                user_paused += 1
+                
+        summary_text = (
+            f"📊 *GROUP HEALTH SUMMARY — {phone}*\n"
+            f"══════════════════════════\n"
+            f"🟢 **Healthy / Active:** {healthy}\n"
+            f"🔴 **Group Issues:** {group_fail} (dead/restricted)\n"
+            f"🟡 **Account Mutes:** {account_fail} (restricted)\n"
+            f"⚪ **User Paused:** {user_paused}\n"
+            f"══════════════════════════\n"
+            f"**Total Targets:** {total}\n\n"
+            f"💡 *Run `.health check` to perform a live diagnostic check.*"
+        )
+        await reply_to_command(client, message, summary_text)
+        return
+
+    # Perform live check
+    status_msg = await reply_to_command(
+        client,
+        message,
+        f"🔍 **Starting Live Health Check — {phone}...**\nPreparing to diagnostic {len(groups)} group(s).",
+        auto_delete=False
+    )
+    
+    import asyncio
+    passed = 0
+    failed = 0
+    failures = []
+    total = len(groups)
+    
+    for idx, group in enumerate(groups, start=1):
+        chat_id = group.get("chat_id")
+        chat_title = group.get("chat_title", "Unknown")
+        
+        # Periodically update status (every 3 groups or so to avoid message rate limits)
+        if idx == 1 or idx % 3 == 0 or idx == total:
+            status_text = (
+                f"🔍 **Live Health Diagnostics ({idx}/{total})**\n"
+                f"══════════════════════════\n"
+                f"⏳ Checking: `{chat_title}`\n"
+                f"🟢 Passed (Healthy): {passed}\n"
+                f"🔴 Failed (Issues): {failed}"
+            )
+            try:
+                await status_msg.edit(status_text)
+            except Exception:
+                pass
+                
+        # Run resolution check
+        is_writable = False
+        reason = "Unknown error"
+        
+        try:
+            # Try to resolve entity (like _resolve_entity does)
+            entity = None
+            try:
+                entity = await client.get_entity(chat_id)
+            except ValueError:
+                # Scan dialogs
+                async for dialog in client.iter_dialogs(limit=300):
+                    if dialog.id == chat_id:
+                        entity = dialog.entity
+                        break
+                if not entity:
+                    raise ValueError("Not found in dialog list")
+            
+            # Check permissions
+            permissions = await client.get_permissions(entity)
+            if entity.broadcast and not permissions.is_admin:
+                is_writable = False
+                reason = "ChannelPostForbidden (Not Admin)"
+            elif hasattr(permissions, 'can_send_messages') and not permissions.can_send_messages:
+                is_writable = False
+                reason = "GroupMuted (Send permission restricted)"
+            else:
+                is_writable = True
+        except Exception as e:
+            is_writable = False
+            reason = type(e).__name__
+
+        if is_writable:
+            passed += 1
+            await clear_group_fail(user_id, chat_id)
+            # If the sender entity cache has this group in its negative/failed cache, we should clear it.
+            if sender and hasattr(sender, '_failed_entities') and chat_id in sender._failed_entities:
+                sender._failed_entities.pop(chat_id, None)
+        else:
+            failed += 1
+            await mark_group_failing(user_id, chat_id, reason)
+            failures.append(f"• `{chat_title}`: {reason}")
+            # Add to negative cache of sender if sender exists
+            if sender and hasattr(sender, '_failed_entities'):
+                from datetime import datetime
+                sender._failed_entities[chat_id] = (datetime.utcnow(), f"Live check fail: {reason}")
+                
+        # Delay slightly to avoid spamming / flood waits
+        await asyncio.sleep(0.5)
+
+    # Prepare final report
+    final_report = (
+        f"📊 *DIAGNOSTIC REPORT — {phone}*\n"
+        f"══════════════════════════\n"
+        f"🟢 **Passed (Healthy):** {passed}\n"
+        f"🔴 **Failed (Issues):** {failed}\n"
+        f"══════════════════════════\n"
+    )
+    if failures:
+        final_report += "**Failure Details:**\n" + "\n".join(failures[:20]) + "\n"
+        if len(failures) > 20:
+            final_report += f"_...and {len(failures) - 20} more group errors._\n"
+        final_report += f"\n💡 *Groups with errors have been disabled in the list.*"
+    else:
+        final_report += "🎉 All groups are healthy and writable!"
+        
+    await status_msg.edit(final_report)
+    
+    # Schedule deletion of both the status message and the command trigger message after 60 seconds
+    async def delete_messages_later(msg1, msg2, delay=60):
+        await asyncio.sleep(delay)
+        try:
+            await msg1.delete()
+        except Exception:
+            pass
+        try:
+            await msg2.delete()
+        except Exception:
+            pass
+            
+    asyncio.create_task(delete_messages_later(status_msg, message, 60))
+
+
+async def handle_check(client: TelegramClient, user_id: int, message, text: str, sender=None):
+    """
+    Handle .check command.
+    Sends a test message to all groups (active or paused) to verify actual sending capability,
+    then immediately deletes the test message.
+    """
+    phone = getattr(client, 'phone', None)
+    groups = await get_user_groups(user_id)
+    if not groups:
+        await reply_to_command(
+            client,
+            message,
+            f"📊 *SEND CHECK — {phone}*\n══════════════════════════\n\n⚪ No target groups found to check."
+        )
+        return
+
+    status_msg = await reply_to_command(
+        client,
+        message,
+        f"🔍 **Running Live Send Verification (.check) — {phone}...**\nPreparing to send test messages to {len(groups)} group(s).",
+        auto_delete=False
+    )
+
+    import asyncio
+    success_count = 0
+    fail_count = 0
+    failures = []
+    total = len(groups)
+
+    for idx, group in enumerate(groups, start=1):
+        chat_id = group.get("chat_id")
+        chat_title = group.get("chat_title", "Unknown")
+        topic_id = group.get("topic_id")
+
+        if idx == 1 or idx % 3 == 0 or idx == total:
+            status_text = (
+                f"🔍 **Live Send Diagnostics ({idx}/{total})**\n"
+                f"══════════════════════════\n"
+                f"⏳ Checking: `{chat_title}`\n"
+                f"🟢 Success: {success_count}\n"
+                f"🔴 Failed: {fail_count}"
+            )
+            try:
+                await status_msg.edit(status_text)
+            except Exception:
+                pass
+
+        success = False
+        reason = "Unknown error"
+
+        try:
+            # 1. Resolve entity
+            entity = None
+            try:
+                entity = await client.get_entity(chat_id)
+            except ValueError:
+                # Scan dialogs
+                async for dialog in client.iter_dialogs(limit=300):
+                    if dialog.id == chat_id:
+                        entity = dialog.entity
+                        break
+                if not entity:
+                    raise ValueError("Not found in dialog list")
+
+            # 2. Try sending test message
+            test_text = "🔍 **System Diagnostic Check**\nVerifying write capabilities. This message will be deleted."
+            test_msg = await client.send_message(
+                entity=entity,
+                message=test_text,
+                reply_to=topic_id
+            )
+            success = True
+
+            # 3. Immediately delete test message
+            try:
+                await test_msg.delete()
+            except Exception:
+                pass
+
+        except Exception as e:
+            success = False
+            reason = type(e).__name__
+
+        if success:
+            success_count += 1
+            await clear_group_fail(user_id, chat_id)
+            if sender and hasattr(sender, '_failed_entities') and chat_id in sender._failed_entities:
+                sender._failed_entities.pop(chat_id, None)
+        else:
+            fail_count += 1
+            await mark_group_failing(user_id, chat_id, reason)
+            failures.append(f"• `{chat_title}`: {reason}")
+            if sender and hasattr(sender, '_failed_entities'):
+                from datetime import datetime
+                sender._failed_entities[chat_id] = (datetime.utcnow(), f"Live send check fail: {reason}")
+
+        # Sleep briefly to respect Telegram rate limits
+        await asyncio.sleep(1.0)
+
+    # Final report
+    final_report = (
+        f"📊 *SEND CHECK REPORT — {phone}*\n"
+        f"══════════════════════════\n"
+        f"🟢 **Successful Sends:** {success_count}\n"
+        f"🔴 **Failed Sends:** {fail_count}\n"
+        f"══════════════════════════\n"
+    )
+    if failures:
+        final_report += "**Failure Details:**\n" + "\n".join(failures[:20]) + "\n"
+        if len(failures) > 20:
+            final_report += f"_...and {len(failures) - 20} more errors._\n"
+        final_report += f"\n💡 *Groups with sending failures have been disabled in the list.*"
+    else:
+        final_report += "🎉 All groups successfully passed the send check!"
+
+    await status_msg.edit(final_report)
+
+    async def delete_messages_later(msg1, msg2, delay=60):
+        await asyncio.sleep(delay)
+        try:
+            await msg1.delete()
+        except Exception:
+            pass
+        try:
+            await msg2.delete()
+        except Exception:
+            pass
+
+    asyncio.create_task(delete_messages_later(status_msg, message, 60))
+
+
+async def handle_setlogs(client: TelegramClient, user_id: int, message, text: str):
+    """Handle .setlogs command to configure the logs channel/chat."""
+    parts = text.split()
+    if len(parts) < 2:
+        config = await get_user_config(user_id)
+        current = config.get("logs_chat_id")
+        status_str = f"📢 **Logs channel/chat:** `{current}`" if current else "📢 **Logs channel/chat:** `Not set`"
+        await reply_to_command(
+            client,
+            message,
+            f"{status_str}\n\n"
+            f"💡 **Usage:**\n"
+            f"├ `.setlogs <chat_id | channel_id | username>`\n"
+            f"└ `.setlogs off` — Disable logs channel notifications"
+        )
+        return
+
+    target = parts[1].strip()
+    if target.lower() in ("off", "none", "disable", "false"):
+        await update_user_config(user_id, logs_chat_id=None)
+        await reply_to_command(client, message, "✅ **Logs channel notifications have been DISABLED.**")
+        return
+
+    try:
+        # Resolve target to entity key
+        entity_key = int(target) if (target.isdigit() or (target.startswith("-") and target[1:].isdigit())) else target
+        entity = await client.get_entity(entity_key)
+        
+        # Test linkage
+        test_msg = await client.send_message(entity, "⚡ **Log Channel Linked Successfully!**\nSystem logs will be forwarded here.")
+        
+        # Save to DB config
+        await update_user_config(user_id, logs_chat_id=entity_key)
+        
+        await reply_to_command(
+            client,
+            message,
+            f"✅ **Logs channel linked!**\n"
+            f"Target: `{target}` (ID: `{entity.id}`)\n"
+            f"A confirmation message has been sent to that chat."
+        )
+    except Exception as e:
+        await reply_to_command(
+            client,
+            message,
+            f"❌ **Failed to resolve logs channel:** `{target}`\n"
+            f"Reason: `{type(e).__name__}: {str(e)}`"
+        )
+
+

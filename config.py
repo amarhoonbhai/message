@@ -81,6 +81,7 @@ TIMEZONE = "Asia/Kolkata"
 
 # ============== Plans ==============
 PLAN_PRICES = {
+    "trial": 49,      # ₹49/3 days
     "week": 99,       # ₹99/week
     "month": 299,     # ₹299/month
     "3month": 799,    # ₹799/3 months
@@ -89,6 +90,7 @@ PLAN_PRICES = {
 }
 
 PLAN_DURATIONS = {
+    "trial": 3,       # 3 days
     "week": 7,        # 7 days
     "month": 30,      # 30 days
     "3month": 90,     # 90 days

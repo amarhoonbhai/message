@@ -119,6 +119,18 @@ class WorkerManager:
                         skipped_cooldown += 1
                         continue
 
+                # ── Skip 3: Circuit breaker — PeerFlood / Long FloodWait Cooldown ──
+                cooldown_until = session.get("cooldown_until")
+                if cooldown_until and isinstance(cooldown_until, datetime):
+                    if datetime.utcnow() < cooldown_until:
+                        remaining = cooldown_until - datetime.utcnow()
+                        remaining_m = int(remaining.total_seconds() // 60)
+                        logger.debug(
+                            f"Skipping {phone} — PeerFlood/FloodWait cooldown ({remaining_m}m remaining)"
+                        )
+                        skipped_cooldown += 1
+                        continue
+
                 if key not in self.senders:
                     await self.start_sender(user_id, phone)
                     started_count += 1
@@ -137,7 +149,7 @@ class WorkerManager:
                     if sender.error_streak == 0 and sender._last_cycle_duration is not None:
                         self.restart_counts.pop(key, None)
             
-            if started_count > 0 or stopped_count > 0 or skipped_disabled > 0:
+            if started_count > 0 or stopped_count > 0 or skipped_disabled > 0 or skipped_cooldown > 0:
                 logger.info(
                     f"Sync: +{started_count} started | -{stopped_count} stopped "
                     f"| {skipped_disabled} disabled | {skipped_cooldown} in cooldown"

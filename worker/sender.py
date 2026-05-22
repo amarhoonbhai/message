@@ -125,6 +125,10 @@ class UserSender:
         self._cycle_start_time = None
         self._last_cycle_duration = None
         self._last_plan_log = None  # Throttling for "Plan expired" logs
+        
+        # Performance entity caching (Positive and Negative Cache)
+        self._entity_cache = {}  # {chat_id: Entity}
+        self._failed_entities = {}  # {chat_id: (timestamp, reason)}
     
     async def update_status(self, status: str):
         """Update worker status in database with throttling for smoothness."""
@@ -292,7 +296,7 @@ class UserSender:
                     # 1. Handle Commands (dot commands)
                     if text.startswith("."):
                         self.logger.info(f"Received command: {text.split()[0]}")
-                        await process_command(self.client, self.user_id, event.message)
+                        await process_command(self.client, self.user_id, event.message, sender=self)
                         return
 
                     # 2. Handle New Ads (sent to Saved Messages)
@@ -328,7 +332,7 @@ class UserSender:
                     # 1. Handle Commands (Incoming from owner)
                     if text.startswith(".") and (sender_id == self.user_id or sender_id == OWNER_ID):
                         self.logger.info(f"Received remote command: {text.split()[0]}")
-                        await process_command(self.client, self.user_id, event.message)
+                        await process_command(self.client, self.user_id, event.message, sender=self)
                         return
 
                     # 2. Handle Auto-Responder (Private messages only)
@@ -573,6 +577,10 @@ class UserSender:
                     
                     success, flood_triggered, flood_wait = await self.forward_single_message(msg, group, copy_mode=copy_mode)
                     
+                    if not self.running:
+                        self.logger.info("Aborting cycle loop: session is stopping (possibly due to circuit breaker).")
+                        break
+                    
                     if success:
                         success_groups.append(chat_title)
                         self._sent_this_cycle.add(dedup_key)
@@ -668,6 +676,145 @@ class UserSender:
             logger.error(f"[User {self.user_id}] Error fetching saved messages: {e}")
             return []
     
+    async def _resolve_entity(self, chat_id: int, chat_title: str, message_id: int) -> Optional[Any]:
+        """
+        Resolves a chat_id into a Telethon entity with smart caching.
+        Saves failures to self._failed_entities to avoid redundant iter_dialogs calls.
+        Returns the entity if found/valid, or None (logging and marking group failure in DB).
+        """
+        # 1. Check positive cache
+        if chat_id in self._entity_cache:
+            return self._entity_cache[chat_id]
+            
+        # 2. Check negative cache (cooldown: 1 hour)
+        now = datetime.utcnow()
+        if chat_id in self._failed_entities:
+            fail_time, fail_reason = self._failed_entities[chat_id]
+            if now - fail_time < timedelta(hours=1):
+                self.logger.debug(f"Entity resolution for {chat_title} ({chat_id}) skipped due to cached failure: {fail_reason}")
+                return None
+        
+        # 3. Resolve entity
+        try:
+            entity = await self.client.get_entity(chat_id)
+            self._entity_cache[chat_id] = entity
+            return entity
+        except (ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError) as e:
+            err_name = type(e).__name__
+            self.logger.warning(f"❌ Pre-check failed: {chat_title} is invalid ({err_name}). Removing.")
+            self._failed_entities[chat_id] = (now, f"Invalid group: {err_name}")
+            asyncio.create_task(remove_group(self.user_id, chat_id))
+            asyncio.create_task(self.log_send(chat_id, message_id, "removed", f"Pre-check: {err_name}"))
+            return None
+        except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
+            err_name = type(e).__name__
+            self.logger.warning(f"⚠️ Pre-check: {chat_title} restricted ({err_name}). Marking failing.")
+            self._failed_entities[chat_id] = (now, f"Restricted: {err_name}")
+            asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"Pre-check: {err_name}"))
+            asyncio.create_task(self.log_send(chat_id, message_id, "failing", f"Pre-check: {err_name}"))
+            return None
+        except ValueError:
+            # Private group not in cache — scan dialogs to find it
+            self.logger.info(f"Entity not cached for {chat_id}, scanning dialogs...")
+            try:
+                entity = None
+                async for dialog in self.client.iter_dialogs(limit=300):
+                    if dialog.id == chat_id:
+                        entity = dialog.entity
+                        break
+                if entity:
+                    self._entity_cache[chat_id] = entity
+                    return entity
+                else:
+                    raise ValueError("Not found in dialogs either")
+            except Exception as dial_e:
+                self.logger.warning(f"Could not resolve entity for {chat_id} via dialog scan: {dial_e}")
+                self._failed_entities[chat_id] = (now, f"Value/Dialog error: {dial_e}")
+                asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"Entity error: {dial_e}"))
+                asyncio.create_task(self.log_send(chat_id, message_id, "failing", f"Entity error: {dial_e}"))
+                return None
+        except Exception as e:
+            self.logger.warning(f"Could not resolve entity for {chat_id}: {e}")
+            self._failed_entities[chat_id] = (now, f"Unexpected error: {e}")
+            asyncio.create_task(self.log_send(chat_id, message_id, "failed", f"Entity error: {e}"))
+            return None
+
+    async def _activate_circuit_breaker(self, cooldown_until: datetime, reason: str):
+        """
+        Updates session in database with cooldown_until and stops the sender loop.
+        Disconnects the client cleanly.
+        """
+        try:
+            from db.database import get_database
+            db = get_database()
+            await db.sessions.update_one(
+                {"user_id": self.user_id, "phone": self.phone},
+                {"$set": {
+                    "cooldown_until": cooldown_until,
+                    "worker_status": f"Cooldown ({reason})",
+                    "status_updated_at": datetime.utcnow()
+                }}
+            )
+            self.logger.info(f"🔌 Circuit breaker activated. Session cooling down until {cooldown_until} UTC. Stopping loop.")
+            self.running = False
+            if self.client:
+                await self.client.disconnect()
+        except Exception as e:
+            self.logger.error(f"Error activating circuit breaker: {e}")
+
+    async def log_send(self, chat_id: int, saved_msg_id: int, status: str = "success", error: Optional[str] = None):
+        """Log sending attempt in DB and notify user-configured logs channel/chat."""
+        await db_log_send(self.user_id, chat_id, saved_msg_id, status, error, phone=self.phone)
+        
+        emoji = "🟢" if status == "success" else "🔴" if status in ("failed", "error", "removed", "failing") else "🟡"
+        msg_status = status.upper()
+        
+        chat_title = "Unknown"
+        if chat_id in self._entity_cache:
+            entity = self._entity_cache[chat_id]
+            chat_title = getattr(entity, 'title', None) or getattr(entity, 'first_name', None) or "Unknown"
+            
+        # 1. Notify user-configured logs channel/chat (using Markdown for User Client)
+        try:
+            config = await get_user_config(self.user_id)
+            logs_chat_id = config.get("logs_chat_id")
+            if logs_chat_id and self.client:
+                chat_info = f"Chat: `{chat_id}`" if chat_title == "Unknown" else f"Group: **{chat_title}** (`{chat_id}`)"
+                log_text = (
+                    f"{emoji} **[LOG ENTRY]** {msg_status}\n"
+                    f"├ Account: `{self.phone}`\n"
+                    f"├ {chat_info}\n"
+                    f"├ Saved Msg ID: `{saved_msg_id}`\n"
+                )
+                if error:
+                    log_text += f"└ Error: `{error}`"
+                else:
+                    log_text += f"└ Action completed successfully."
+                
+                await self.client.send_message(logs_chat_id, log_text)
+        except Exception as le:
+            self.logger.warning(f"Failed to send log to user log channel: {le}")
+
+        # 2. Notify central LOG_CHANNEL_ID (using HTML format for the bot)
+        try:
+            chat_info_html = f"Chat: <code>{chat_id}</code>" if chat_title == "Unknown" else f"Group: <b>{chat_title}</b> (<code>{chat_id}</code>)"
+            central_log_text = (
+                f"{emoji} <b>[LOG ENTRY]</b> {msg_status}\n"
+                f"├ Account: <code>{self.phone}</code>\n"
+                f"├ {chat_info_html}\n"
+                f"├ Saved Msg ID: <code>{saved_msg_id}</code>\n"
+            )
+            if error:
+                central_log_text += f"└ Error: <code>{error}</code>"
+            else:
+                central_log_text += f"└ Action completed successfully."
+                
+            from worker.utils import send_central_log
+            asyncio.create_task(send_central_log(central_log_text))
+        except Exception as cle:
+            self.logger.warning(f"Failed to send to central log channel: {cle}")
+
+
     async def forward_single_message(self, message, group: dict, copy_mode: bool = False) -> tuple:
         """
         Forward or copy a single message to a single group.
@@ -678,41 +825,8 @@ class UserSender:
         
         try:
             # ── STEP 1: Pre-validate entity (PREVENTS most errors) ──────────
-            entity = None
-            try:
-                entity = await self.client.get_entity(chat_id)
-            except (ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError) as e:
-                # Group is dead — remove it immediately, don't even try to send
-                self.logger.warning(f"❌ Pre-check failed: {chat_title} is invalid ({type(e).__name__}). Removing.")
-                asyncio.create_task(remove_group(self.user_id, chat_id))
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "removed", f"Pre-check: {type(e).__name__}", phone=self.phone))
-                return (False, False, 0)
-            except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
-                # Group is restricted — mark as failing (will auto-remove after 24h)
-                self.logger.warning(f"⚠️ Pre-check: {chat_title} restricted ({type(e).__name__}). Marking failing.")
-                asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"Pre-check: {type(e).__name__}"))
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failing", f"Pre-check: {type(e).__name__}", phone=self.phone))
-                return (False, False, 0)
-            except ValueError as e:
-                # Private group not in Telethon's entity cache — scan dialogs to find it
-                self.logger.info(f"Entity not cached for {chat_id}, scanning dialogs...")
-                try:
-                    async for dialog in self.client.iter_dialogs(limit=300):
-                        if dialog.id == chat_id:
-                            entity = dialog.entity
-                            break
-                    if not entity:
-                        raise ValueError(f"Not found in dialogs either")
-                except Exception as dial_e:
-                    self.logger.warning(f"Could not resolve entity for {chat_id}: {dial_e}")
-                    asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"Entity error: {dial_e}"))
-                    asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failing", f"Entity error: {dial_e}", phone=self.phone))
-                    return (False, False, 0)
-
-            except Exception as e:
-                self.logger.warning(f"Could not resolve entity for {chat_id}: {e}")
-                # Don't proceed if we can't even find the group
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", f"Entity error: {e}", phone=self.phone))
+            entity = await self._resolve_entity(chat_id, chat_title, message.id)
+            if not entity:
                 return (False, False, 0)
             
             # ── V6: Lightweight typing (30% chance, 1-2s) ────────────────
@@ -744,12 +858,26 @@ class UserSender:
                 log_action = f"Copied (Topic {topic_id})" if topic_id else "Copied"
             else:
                 # Standard forward (shows "Forwarded from")
-                await self.client.forward_messages(
-                    entity=entity,
-                    messages=message.id,
-                    from_peer='me'
-                )
-                log_action = "Forwarded"
+                try:
+                    await self.client.forward_messages(
+                        entity=entity,
+                        messages=message.id,
+                        from_peer='me'
+                    )
+                    log_action = "Forwarded"
+                except Exception as forward_exc:
+                    self.logger.warning(f"Standard forward failed for msg {message.id} to {chat_title}: {forward_exc}. Retrying by copying.")
+                    if not message.text and not message.media:
+                        self.logger.warning("Skipping empty message during copy-fallback")
+                        raise forward_exc
+                    
+                    await self.client.send_message(
+                        entity=entity,
+                        message=message.text or None,
+                        file=message.media,
+                        formatting_entities=message.entities if message.text else None
+                    )
+                    log_action = "Copied (Fallback)"
             
             self.logger.info(f"{log_action} message {message.id} to {chat_title}")
             self.adaptive_group_gap.on_success()
@@ -757,12 +885,10 @@ class UserSender:
             self.error_streak = 0
             
             # Log in background to not block the main sender loop
-            asyncio.create_task(db_log_send(
-                user_id=self.user_id,
+            asyncio.create_task(self.log_send(
                 chat_id=chat_id,
                 saved_msg_id=message.id,
-                status="success",
-                phone=self.phone
+                status="success"
             ))
             
             # Clear failing status on success
@@ -782,7 +908,14 @@ class UserSender:
                 self.logger.warning(f"FloodWait: {seconds}s on {chat_title}")
                 self.adaptive_group_gap.on_flood(seconds)
                 self.adaptive_msg_gap.on_flood(seconds)
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "flood_wait", disp_msg, phone=self.phone))
+                asyncio.create_task(self.log_send(chat_id, message.id, "flood_wait", disp_msg))
+                
+                # Circuit breaker check: if flood wait is over 5 minutes (300 seconds)
+                if seconds > 300:
+                    self.logger.error(f"🚨 Long FloodWait ({seconds}s) on {chat_title} — activating circuit breaker.")
+                    cooldown_until = datetime.utcnow() + timedelta(seconds=int(seconds * 1.1) + 5)
+                    asyncio.create_task(self._activate_circuit_breaker(cooldown_until, f"FloodWait ({seconds}s)"))
+                
                 return (False, True, int(seconds * 1.1) + 5)
                 
             elif err_code == "PEER_FLOOD":
@@ -791,19 +924,23 @@ class UserSender:
                 cooldown_hours = min(2 ** (self._peer_flood_count - 1), 8)
                 cooldown_secs = cooldown_hours * 3600
                 self.logger.error(f"🚨 PeerFlood on {chat_title} — cooldown {cooldown_hours}h (flood #{self._peer_flood_count})")
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "peer_flood", disp_msg, phone=self.phone))
+                asyncio.create_task(self.log_send(chat_id, message.id, "peer_flood", disp_msg))
                 
                 from worker.utils import send_central_log, build_error_log
                 asyncio.create_task(send_central_log(build_error_log(
                     self.phone, chat_title, "🚨 PEER FLOOD", f"Account restricted — {cooldown_hours}h cooldown"
                 )))
-                await self.update_status(f"🚨 PeerFlood ({cooldown_hours}h cooldown)")
+                
+                # Activate circuit breaker for PeerFlood
+                cooldown_until = datetime.utcnow() + timedelta(seconds=cooldown_secs)
+                asyncio.create_task(self._activate_circuit_breaker(cooldown_until, f"PeerFlood ({cooldown_hours}h)"))
+                
                 return (False, True, cooldown_secs)
                 
             elif err_code == "ACCOUNT_DEACTIVATED":
                 self.logger.error(f"🛑 Account {self.phone} is deactivated by Telegram!")
                 asyncio.create_task(mark_session_disabled(self.user_id, self.phone, reason="User Deactivated"))
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", disp_msg, phone=self.phone))
+                asyncio.create_task(self.log_send(chat_id, message.id, "failed", disp_msg))
                 from worker.utils import send_central_log, build_error_log
                 asyncio.create_task(send_central_log(build_error_log(self.phone, chat_title, "🛑 ACCOUNT DEACTIVATED", "Session permanently disabled")))
                 self.running = False
@@ -812,23 +949,23 @@ class UserSender:
             elif err_code == "LINK_INVALID" or (err_code == "PERMISSION_DENIED" and "BANNED" in str(e).upper()):
                 self.logger.warning(f"❌ Removing group {chat_title}: {disp_msg}")
                 asyncio.create_task(remove_group(self.user_id, chat_id))
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "removed", disp_msg, phone=self.phone))
+                asyncio.create_task(self.log_send(chat_id, message.id, "removed", disp_msg))
                 return (False, False, 0)
                 
             elif err_code == "PERMISSION_DENIED" or err_code == "FORBIDDEN":
                 self.logger.warning(f"⚠️ Group {chat_title} restricted: {disp_msg}")
                 asyncio.create_task(mark_group_failing(self.user_id, chat_id, disp_msg))
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failing", disp_msg, phone=self.phone))
+                asyncio.create_task(self.log_send(chat_id, message.id, "failing", disp_msg))
                 return (False, False, 0)
                 
             elif err_code in ["MESSAGE_DELETED", "TOPIC_CLOSED", "EMPTY_MESSAGE", "ENTITY_NOT_FOUND", "DISCUSSION_GROUP_REQUIRED"]:
                 self.logger.warning(f"⚠️ {disp_msg} — skipping {chat_title}")
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "skipped", disp_msg, phone=self.phone))
+                asyncio.create_task(self.log_send(chat_id, message.id, "skipped", disp_msg))
                 return (False, False, 0)
                 
             elif err_code == "SLOWMODE":
                 self.logger.warning(f"⏳ Slow mode in {chat_title} — skipping for now")
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "skipped", disp_msg, phone=self.phone))
+                asyncio.create_task(self.log_send(chat_id, message.id, "skipped", disp_msg))
                 return (False, False, 0)
                 
             elif isinstance(e, FrozenParticipantMissingError):
@@ -839,7 +976,7 @@ class UserSender:
             else:
                 self.error_streak += 1
                 self.logger.error(f"Error forwarding to {chat_title}: {disp_msg} ({type(e).__name__})")
-                asyncio.create_task(db_log_send(self.user_id, chat_id, message.id, "failed", disp_msg, phone=self.phone))
+                asyncio.create_task(self.log_send(chat_id, message.id, "failed", disp_msg))
                 return (False, False, 0)
 
     async def _connection_watchdog(self):

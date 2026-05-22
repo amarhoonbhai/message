@@ -421,13 +421,37 @@ async def get_failing_groups_count() -> int:
 
 
 async def get_plan(user_id: int) -> Optional[Dict[str, Any]]:
-    """Get user's plan."""
+    """Get user's plan. Automatically initializes a 2-day free trial for users with no plan."""
     db = get_database()
     plan = await db.plans.find_one({"user_id": user_id})
     
+    if not plan:
+        # Check user's creation time to determine if trial is still active
+        user = await db.users.find_one({"user_id": user_id})
+        created_at = user.get("created_at") if user else None
+        if not created_at:
+            created_at = datetime.utcnow()
+            
+        expires_at = created_at + timedelta(days=2)
+        status = "active" if expires_at > datetime.utcnow() else "expired"
+        
+        plan = {
+            "user_id": user_id,
+            "plan_type": "free_trial",
+            "status": status,
+            "started_at": created_at,
+            "expires_at": expires_at
+        }
+        await db.plans.update_one(
+            {"user_id": user_id},
+            {"$setOnInsert": plan},
+            upsert=True
+        )
+        plan = await db.plans.find_one({"user_id": user_id})
+    
     if plan:
         # Check if expired
-        if plan["expires_at"] < datetime.utcnow():
+        if plan["expires_at"] < datetime.utcnow() and plan.get("status") != "expired":
             await db.plans.update_one(
                 {"user_id": user_id},
                 {"$set": {"status": "expired"}}
