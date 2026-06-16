@@ -61,6 +61,24 @@ async def run_bot_gracefully(application: Application, bot_name: str):
         
         logger.info(f"{bot_name} is running (Async Polling)...")
         
+        # Send starting log to central logs channel
+        try:
+            from config import LOG_CHANNEL_ID, MAIN_BOT_TOKEN
+            from telegram import Bot
+            from datetime import datetime
+            
+            if LOG_CHANNEL_ID and MAIN_BOT_TOKEN:
+                msg = (
+                    f"<b>🤖 {bot_name.upper()} STARTED</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"⚡ <b>Status:</b> Online & Ready\n"
+                    f"📅 <b>Time:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}</code>"
+                )
+                async with Bot(token=MAIN_BOT_TOKEN) as bot:
+                    await bot.send_message(chat_id=LOG_CHANNEL_ID, text=msg, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Failed to send {bot_name} startup log: {e}")
+        
         # Wait for shutdown signal
         await stop_event.wait()
         

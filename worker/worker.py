@@ -57,6 +57,20 @@ class WorkerManager:
         # Initialize database and indexes
         await init_database()
         
+        # Send starting log to central logs channel
+        try:
+            from worker.utils import send_central_log
+            from datetime import datetime
+            msg = (
+                f"<b>🤖 WORKER SERVICE STARTED</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ <b>Status:</b> Online & Monitoring\n"
+                f"📅 <b>Time:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}</code>"
+            )
+            asyncio.create_task(send_central_log(msg))
+        except Exception as e:
+            logger.error(f"Failed to send worker start log: {e}")
+        
         # Setup signal handlers for graceful shutdown
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
