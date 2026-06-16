@@ -93,8 +93,7 @@ async def get_stats_text():
 👥 *USER METRICS*
 ├ Total Users: {stats['total_users']}
 ├ Active Sessions: {stats['connected_sessions']}
-├ Premium Active: {stats['paid_active']}
-└ Expired Plans: {stats['expired']}
+└ Premium Active: {stats['paid_active']}
 
 📨 *PERFORMANCE (LAST 24H)*
 ├ Messages Attempted: {total}
@@ -468,8 +467,7 @@ async def admin_users_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 *SEGMENTATION ANALYSIS:*
 ├ 🔗 Active API Sessions: {stats['connected_sessions']}
-├ 💎 Premium Subs Active: {stats['paid_active']}
-└ ⏰ Expired Memberships: {stats['expired']}
+└ 💎 Premium Subs Active: {stats['paid_active']}
 
 _Pro Tip: Use the Broadcast system to target specific segments._
 """

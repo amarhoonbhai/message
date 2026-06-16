@@ -292,11 +292,10 @@ def get_subscription_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🟢 Active", callback_data="adm_sub_list:active:0"),
         ],
         [
-            InlineKeyboardButton("🔴 Expired", callback_data="adm_sub_list:expired:0"),
             InlineKeyboardButton("⏳ Expiring Soon", callback_data="adm_sub_list:expiring_soon:0"),
+            InlineKeyboardButton("💎 Lifetime", callback_data="adm_sub_list:lifetime:0"),
         ],
         [
-            InlineKeyboardButton("💎 Lifetime", callback_data="adm_sub_list:lifetime:0"),
             InlineKeyboardButton("📥 Export Data", callback_data="adm_sub_export"),
         ],
         [

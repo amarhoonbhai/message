@@ -148,7 +148,7 @@ async def get_subscription_stats() -> dict:
     now = datetime.utcnow()
     pipeline = [
         {"$facet": {
-            "total_subscribed": [{"$count": "count"}],
+            "total_subscribed": [{"$match": {"status": "active", "expires_at": {"$gt": now}}}, {"$count": "count"}],
             "active": [{"$match": {"status": "active", "expires_at": {"$gt": now}}}, {"$count": "count"}],
             "expired": [{"$match": {"$or": [{"status": "expired"}, {"expires_at": {"$lte": now}}]}}, {"$count": "count"}],
             "expiring_soon": [{"$match": {"status": "active", "expires_at": {"$gt": now, "$lte": now + timedelta(days=7)}}}, {"$count": "count"}],
@@ -173,7 +173,7 @@ async def query_subscriptions(filter_type="all", search_query="", skip=0, limit=
     db = get_database()
     now = datetime.utcnow()
     
-    match_query = {}
+    match_query = {"status": "active", "expires_at": {"$gt": now}}
     if filter_type == "active":
         match_query = {"status": "active", "expires_at": {"$gt": now}}
     elif filter_type == "expired":
@@ -183,7 +183,7 @@ async def query_subscriptions(filter_type="all", search_query="", skip=0, limit=
     elif filter_type == "lifetime":
         match_query = {"status": "active", "expires_at": {"$gt": now + timedelta(days=3000)}}
 
-    pipeline = [{"$match": match_query}] if match_query else []
+    pipeline = [{"$match": match_query}]
 
     pipeline.append({
         "$lookup": {

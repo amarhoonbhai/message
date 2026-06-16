@@ -39,9 +39,7 @@ async def admin_sub_menu_callback(update: Update, context: ContextTypes.DEFAULT_
 ══════════════════════════════
 
 📊 *OVERVIEW STATS*
-👥 Total Subscribed Users: {stats['total_subscribed']}
 🟢 Active Subscriptions: {stats['active']}
-🔴 Expired Subscriptions: {stats['expired']}
 ⏳ Expiring Soon (7d): {stats['expiring_soon']}
 💎 Lifetime Users: {stats['lifetime']}
 
