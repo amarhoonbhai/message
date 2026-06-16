@@ -99,13 +99,13 @@ async def send_central_log(text: str):
         if not MAIN_BOT_TOKEN:
             logging.getLogger(__name__).warning("MAIN_BOT_TOKEN is empty — cannot send to log channel")
             return
-        from telegram import Bot
+        from shared.bot_init import create_base_bot
         
         # Truncate messages over 4096 chars (Telegram limit)
         if len(text) > 4096:
             text = text[:4090] + "\n..."
             
-        async with Bot(token=MAIN_BOT_TOKEN) as bot:
+        async with create_base_bot(token=MAIN_BOT_TOKEN) as bot:
             await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
     except Exception as e:
         _logger = logging.getLogger(__name__)
@@ -116,8 +116,8 @@ async def send_central_log(text: str):
         if "parse" in error_str.lower() or "can't" in error_str.lower():
             try:
                 from config import MAIN_BOT_TOKEN
-                from telegram import Bot
-                async with Bot(token=MAIN_BOT_TOKEN) as bot:
+                from shared.bot_init import create_base_bot
+                async with create_base_bot(token=MAIN_BOT_TOKEN) as bot:
                     await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text)
                 _logger.info("Retried without HTML parse_mode — success")
             except Exception as retry_e:
@@ -291,10 +291,10 @@ async def send_central_log_return_id(text: str) -> Optional[int]:
         if not MAIN_BOT_TOKEN:
             logging.getLogger(__name__).warning("MAIN_BOT_TOKEN is empty — cannot send to log channel")
             return None
-        from telegram import Bot
+        from shared.bot_init import create_base_bot
         if len(text) > 4096:
             text = text[:4090] + "\n..."
-        async with Bot(token=MAIN_BOT_TOKEN) as bot:
+        async with create_base_bot(token=MAIN_BOT_TOKEN) as bot:
             msg = await bot.send_message(chat_id=LOG_CHANNEL_ID, text=text, parse_mode="HTML")
             return msg.message_id
     except Exception as e:
@@ -313,10 +313,10 @@ async def edit_central_log(message_id: int, text: str) -> bool:
         if not MAIN_BOT_TOKEN:
             logging.getLogger(__name__).warning("MAIN_BOT_TOKEN is empty — cannot send to log channel")
             return False
-        from telegram import Bot
+        from shared.bot_init import create_base_bot
         if len(text) > 4096:
             text = text[:4090] + "\n..."
-        async with Bot(token=MAIN_BOT_TOKEN) as bot:
+        async with create_base_bot(token=MAIN_BOT_TOKEN) as bot:
             await bot.edit_message_text(chat_id=LOG_CHANNEL_ID, message_id=message_id, text=text, parse_mode="HTML")
             return True
     except Exception as e:

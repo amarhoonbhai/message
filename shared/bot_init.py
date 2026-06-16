@@ -5,6 +5,7 @@ Centralized Telegram Application initialization logic.
 import logging
 import signal
 import asyncio
+from telegram import Bot
 from telegram.ext import Application
 from telegram.request import HTTPXRequest
 from db.database import init_database
@@ -19,16 +20,17 @@ def setup_logging():
     return logging.getLogger("bot")
 
 def create_base_application(token: str) -> Application:
-    """Create and configure the bot application with standard timeouts."""
+    """Create and configure the bot application with standard timeouts and disabled SSL verification."""
     if not token:
         raise ValueError("Bot token is not set")
 
-    # Hardened timeouts for stability
+    # Hardened timeouts for stability and disabled SSL verification
     request = HTTPXRequest(
         connect_timeout=30,
         read_timeout=60,
         write_timeout=60,
         pool_timeout=60,
+        httpx_kwargs={"verify": False},
     )
 
     return (
@@ -37,6 +39,17 @@ def create_base_application(token: str) -> Application:
         .request(request)
         .build()
     )
+
+def create_base_bot(token: str) -> Bot:
+    """Create a configured Bot instance with standard timeouts and disabled SSL verification."""
+    request = HTTPXRequest(
+        connect_timeout=30,
+        read_timeout=60,
+        write_timeout=60,
+        pool_timeout=60,
+        httpx_kwargs={"verify": False},
+    )
+    return Bot(token=token, request=request)
 
 async def run_bot_gracefully(application: Application, bot_name: str):
     """Run the bot with graceful shutdown support."""
@@ -64,7 +77,6 @@ async def run_bot_gracefully(application: Application, bot_name: str):
         # Send starting log to central logs channel
         try:
             from config import LOG_CHANNEL_ID, MAIN_BOT_TOKEN
-            from telegram import Bot
             from datetime import datetime
             
             if LOG_CHANNEL_ID and MAIN_BOT_TOKEN:
@@ -74,7 +86,7 @@ async def run_bot_gracefully(application: Application, bot_name: str):
                     f"⚡ <b>Status:</b> Online & Ready\n"
                     f"📅 <b>Time:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}</code>"
                 )
-                async with Bot(token=MAIN_BOT_TOKEN) as bot:
+                async with create_base_bot(token=MAIN_BOT_TOKEN) as bot:
                     await bot.send_message(chat_id=LOG_CHANNEL_ID, text=msg, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Failed to send {bot_name} startup log: {e}")

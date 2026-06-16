@@ -8,7 +8,7 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 
-from telegram import Bot
+from shared.bot_init import create_base_bot
 from telegram.error import TelegramError
 
 from config import MAIN_BOT_TOKEN
@@ -190,7 +190,7 @@ class PlanNotifier:
     async def send_message(self, user_id: int, text: str) -> bool:
         """Sends a message via the bot, returns True on success."""
         try:
-            async with Bot(token=MAIN_BOT_TOKEN) as bot:
+            async with create_base_bot(token=MAIN_BOT_TOKEN) as bot:
                 await bot.send_message(chat_id=user_id, text=text, parse_mode="HTML")
             return True
         except TelegramError as e:

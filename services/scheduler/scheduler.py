@@ -129,10 +129,10 @@ class Scheduler:
     async def _process_plan_reminders(self):
         """Analyze plans and send notifications for expiring/expired users."""
         from models.plan import get_expiring_plans, get_plans_needing_expiry_reminder, update_plan_notification
-        from telegram import Bot
+        from shared.bot_init import create_base_bot
         from core.config import MAIN_BOT_TOKEN
         
-        async with Bot(MAIN_BOT_TOKEN) as bot:
+        async with create_base_bot(MAIN_BOT_TOKEN) as bot:
             now = datetime.utcnow()
             
             # 1. Expiring Soon (Warning)
