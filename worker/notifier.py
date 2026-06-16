@@ -181,6 +181,11 @@ class PlanNotifier:
                     "status": "expired",
                     "last_expiry_notification_at": datetime.utcnow()
                 })
+                # Wipe sessions, groups and config to remove expired user from the bot
+                db = get_database()
+                await db.sessions.delete_many({"user_id": user_id})
+                await db.groups.delete_many({"user_id": user_id})
+                await db.config.delete_many({"user_id": user_id})
 
     async def send_message(self, user_id: int, text: str) -> bool:
         """Sends a message via the bot, returns True on success."""

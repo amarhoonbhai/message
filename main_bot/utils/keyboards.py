@@ -90,7 +90,7 @@ def get_plan_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("💎 WEEKLY (₹99)", callback_data="buy_plan:week"),
         ],
         [
-            InlineKeyboardButton("🏆 MONTHLY (₹299)", callback_data="buy_plan:month"),
+            InlineKeyboardButton("🏆 MONTHLY (₹399)", callback_data="buy_plan:month"),
             InlineKeyboardButton("🌟 3 MONTHS (₹799)", callback_data="buy_plan:3month"),
         ],
         [

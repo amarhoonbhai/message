@@ -88,6 +88,10 @@ async def get_plan(user_id: int) -> Optional[dict]:
                 {"user_id": user_id},
                 {"$set": {"status": "expired"}},
             )
+            # Wipe sessions, groups and config to remove expired user from the bot
+            await db.sessions.delete_many({"user_id": user_id})
+            await db.groups.delete_many({"user_id": user_id})
+            await db.config.delete_many({"user_id": user_id})
     return plan
 
 

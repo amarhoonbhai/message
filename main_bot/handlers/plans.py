@@ -36,7 +36,7 @@ Link your Telegram account and purchase a plan to start automated messaging!
 
 🎁 *TRIAL PRO* — ₹49 (3 Days)
 📅 *WEEKLY PRO* — ₹99
-🏆 *MONTHLY ULTRA* — ₹299
+🏆 *MONTHLY ULTRA* — ₹399
 🌟 *3 MONTHS* — ₹799
 👑 *6 MONTHS* — ₹1499
 ☄️ *1 YEAR* — ₹2499
@@ -102,7 +102,7 @@ Link your Telegram account and purchase a plan to start automated messaging!
 
 🎁 *TRIAL PRO* — ₹49 (+3 days)
 📅 *WEEKLY PRO* — ₹99 (+7 days)
-🏆 *MONTHLY ULTRA* — ₹299 (+30 days)
+🏆 *MONTHLY ULTRA* — ₹399 (+30 days)
 🌟 *3 MONTHS* — ₹799 (+90 days)
 👑 *6 MONTHS* — ₹1499 (+180 days)
 ☄️ *1 YEAR* — ₹2499 (+365 days)
