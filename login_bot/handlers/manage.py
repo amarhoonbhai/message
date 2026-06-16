@@ -11,6 +11,7 @@ from login_bot.utils.keyboards import (
     get_disconnect_confirm_keyboard,
     get_login_welcome_keyboard
 )
+from shared.utils import escape_markdown
 
 async def manage_accounts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all accounts for the user."""
@@ -90,7 +91,7 @@ async def login_home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     user = update.effective_user
     first_name = user.first_name or "User"
-    greeting = f"👋 *Greeting {first_name},*\n\n"
+    greeting = f"👋 *Greeting {escape_markdown(first_name)},*\n\n"
     
     await query.edit_message_text(
         greeting + WELCOME_TEXT,

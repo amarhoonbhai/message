@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 
 from db.models import create_user
 from login_bot.utils.keyboards import get_login_welcome_keyboard
+from shared.utils import escape_markdown
 
 
 WELCOME_TEXT = """
@@ -43,7 +44,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     acc_count = len(accounts)
     
     first_name = user.first_name or "User"
-    greeting = f"👋 *Greeting {first_name},*\n\n"
+    greeting = f"👋 *Greeting {escape_markdown(first_name)},*\n\n"
     
     # Dynamic status line
     if acc_count > 0:

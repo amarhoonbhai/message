@@ -20,6 +20,7 @@ from db.models import create_session, create_user
 from login_bot.utils.keyboards import (
     get_otp_keypad, get_resend_otp_keyboard, get_2fa_keyboard, get_success_keyboard
 )
+from shared.utils import escape_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ Tap digits below 👇
     except Exception as e:
         logger.error(f"Error sending OTP: {e}")
         await query.edit_message_text(
-            f"❌ *Error Sending OTP*\n\n{str(e)}",
+            f"❌ *Error Sending OTP*\n\n{escape_markdown(str(e))}",
             parse_mode="Markdown",
             reply_markup=get_resend_otp_keyboard(),
         )
@@ -251,7 +252,7 @@ Please enter your Telegram 2FA password:
     except Exception as e:
         logger.error(f"OTP verification error: {e}")
         await query.edit_message_text(
-            f"❌ *Error*\n\n{str(e)}",
+            f"❌ *Error*\n\n{escape_markdown(str(e))}",
             parse_mode="Markdown",
             reply_markup=get_resend_otp_keyboard(),
         )
@@ -313,6 +314,6 @@ async def save_session_and_complete(
     except Exception as e:
         logger.error(f"Error saving session: {e}")
         await query.edit_message_text(
-            f"❌ *Error Saving Session*\n\n{str(e)}",
+            f"❌ *Error Saving Session*\n\n{escape_markdown(str(e))}",
             parse_mode="Markdown",
         )
