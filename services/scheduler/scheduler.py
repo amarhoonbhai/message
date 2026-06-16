@@ -142,11 +142,18 @@ class Scheduler:
                 expires = p["expires_at"]
                 hours = int((expires - now).total_seconds() // 3600)
                 
-                msg = (
-                    "⚠️ *SUBSCRIPTION EXPIRING SOON*\n\n"
-                    f"Your premium plan expires in **{hours} hours**.\n"
-                    "To ensure uninterrupted messaging, please renew your plan now!"
-                )
+                if p.get("plan_type") == "free_trial":
+                    msg = (
+                        "⚠️ *TRIAL EXPIRING SOON*\n\n"
+                        f"Your 2-day free trial expires in **{hours} hours**.\n"
+                        "If you want to continue, contact @spinify to buy the access."
+                    )
+                else:
+                    msg = (
+                        "⚠️ *SUBSCRIPTION EXPIRING SOON*\n\n"
+                        f"Your premium plan expires in **{hours} hours**.\n"
+                        "To ensure uninterrupted messaging, please renew your plan now!"
+                    )
                 try:
                     await bot.send_message(uid, msg, parse_mode="Markdown")
                     await update_plan_notification(uid, {"expiration_warnings_sent": p.get("expiration_warnings_sent", 0) + 1})
@@ -156,11 +163,18 @@ class Scheduler:
             expired = await get_plans_needing_expiry_reminder()
             for p in expired:
                 uid = p["user_id"]
-                msg = (
-                    "🔴 *SUBSCRIPTION EXPIRED*\n\n"
-                    "Your premium plan has ended. Your workers have been paused.\n"
-                    "Renew now to resume your automated advertising campaign!"
-                )
+                if p.get("plan_type") == "free_trial":
+                    msg = (
+                        "🔴 *TRIAL EXPIRED*\n\n"
+                        "Your 2-day free trial has expired.\n"
+                        "If you want to continue, contact @spinify to buy the access."
+                    )
+                else:
+                    msg = (
+                        "🔴 *SUBSCRIPTION EXPIRED*\n\n"
+                        "Your premium plan has ended. Your workers have been paused.\n"
+                        "Renew now to resume your automated advertising campaign!"
+                    )
                 try:
                     await bot.send_message(uid, msg, parse_mode="Markdown")
                     await update_plan_notification(uid, {

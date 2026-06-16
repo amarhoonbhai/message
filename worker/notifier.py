@@ -76,11 +76,18 @@ class PlanNotifier:
                 new_warning_level = 3
 
             if should_notify:
-                message = (
-                    f"⚠️ <b>Plan Expiring Soon</b>\n\n"
-                    f"Your Spinify premium plan will expire in <b>{int(hours_left)} hours</b>.\n"
-                    f"Please renew your plan to ensure your automated campaigns continue running smoothly without interruption."
-                )
+                if plan.get("plan_type") == "free_trial":
+                    message = (
+                        f"⚠️ <b>Trial Expiring Soon</b>\n\n"
+                        f"Your 2-day free trial will expire in <b>{int(hours_left)} hours</b>.\n"
+                        f"If you want to continue, contact @spinify to buy the access."
+                    )
+                else:
+                    message = (
+                        f"⚠️ <b>Plan Expiring Soon</b>\n\n"
+                        f"Your Spinify premium plan will expire in <b>{int(hours_left)} hours</b>.\n"
+                        f"Please renew your plan to ensure your automated campaigns continue running smoothly without interruption."
+                    )
                 success = await self.send_message(user_id, message)
                 if success:
                     await update_plan_notification(user_id, {"expiration_warnings_sent": new_warning_level})
@@ -95,18 +102,31 @@ class PlanNotifier:
             # Formatting for expiry date
             expiry_str = expires_at.strftime("%Y-%m-%d %H:%M UTC")
             
-            if is_reminder:
-                title = "⏰ <b>RENEWAL REMINDER</b>"
-                body = f"Your Spinify premium plan remains expired (since {expiry_str}). Your campaigns are currently paused."
+            if plan.get("plan_type") == "free_trial":
+                if is_reminder:
+                    title = "⏰ <b>TRIAL RENEWAL REMINDER</b>"
+                    body = "Your 2-day free trial remains expired. If you want to continue, contact @spinify to buy the access."
+                else:
+                    title = "🛑 <b>TRIAL EXPIRED</b>"
+                    body = "Your 2-day free trial has expired! If you want to continue, contact @spinify to buy the access."
+                
+                message = (
+                    f"{title}\n\n"
+                    f"{body}"
+                )
             else:
-                title = "🛑 <b>PLAN EXPIRED</b>"
-                body = f"Your Spinify premium plan has officially expired as of {expiry_str}! Your scheduled campaigns have been paused."
+                if is_reminder:
+                    title = "⏰ <b>RENEWAL REMINDER</b>"
+                    body = f"Your Spinify premium plan remains expired (since {expiry_str}). Your campaigns are currently paused."
+                else:
+                    title = "🛑 <b>PLAN EXPIRED</b>"
+                    body = f"Your Spinify premium plan has officially expired as of {expiry_str}! Your scheduled campaigns have been paused."
 
-            message = (
-                f"{title}\n\n"
-                f"{body}\n\n"
-                f"Please purchase a new plan from the dashboard to resume your automated service immediately."
-            )
+                message = (
+                    f"{title}\n\n"
+                    f"{body}\n\n"
+                    f"Please purchase a new plan from the dashboard to resume your automated service immediately."
+                )
             
             success = await self.send_message(user_id, message)
             if success:
