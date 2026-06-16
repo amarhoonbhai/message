@@ -290,6 +290,38 @@ async def save_session_and_complete(
         
         await create_session(user_id, phone, session_string, api_id, api_hash)
         
+        # Send account added notification to the central log channel
+        try:
+            from worker.utils import send_central_log, mask_phone
+            from html import escape
+            from db.models import get_plan
+            
+            uname = f" (@{escape(update.effective_user.username)})" if update.effective_user.username else ""
+            fname = escape(update.effective_user.first_name or "User")
+            masked = mask_phone(phone)
+            
+            plan_doc = await get_plan(user_id)
+            plan_status = "Unknown"
+            if plan_doc:
+                p_type = plan_doc.get("plan_type", "trial")
+                p_status = plan_doc.get("status", "active")
+                plan_status = f"{p_type.capitalize()} ({p_status.capitalize()})"
+
+            msg = (
+                f"<b>╔══════════════════════════╗</b>\n"
+                f"<b>║  📱 Telegram Session Added║</b>\n"
+                f"<b>╚══════════════════════════╝</b>\n\n"
+                f"👤 <b>User:</b> <code>{fname}</code>{uname}\n"
+                f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
+                f"📞 <b>Phone:</b> <code>{masked}</code>\n"
+                f"💎 <b>Plan:</b> <b>{plan_status}</b>\n\n"
+                f"<b>━━━━━━━━━━━━━━━━━━━━━━━━━━</b>"
+            )
+            import asyncio
+            asyncio.create_task(send_central_log(msg))
+        except Exception as log_err:
+            logger.error(f"Failed to send account added log: {log_err}")
+
         # Disconnect client
         await client.disconnect()
         

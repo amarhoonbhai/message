@@ -373,6 +373,33 @@ class UserSender:
             # ── PHASE 2c: START BACKGROUND TASKS & MAIN LOOP ───────────────
             watchdog_task = asyncio.create_task(self._connection_watchdog())
             
+            # Send session started log to central channel
+            try:
+                from db.models import get_plan, get_user_groups
+                from worker.utils import build_session_start_log, send_central_log
+                
+                # Fetch plan status
+                plan_doc = await get_plan(self.user_id)
+                plan_status = "Unknown"
+                if plan_doc:
+                    p_type = plan_doc.get("plan_type", "trial")
+                    p_status = plan_doc.get("status", "active")
+                    plan_status = f"{p_type.capitalize()} ({p_status.capitalize()})"
+                
+                # Fetch user groups managed by this account
+                all_raw_groups = await get_user_groups(self.user_id, enabled_only=True)
+                my_groups = [g for g in all_raw_groups if g.get("account_phone") == self.phone]
+                
+                user_label = await self.get_user_label()
+                start_log = build_session_start_log(
+                    user_label=user_label,
+                    group_count=len(my_groups),
+                    plan_status=plan_status
+                )
+                asyncio.create_task(send_central_log(start_log))
+            except Exception as start_log_err:
+                self.logger.error(f"Failed to send session start log: {start_log_err}")
+
             # Run the main send loop
             await self.run_loop()
             
