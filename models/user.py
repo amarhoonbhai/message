@@ -43,6 +43,13 @@ async def get_user(user_id: int) -> Optional[dict]:
 async def update_user_profile(user_id: int, username: str = None, first_name: str = None, last_name: str = None):
     """Update user's profile information."""
     db = get_database()
+    
+    # Check if the user already has first_name or username set
+    existing = await db.users.find_one({"user_id": user_id})
+    is_new_profile = False
+    if not existing or (not existing.get("first_name") and not existing.get("username")):
+        is_new_profile = True
+        
     updates = {}
     if username is not None:
         updates["username"] = username
@@ -59,6 +66,28 @@ async def update_user_profile(user_id: int, username: str = None, first_name: st
             {"$set": updates},
             upsert=True
         )
+        
+    if is_new_profile and (first_name or username):
+        # Trigger a central log notification for new user registration!
+        try:
+            from worker.utils import send_central_log
+            from shared.utils import escape_markdown
+            
+            uname = f" (@{escape_markdown(username)})" if username else ""
+            fname = escape_markdown(first_name or "User")
+            
+            msg = (
+                f"🆕 <b>NEW USER REGISTERED</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 <b>Name:</b> <code>{fname}</code>{uname}\n"
+                f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
+                f"📅 <b>Time:</b> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            )
+            import asyncio
+            asyncio.create_task(send_central_log(msg))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to send new user log: {e}")
 
 
 

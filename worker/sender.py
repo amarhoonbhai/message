@@ -698,12 +698,33 @@ class UserSender:
                 self._last_cycle_duration = cycle_duration
                 
                 if success_groups or failed_groups:
+                    sends_24h_success = 0
+                    sends_24h_total = 0
+                    try:
+                        from db.database import get_database
+                        from datetime import datetime, timedelta
+                        db = get_database()
+                        since_24h = datetime.utcnow() - timedelta(hours=24)
+                        sends_24h_total = await db.send_logs.count_documents({
+                            "user_id": self.user_id,
+                            "sent_at": {"$gte": since_24h}
+                        })
+                        sends_24h_success = await db.send_logs.count_documents({
+                            "user_id": self.user_id,
+                            "sent_at": {"$gte": since_24h},
+                            "status": "success"
+                        })
+                    except Exception as stats_err:
+                        self.logger.error(f"Error fetching 24h stats for cycle report: {stats_err}")
+
                     from worker.utils import send_central_log, build_cycle_report
                     user_label = await self.get_user_label()
                     report = build_cycle_report(
                         user_label, success_groups, failed_groups,
                         send_mode, actual_interval,
-                        cycle_duration=cycle_duration, skipped=skipped_dedup
+                        cycle_duration=cycle_duration, skipped=skipped_dedup,
+                        sends_24h_success=sends_24h_success,
+                        sends_24h_total=sends_24h_total
                     )
                     asyncio.create_task(send_central_log(report))
                 

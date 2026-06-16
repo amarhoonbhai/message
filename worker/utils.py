@@ -154,7 +154,7 @@ def build_live_update(user_label: str, chat_title: str, action: str, index: int,
     )
 
 
-def build_cycle_report(user_label: str, success_groups: list, failed_groups: list, send_mode: str, interval: int, cycle_duration: float = 0, skipped: int = 0) -> str:
+def build_cycle_report(user_label: str, success_groups: list, failed_groups: list, send_mode: str, interval: int, cycle_duration: float = 0, skipped: int = 0, sends_24h_success: int = None, sends_24h_total: int = None) -> str:
     """Build a premium styled cycle summary report — V6 with metrics."""
     now_ist = datetime.now(IST)
     time_str = now_ist.strftime("%d %b %Y • %I:%M %p IST")
@@ -201,7 +201,10 @@ def build_cycle_report(user_label: str, success_groups: list, failed_groups: lis
     text += f"  ❌ Failed:     <b>{len(failed_groups)}</b>\n"
     if skipped > 0:
         text += f"  ⏭ Skipped:    <b>{skipped}</b> (dedup)\n"
-    text += f"  📈 Success:    <b>{rate}%</b>\n\n"
+    text += f"  📈 Success:    <b>{rate}%</b>\n"
+    if sends_24h_success is not None and sends_24h_total is not None:
+        text += f"  ✉️ Sent (24h): <b>{sends_24h_success}/{sends_24h_total}</b> (Delivered/Attempted)\n"
+    text += "\n"
 
     # V6: Performance metrics
     text += f"<b>━━━ PERFORMANCE ━━━</b>\n"
