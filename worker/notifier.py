@@ -24,6 +24,7 @@ def log_info(msg):
 class PlanNotifier:
     def __init__(self):
         self.running = False
+        self._last_cleanup_date = None
 
     async def start(self):
         """Starts the periodic background notifier."""
@@ -43,8 +44,52 @@ class PlanNotifier:
         """Stops the background notifier."""
         self.running = False
 
+    async def clean_database_logs(self):
+        """Automatically clean up logs and records older than 15 days to keep MongoDB fast."""
+        try:
+            from db.database import get_database
+            from datetime import datetime, timedelta
+            from worker.utils import send_central_log
+            
+            db = get_database()
+            now = datetime.utcnow()
+            
+            # 1. Clean old send logs (older than 15 days)
+            logs_cutoff = now - timedelta(days=15)
+            log_result = await db.send_logs.delete_many({"sent_at": {"$lt": logs_cutoff}})
+            
+            # 2. Clean used redeem codes (older than 30 days)
+            codes_cutoff = now - timedelta(days=30)
+            code_result = await db.redeem_codes.delete_many({
+                "used": True,
+                "used_at": {"$lt": codes_cutoff}
+            })
+            
+            total_deleted = log_result.deleted_count + code_result.deleted_count
+            if total_deleted > 0:
+                log_info(f"Database Auto-Cleanup: Removed {log_result.deleted_count} logs and {code_result.deleted_count} codes.")
+                
+                # Send premium styled log to central logs channel
+                msg = (
+                    f"<b>🧹 DATABASE AUTO-CLEANUP</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🗑 <b>Removed Send Logs:</b> <code>{log_result.deleted_count}</code>\n"
+                    f"🎟 <b>Removed Promo Codes:</b> <code>{code_result.deleted_count}</code>\n"
+                    f"⚡ <b>Status:</b> Database optimized and clean!"
+                )
+                await send_central_log(msg)
+                
+        except Exception as e:
+            logger.error(f"Error during database auto-cleanup: {e}")
+
     async def check_expirations(self):
         now = datetime.utcnow()
+        
+        # 0. Clean database logs once a day
+        today = now.date()
+        if self._last_cleanup_date != today:
+            await self.clean_database_logs()
+            self._last_cleanup_date = today
         
         # 1. Process active plans that are expiring soon
         expiring_plans = await get_expiring_plans()
