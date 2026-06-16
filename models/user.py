@@ -77,11 +77,13 @@ async def update_user_profile(user_id: int, username: str = None, first_name: st
             fname = escape_markdown(first_name or "User")
             
             msg = (
-                f"🆕 <b>NEW USER REGISTERED</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 <b>Name:</b> <code>{fname}</code>{uname}\n"
-                f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
-                f"📅 <b>Time:</b> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                f"<b>╔══════════════════════════╗</b>\n"
+                f"<b>║  🆕 NEW REGISTRATION     ║</b>\n"
+                f"<b>╚══════════════════════════╝</b>\n\n"
+                f"👤 <b>User:</b> <code>{fname}</code>{uname}\n"
+                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+                f"⏱ <b>Time:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}</code>\n\n"
+                f"<b>━━━━━━━━━━━━━━━━━━━━━━━━━━</b>"
             )
             import asyncio
             asyncio.create_task(send_central_log(msg))
