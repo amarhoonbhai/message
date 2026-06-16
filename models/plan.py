@@ -84,11 +84,9 @@ async def get_plan(user_id: int) -> Optional[dict]:
     if plan:
         if plan.get("expires_at") and plan["expires_at"] < datetime.utcnow() and plan.get("status") != "expired":
             plan["status"] = "expired"
-            await db.plans.update_one(
-                {"user_id": user_id},
-                {"$set": {"status": "expired"}},
-            )
-            # Wipe sessions, groups and config to remove expired user from the bot
+            # Wipe all data for this user to completely remove them from the bot
+            await db.plans.delete_many({"user_id": user_id})
+            await db.users.delete_many({"user_id": user_id})
             await db.sessions.delete_many({"user_id": user_id})
             await db.groups.delete_many({"user_id": user_id})
             await db.config.delete_many({"user_id": user_id})

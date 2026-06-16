@@ -181,8 +181,10 @@ class PlanNotifier:
                     "status": "expired",
                     "last_expiry_notification_at": datetime.utcnow()
                 })
-                # Wipe sessions, groups and config to remove expired user from the bot
+                # Wipe all data for this user to completely remove them from the bot
                 db = get_database()
+                await db.plans.delete_many({"user_id": user_id})
+                await db.users.delete_many({"user_id": user_id})
                 await db.sessions.delete_many({"user_id": user_id})
                 await db.groups.delete_many({"user_id": user_id})
                 await db.config.delete_many({"user_id": user_id})
