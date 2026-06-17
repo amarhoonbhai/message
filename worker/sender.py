@@ -729,7 +729,6 @@ class UserSender:
                     sends_24h_total = 0
                     try:
                         from db.database import get_database
-                        from datetime import datetime, timedelta
                         db = get_database()
                         since_24h = datetime.utcnow() - timedelta(hours=24)
                         sends_24h_total = await db.send_logs.count_documents({
