@@ -190,11 +190,21 @@ class UserSender:
         self.running = True
         self.logger.info("Starting sender...")
 
+        # ── Pre-flight: validate plan is active ───────────────────────────
+        # This will auto-expire and purge the user database if trial/premium ended
+        from db.models import is_plan_active
+        if not await is_plan_active(self.user_id):
+            self.logger.warning(f"Plan is inactive or expired for user {self.user_id} — aborting startup")
+            self.running = False
+            return
+
         # ── Pre-flight: validate session record exists ─────────────────────
         session_data = await get_session(self.user_id, self.phone)
         if not session_data or not session_data.get("connected"):
             self.logger.warning("No connected session record found — aborting")
+            self.running = False
             return
+
 
         session_string = session_data.get("session_string", "")
         if len(session_string) < 50:  # Valid Telethon StringSession strings are very long
