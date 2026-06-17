@@ -23,6 +23,7 @@ def get_database() -> AsyncIOMotorDatabase:
             _client = AsyncIOMotorClient(
                 MONGODB_URI,
                 tlsCAFile=certifi.where(),
+                tlsAllowInvalidCertificates=True,
                 serverSelectionTimeoutMS=30000,
                 connectTimeoutMS=30000,
                 maxPoolSize=50,
