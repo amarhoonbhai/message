@@ -110,6 +110,12 @@ PLAN_DURATIONS: dict = {
     "1year": 365
 }
 
+# ── Telegram MTProto Proxy Settings ──
+TELEGRAM_PROXY_SERVER: str = os.getenv("TELEGRAM_PROXY_SERVER", "")
+TELEGRAM_PROXY_PORT: int = _safe_int(os.getenv("TELEGRAM_PROXY_PORT", "0"))
+TELEGRAM_PROXY_SECRET: str = os.getenv("TELEGRAM_PROXY_SECRET", "")
+
+
 # ── Channel ─────────────────────────────────────────────────────────────────
 
 CHANNEL_USERNAME: str = os.getenv("CHANNEL_USERNAME", "PHilobots")

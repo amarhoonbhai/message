@@ -23,6 +23,7 @@ from telethon.sessions import StringSession
 from core.logger import setup_service_logging
 from core.database import init_database
 from models.session import get_all_connected_sessions, mark_session_disabled
+from shared.utils import get_telegram_client_kwargs
 from worker.commands import process_command
 from config import OWNER_ID
 
@@ -109,8 +110,10 @@ class CommandListenerService:
             api_hash,
             device_model="Command Listener",
             system_version="1.0",
-            app_version="1.0"
+            app_version="1.0",
+            **get_telegram_client_kwargs()
         )
+
         client.phone = phone
 
         try:

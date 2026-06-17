@@ -20,7 +20,7 @@ from db.models import create_session, create_user
 from login_bot.utils.keyboards import (
     get_otp_keypad, get_resend_otp_keyboard, get_2fa_keyboard, get_success_keyboard
 )
-from shared.utils import escape_markdown
+from shared.utils import escape_markdown, get_telegram_client_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +67,10 @@ async def send_otp_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             api_hash,
             device_model="Group Message Scheduler",
             system_version="1.0",
-            app_version="1.0"
+            app_version="1.0",
+            **get_telegram_client_kwargs()
         )
+
         
         await client.connect()
         

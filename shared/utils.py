@@ -88,3 +88,17 @@ async def safe_reply(update, text: str, reply_markup=None, parse_mode="Markdown"
         if "Message is not modified" not in str(e):
             import logging
             logging.getLogger(__name__).error(f"safe_reply failed: {e}")
+
+def get_telegram_client_kwargs() -> dict:
+    """
+    Get additional kwargs for TelegramClient initialization (e.g., MTProto Proxy).
+    """
+    from telethon import connection
+    from config import TELEGRAM_PROXY_SERVER, TELEGRAM_PROXY_PORT, TELEGRAM_PROXY_SECRET
+    
+    kwargs = {}
+    if TELEGRAM_PROXY_SERVER and TELEGRAM_PROXY_PORT:
+        kwargs["proxy"] = (TELEGRAM_PROXY_SERVER, TELEGRAM_PROXY_PORT, TELEGRAM_PROXY_SECRET)
+        kwargs["connection"] = connection.ConnectionTcpMTProxyRandomizedIntermediate
+    return kwargs
+

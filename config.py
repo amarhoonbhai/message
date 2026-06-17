@@ -97,3 +97,9 @@ PLAN_DURATIONS = {
     "6month": 180,    # 180 days
     "1year": 365,     # 365 days
 }
+
+# ============== Telegram MTProto Proxy ==============
+TELEGRAM_PROXY_SERVER = os.getenv("TELEGRAM_PROXY_SERVER", "")
+TELEGRAM_PROXY_PORT = _safe_int(os.getenv("TELEGRAM_PROXY_PORT", "0"))
+TELEGRAM_PROXY_SECRET = os.getenv("TELEGRAM_PROXY_SECRET", "")
+

@@ -20,6 +20,7 @@ from telethon.errors import (
 
 from core.config import SESSION_POOL_MAX_SIZE, SESSION_POOL_IDLE_TTL
 from models.session import get_session, mark_session_disabled
+from shared.utils import get_telegram_client_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,9 @@ class SessionPool:
             device_model="Worker Pool Client",
             system_version="2.0",
             app_version="2.0",
+            **get_telegram_client_kwargs()
         )
+
 
         try:
             await client.connect()

@@ -52,6 +52,7 @@ from worker.utils import (
     build_progress_bar_report
 )
 from shared.telegram_error_mapper import map_telegram_error
+from shared.utils import get_telegram_client_kwargs
 from worker.commands import process_command  # Used by event handler
 
 logger = logging.getLogger(__name__)
@@ -216,9 +217,11 @@ class UserSender:
             api_hash,
             device_model="Group Message Scheduler Worker",
             system_version="1.0",
-            app_version="1.0"
+            app_version="1.0",
+            **get_telegram_client_kwargs()
         )
         self.client.phone = self.phone
+
 
         # ── Phase 1: Connect + Auth (semaphore caps simultaneous connects) ──
         # The semaphore is released as soon as auth succeeds or fails.
