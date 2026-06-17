@@ -451,7 +451,7 @@ async def get_plan(user_id: int) -> Optional[Dict[str, Any]]:
     
     if plan:
         # Check if expired
-        if plan["expires_at"] < datetime.utcnow() and plan.get("status") != "expired":
+        if plan.get("expires_at") and plan["expires_at"] < datetime.utcnow() and plan.get("status") != "expired":
             # Wipe all data for this user to completely remove them from the bot
             await db.plans.delete_many({"user_id": user_id})
             await db.users.delete_many({"user_id": user_id})
@@ -468,7 +468,7 @@ async def is_plan_active(user_id: int) -> bool:
     plan = await get_plan(user_id)
     if not plan:
         return False
-    return plan.get("status") == "active" and plan["expires_at"] > datetime.utcnow()
+    return plan.get("status") == "active" and plan.get("expires_at") and plan["expires_at"] > datetime.utcnow()
 
 
 async def extend_plan(user_id: int, days: int):
@@ -479,7 +479,8 @@ async def extend_plan(user_id: int, days: int):
     
     if plan:
         # Extend from current expiry or now
-        base_date = max(plan["expires_at"], datetime.utcnow())
+        current_expiry = plan.get("expires_at") or datetime.utcnow()
+        base_date = max(current_expiry, datetime.utcnow())
         new_expiry = base_date + timedelta(days=days)
         
         # Update plan - always 'paid' (premium)
