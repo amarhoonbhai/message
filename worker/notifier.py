@@ -189,6 +189,31 @@ class PlanNotifier:
                 await db.groups.delete_many({"user_id": user_id})
                 await db.config.delete_many({"user_id": user_id})
 
+        # 3. Global Purge: Auto-remove any user data where the plan has expired (older than 24h or already notified)
+        try:
+            db = get_database()
+            purge_cutoff = now - timedelta(hours=24)
+            expired_plans_cursor = db.plans.find({
+                "expires_at": {"$lt": now},
+                "$or": [
+                    {"expires_at": {"$lt": purge_cutoff}},
+                    {"notified_expired": True}
+                ]
+            })
+            expired_plans = await expired_plans_cursor.to_list(None)
+            if expired_plans:
+                log_info(f"Auto-purging {len(expired_plans)} expired users data from the bot database.")
+                for plan in expired_plans:
+                    uid = plan["user_id"]
+                    await db.plans.delete_many({"user_id": uid})
+                    await db.users.delete_many({"user_id": uid})
+                    await db.sessions.delete_many({"user_id": uid})
+                    await db.groups.delete_many({"user_id": uid})
+                    await db.config.delete_many({"user_id": uid})
+        except Exception as purge_err:
+            logger.error(f"Error in global expired purge: {purge_err}")
+
+
     async def send_message(self, user_id: int, text: str) -> bool:
         """Sends a message via the bot, returns True on success."""
         try:
