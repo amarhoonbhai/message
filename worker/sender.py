@@ -185,6 +185,24 @@ class UserSender:
         self.config_cache[cache_key] = (active, datetime.utcnow() + timedelta(minutes=1))
         return active
 
+    async def check_account_health(self, success_count: int, failed_count: int) -> tuple[bool, str]:
+        """
+        Check if the account health is weak.
+        Returns (is_weak, reason).
+        """
+        # 1. Check consecutive error streak
+        if self.error_streak >= 5:
+            return True, f"high consecutive error streak ({self.error_streak} errors)"
+            
+        # 2. Check failure rate in the current cycle
+        total_attempts = success_count + failed_count
+        if total_attempts >= 4:
+            fail_rate = failed_count / total_attempts
+            if fail_rate >= 0.5:
+                return True, f"high cycle failure rate ({int(fail_rate * 100)}% over {total_attempts} attempts)"
+                
+        return False, ""
+
     async def start(self):
         """Start the sender loop — semaphore only guards the short connect+auth phase."""
         self.running = True
@@ -205,6 +223,7 @@ class UserSender:
             self.running = False
             return
 
+        self.error_streak = session_data.get("error_streak", 0)
 
         session_string = session_data.get("session_string", "")
         if len(session_string) < 50:  # Valid Telethon StringSession strings are very long
@@ -498,6 +517,25 @@ class UserSender:
                     self.error_streak = 0
                     self.config_cache.clear()
                 
+                # AUTO HEALTH CHECK: If error streak indicates a weak account
+                is_weak, reason = await self.check_account_health(0, 0)
+                if is_weak:
+                    cooldown_minutes = 15
+                    self.logger.warning(f"⚠️ Account health is weak at cycle start ({reason}). Taking a {cooldown_minutes}-minute break...")
+                    from worker.utils import send_central_log, build_error_log
+                    user_label = await self.get_user_label()
+                    asyncio.create_task(send_central_log(build_error_log(
+                        user_label,
+                        "System Check",
+                        "⚠️ ACCOUNT HEALTH WEAK",
+                        f"Account is weak due to: {reason}. Taking a {cooldown_minutes}-minute safety break before starting cycle."
+                    )))
+                    await self.update_status(f"Health Break ({cooldown_minutes}m)")
+                    await asyncio.sleep(cooldown_minutes * 60)
+                    self.error_streak = 0
+                    self.config_cache.clear()
+                    continue
+                
                 # 1. Check plan validity
                 if not await self._cached_is_plan_active():
                     now = datetime.utcnow()
@@ -721,6 +759,24 @@ class UserSender:
                     else:
                         failed_groups.append(chat_title)
                         failed_count += 1
+                    
+                    # Check account health and take a break if weak mid-cycle
+                    is_weak, reason = await self.check_account_health(success_count, failed_count)
+                    if is_weak:
+                        cooldown_minutes = 15
+                        self.logger.warning(f"⚠️ Account health is weak ({reason}). Taking a {cooldown_minutes}-minute break...")
+                        from worker.utils import send_central_log, build_error_log
+                        user_label = await self.get_user_label()
+                        asyncio.create_task(send_central_log(build_error_log(
+                            user_label,
+                            chat_title,
+                            "⚠️ ACCOUNT HEALTH WEAK",
+                            f"Account is weak due to: {reason}. Taking a {cooldown_minutes}-minute safety break mid-cycle."
+                        )))
+                        await self.update_status(f"Health Break ({cooldown_minutes}m)")
+                        await asyncio.sleep(cooldown_minutes * 60)
+                        self.error_streak = 0
+                        await self.update_status(f"Sending ({i+1}/{len(tasks)})")
                     
                     await update_progress_msg(i + 1)
                     
