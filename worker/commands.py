@@ -135,7 +135,7 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
 async def reply_to_command(client: TelegramClient, message, text: str, auto_delete: bool = True, delete_delay: int = 30):
     """Send a reply to the message that triggered the command, auto-delete after delete_delay."""
     import asyncio
-    reply = await message.reply(text)
+    reply = await message.reply(text, parse_mode="markdown")
     
     if auto_delete:
         async def _auto_delete():
@@ -156,9 +156,9 @@ async def handle_help(client: TelegramClient, user_id: int, message):
     text = (
         "💎 *KURUP ADS V6 ELITE — COMMANDS* 💎\n\n"
         "📢 *GROUP MANAGEMENT*\n"
-        "├ `.addgroup <url>` — Add target group\n"
-        "├ `.addfolder <name>` — Add Telegram folder\n"
-        "├ `.rmgroup <idx>` — Remove group by index\n"
+        "├ `.addgroup [url]` — Add target group\n"
+        "├ `.addfolder [name]` — Add Telegram folder\n"
+        "├ `.rmgroup [idx]` — Remove group by index\n"
         "├ `.rmpaused` — Remove all paused groups\n"
         "├ `.pauseall` — Pause ALL groups at once\n"
         "├ `.resumeall` — Resume ALL groups at once\n"
@@ -166,11 +166,11 @@ async def handle_help(client: TelegramClient, user_id: int, message):
         "├ `.groups` — Show your target list\n"
         "└ `.folders` — List your account folders\n\n"
         "⚙️ *WORKER SETTINGS*\n"
-        "├ `.interval <min>` — Set loop delay (min: {min}m)\n"
+        "├ `.interval [min]` — Set loop delay (min: {min}m)\n"
         "├ `.shuffle on/off` — Randomize loop order\n"
         "├ `.copymode on/off` — Fresh message (No Forward tag)\n"
-        "├ `.sendmode <pattern>` — `seq` | `rot` | `rand` \n"
-        "├ `.responder <msg>` — Set auto-DM reply\n"
+        "├ `.sendmode [pattern]` — `seq` | `rot` | `rand` \n"
+        "├ `.responder [msg]` — Set auto-DM reply\n"
         "├ `.responder off` — Disable auto-DM\n"
         "└ `.nightmode on/off` — 12AM-6AM Automation\n\n"
         "⚡ *DIAGNOSTICS & CONTROL*\n"
@@ -332,7 +332,7 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
             f"📁 *TARGET GROUPS — {phone}*\n"
             f"════════════════════════\n\n"
             f"⚪ No groups found.\n\n"
-            f"💡 Type `.addgroup <url>` to begin!"
+            f"💡 Type `.addgroup [url]` to begin!"
         )
         return
     
@@ -362,7 +362,7 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
         text += f"  ...\n  _And {len(groups) - 15} more groups._\n"
         
     text += f"\n══════════════════════\n"
-    text += f"Slots: {total_count}/{MAX_GROUPS_PER_USER} ▪ `.rmgroup <idx>`"
+    text += f"Slots: {total_count}/{MAX_GROUPS_PER_USER} ▪ `.rmgroup [idx]`"
     
     await reply_to_command(client, message, text)
 
@@ -374,7 +374,7 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         await reply_to_command(client, message, 
-            "○ Usage: .addgroup <url> [url2] [url3]...\n\n"
+            "○ Usage: .addgroup [url] [url2] [url3]...\n\n"
             "Examples:\n"
             "  ◦ .addgroup @group1\n"
             "  ◦ .addgroup @group1 @group2 @group3\n"
@@ -581,7 +581,7 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
     parts = text.split()
     if len(parts) < 2:
         await reply_to_command(client, message,
-            "○ Usage: .rmgroup <number or url> [idx2] [idx3]...\n\n"
+            "○ Usage: .rmgroup [number or url] [idx2] [idx3]...\n\n"
             "Examples:\n"
             "  ◦ .rmgroup 1\n"
             "  ◦ .rmgroup 1 5 10 @groupname\n\n"
@@ -747,7 +747,7 @@ async def handle_interval(client: TelegramClient, user_id: int, message, text: s
         current = config.get("interval_min", MIN_INTERVAL_MINUTES)
         await reply_to_command(client, message,
             f"➤ Current Interval: {current} minutes\n\n"
-            f"Usage: .interval <minutes>\n"
+            f"Usage: .interval [minutes]\n"
             f"Minimum: {MIN_INTERVAL_MINUTES} minutes\n\n"
             f"Example: .interval 30"
         )
@@ -847,7 +847,7 @@ async def handle_sendmode(client: TelegramClient, user_id: int, message, text: s
     if len(parts) < 2:
         await reply_to_command(client, message,
             f"➤ Send Mode: {current.title()}\n\n"
-            f"Usage: .sendmode <mode>\n"
+            f"Usage: .sendmode [mode]\n"
             f"Modes:\n"
             f"  ◦ sequential: Ad 1 to all groups, then Ad 2...\n"
             f"  ◦ rotate: Grp 1 gets Ad 1, Grp 2 gets Ad 2...\n"
@@ -884,7 +884,7 @@ async def handle_responder(client: TelegramClient, user_id: int, message, text: 
             f"➤ Auto-Responder: {current}\n\n"
             f"Usage:\n"
             f"  .responder on/off\n"
-            f"  .responder <your message>\n\n"
+            f"  .responder [your message]\n\n"
             f"Current message:\n"
             f"\"{config.get('auto_reply_text')}\""
         )
@@ -916,7 +916,7 @@ async def handle_userstatus(client: TelegramClient, user_id: int, message, text:
         
     parts = text.split()
     if len(parts) < 2:
-        await reply_to_command(client, message, "○ Usage: .userstatus <user_id>")
+        await reply_to_command(client, message, "○ Usage: .userstatus [user_id]")
         return
         
     try:
@@ -934,7 +934,7 @@ async def handle_addplan(client: TelegramClient, user_id: int, message, text: st
         
     parts = text.split()
     if len(parts) < 3:
-        await reply_to_command(client, message, "○ Usage: .addplan <user_id> <week|month|3month|6month|1year|days>")
+        await reply_to_command(client, message, "○ Usage: .addplan [user_id] [duration]")
         return
         
     try:
@@ -1069,7 +1069,7 @@ async def handle_nightmode(client: TelegramClient, user_id: int, message, text: 
         await reply_to_command(client, message, 
             f"🌙 GLOBAL NIGHT MODE\n\n"
             f"➤ Current: {current}\n\n"
-            f"Usage: .nightmode <on/off/auto>\n"
+            f"Usage: .nightmode [on/off/auto]\n"
             f"  ◦ `on`: Force night mode NOW\n"
             f"  ◦ `off`: Disable night mode NOW\n"
             f"  ◦ `auto`: Use standard 00:00-06:00 IST"
@@ -1131,7 +1131,7 @@ async def handle_folders(client: TelegramClient, user_id: int, message):
             await reply_to_command(client, message, "📁 No custom folders found.")
             return
             
-        text += f"\n💡 Use `.addfolder <name>` to add all groups from a folder."
+        text += f"\n💡 Use `.addfolder [name]` to add all groups from a folder."
         await reply_to_command(client, message, text)
         
     except Exception as e:
@@ -1143,7 +1143,7 @@ async def handle_addfolder(client: TelegramClient, user_id: int, message, text: 
     """Add all groups from a specific Telegram folder or Share Link."""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        await reply_to_command(client, message, "○ Usage: `.addfolder <folder_name OR share_link>`\n\nExample: `.addfolder Crypto` or `.addfolder t.me/addlist/...`")
+        await reply_to_command(client, message, "○ Usage: `.addfolder [folder_name OR share_link]`\n\nExample: `.addfolder Crypto` or `.addfolder t.me/addlist/...`")
         return
         
     folder_input = parts[1].strip()
