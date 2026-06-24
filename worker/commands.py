@@ -456,13 +456,16 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
                     from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
                     from telethon.tl.types import ChatInviteAlready, ChatInvite
                     try:
-                        invite = await client(CheckChatInviteRequest(invite_hash))
+                        invite = await asyncio.wait_for(client(CheckChatInviteRequest(invite_hash)), timeout=10.0)
                         if isinstance(invite, ChatInviteAlready):
                             entity = invite.chat
                         else:
-                            updates = await client(ImportChatInviteRequest(invite_hash))
+                            updates = await asyncio.wait_for(client(ImportChatInviteRequest(invite_hash)), timeout=15.0)
                             if updates.chats:
                                 entity = updates.chats[0]
+                    except asyncio.TimeoutError:
+                        failed.append((group_input, "Invite check timeout"))
+                        continue
                     except Exception as e:
                         failed.append((group_input, f"Invite Error: {str(e)[:15]}"))
                         continue
@@ -470,18 +473,28 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             if not entity:
                 try:
                     # Get the entity (group/channel)
-                    entity = await client.get_entity(group_identifier)
+                    entity = await asyncio.wait_for(client.get_entity(group_identifier), timeout=10.0)
                 except ValueError:
                     # Not in cache, try scanning dialogs
                     found = False
-                    async for dialog in client.iter_dialogs(limit=300):
-                        if str(dialog.id) == str(group_identifier) or (dialog.entity and dialog.entity.username and dialog.entity.username.lower() == str(group_identifier).lstrip('@').lower()):
-                            entity = dialog.entity
-                            found = True
-                            break
+                    # Optimize: Only scan dialogs for numeric/integer IDs, not usernames
+                    if isinstance(group_identifier, int):
+                        try:
+                            # Use get_dialogs(limit=100) instead of iter_dialogs to prevent hanging in async loops
+                            dialogs = await asyncio.wait_for(client.get_dialogs(limit=100), timeout=15.0)
+                            for dialog in dialogs:
+                                if str(dialog.id) == str(group_identifier) or (dialog.entity and dialog.entity.username and dialog.entity.username.lower() == str(group_identifier).lstrip('@').lower()):
+                                    entity = dialog.entity
+                                    found = True
+                                    break
+                        except asyncio.TimeoutError:
+                            pass
                     if not found:
                         failed.append((group_input, "Not found in cache. Open group first."))
                         continue
+                except asyncio.TimeoutError:
+                    failed.append((group_input, "Timeout resolving group"))
+                    continue
 
             chat_id = entity.id
             chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
@@ -490,7 +503,7 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             member_count = 0
             try:
                 from telethon.tl.functions.channels import GetFullChannelRequest
-                full_chat = await client(GetFullChannelRequest(entity))
+                full_chat = await asyncio.wait_for(client(GetFullChannelRequest(entity)), timeout=5.0)
                 member_count = full_chat.full_chat.participants_count
             except Exception:
                 pass
@@ -516,6 +529,8 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             failed.append((group_input, "Private/No access"))
         except (InviteHashInvalidError, InviteHashExpiredError):
             failed.append((group_input, "Invalid invite"))
+        except asyncio.TimeoutError:
+            failed.append((group_input, "Timeout resolving group"))
         except Exception as e:
             failed.append((group_input, str(e)[:20]))
             
