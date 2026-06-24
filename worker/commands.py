@@ -1006,50 +1006,62 @@ def parse_group_input(input_str: str) -> tuple[Optional[str], Optional[int]]:
     Parse group URL, username, or ID into a (identifier, topic_id) tuple.
     Returns (None, None) if parsing fails.
     """
-    input_str = input_str.strip()
+    input_str = input_str.strip().rstrip('/')
     if not input_str:
         return None, None
     
-    # 1. Topic/Forum Pattern (t.me/c/123/456 or t.me/username/456)
-    topic_match = re.search(r"t\.me/(?:c/)?([a-zA-Z0-9_+%-]+)/(\d+)$", input_str)
-    if topic_match:
-        ident = topic_match.group(1)
-        topic_id = int(topic_match.group(2))
-        
-        # If it's a private channel ID (serial), add -100 prefix
-        if ident.isdigit() and not ident.startswith("-100"):
-            ident = int(f"-100{ident}")
-        elif ident.lstrip("-").isdigit():
-            ident = int(ident)
-        elif not ident.startswith("@") and not ident.isdigit():
-            ident = f"@{ident}"
-            
+    # 1. Private Topic/Forum Pattern (t.me/c/123/456)
+    private_topic_match = re.search(r"t\.me/c/(\d+)/(\d+)$", input_str)
+    if private_topic_match:
+        ident = int(f"-100{private_topic_match.group(1)}")
+        topic_id = int(private_topic_match.group(2))
         return ident, topic_id
 
-    # 2. Addlist/Chatlist (addlist:slug)
+    # 2. Public Topic/Forum Pattern (t.me/username/456)
+    public_topic_match = re.search(r"t\.me/([a-zA-Z0-9_]{5,})/(\d+)$", input_str)
+    if public_topic_match:
+        ident = f"@{public_topic_match.group(1)}"
+        topic_id = int(public_topic_match.group(2))
+        return ident, topic_id
+
+    # 3. Addlist/Chatlist (addlist:slug)
     if "addlist/" in input_str:
         slug = input_str.split("addlist/")[1].split("?")[0]
         return f"addlist:{slug}", None
 
-    # 3. Direct Join/Invite Links
+    # 4. Direct Join/Invite Links
     if any(x in input_str for x in ["t.me/+", "joinchat/", "t.me/joinchat/"]):
         return input_str, None
 
-    # 4. Standard username links or raw usernames
+    # 5. Standard private links (t.me/c/1839485732)
+    private_match = re.search(r"t\.me/c/(\d+)$", input_str)
+    if private_match:
+        return int(f"-100{private_match.group(1)}"), None
+
+    # 6. Standard public links (t.me/groupname)
     if "t.me/" in input_str:
         ident = input_str.split("/")[-1].split("?")[0]
-        if not ident.startswith("@") and not ident.isdigit():
+        if ident.isdigit():
+            return int(f"-100{ident}"), None
+        if not ident.startswith("@"):
             ident = f"@{ident}"
         return ident, None
-    # 5. Raw username with @
+
+    # 7. Raw username with @
     if input_str.startswith("@"):
         return input_str, None
 
-    # 6. Raw Numeric ID
+    # 8. Raw Numeric ID
     if re.match(r"^-?\d+$", input_str):
-        return int(input_str), None
+        val = int(input_str)
+        # If it's a positive ID and doesn't look like a standard chat (usually 8+ digits), add -100 prefix
+        if val > 0 and len(input_str) >= 8 and not input_str.startswith("100"):
+            val = int(f"-100{val}")
+        elif val < 0 and not input_str.startswith("-100"):
+            val = int(f"-100{abs(val)}")
+        return val, None
 
-    # 7. Fallback for raw alphanumeric strings (assume username)
+    # 9. Fallback for raw alphanumeric strings (assume username)
     if re.match(r"^[a-zA-Z0-9_]+$", input_str):
         return f"@{input_str}", None
     
