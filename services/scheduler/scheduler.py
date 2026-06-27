@@ -172,8 +172,8 @@ class Scheduler:
                 else:
                     msg = (
                         "🔴 *SUBSCRIPTION EXPIRED*\n\n"
-                        "Your premium plan has ended. Your workers have been paused.\n"
-                        "Renew now to resume your automated advertising campaign!"
+                        "Your premium plan has ended. You have been switched to the Free Plan User tier.\n"
+                        "Renew now to unlock premium features and configurations!"
                     )
                 try:
                     await bot.send_message(uid, msg, parse_mode="Markdown")

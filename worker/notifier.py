@@ -162,15 +162,15 @@ class PlanNotifier:
             else:
                 if is_reminder:
                     title = "⏰ <b>RENEWAL REMINDER</b>"
-                    body = f"Your Spinify premium plan remains expired (since {expiry_str}). Your campaigns are currently paused."
+                    body = f"Your Spinify premium plan remains expired (since {expiry_str}). You are currently running on the Free Plan User tier."
                 else:
                     title = "🛑 <b>PLAN EXPIRED</b>"
-                    body = f"Your Spinify premium plan has officially expired as of {expiry_str}! Your scheduled campaigns have been paused."
+                    body = f"Your Spinify premium plan has officially expired as of {expiry_str}! You have been automatically transitioned to the Free Plan User tier."
 
                 message = (
                     f"{title}\n\n"
                     f"{body}\n\n"
-                    f"Please purchase a new plan from the dashboard to resume your automated service immediately."
+                    f"Please purchase a new plan from the dashboard to unlock premium advanced features."
                 )
             
             success = await self.send_message(user_id, message)
