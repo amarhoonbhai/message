@@ -44,7 +44,8 @@ Link your Telegram account and purchase a plan to start automated messaging!
 ✨ *Instant activation after payment verification!*
 """
     else:
-        plan_type = plan.get("plan_type", "premium").upper()
+        p_type = plan.get("plan_type", "premium")
+        plan_type = "FREE USER" if p_type in ("free_trial", "free_user") else p_type.upper()
         status = plan.get("status", "unknown").upper()
         expires_at = plan.get("expires_at")
         
