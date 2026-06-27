@@ -210,6 +210,13 @@ async def toggle_send_mode_callback(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     user_id = update.effective_user.id
     
+    # Restrict to Premium users
+    plan = await get_plan(user_id)
+    is_premium = plan is not None and plan.get("status") == "active"
+    if not is_premium:
+        await query.answer("⚠️ Premium Feature: Upgrade your plan to change send mode.", show_alert=True)
+        return
+    
     config = await get_user_config(user_id)
     current_mode = config.get("send_mode", "sequential")
     
