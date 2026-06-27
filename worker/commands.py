@@ -246,13 +246,13 @@ async def handle_status(client: TelegramClient, user_id: int, message, text: str
             else:
                 plan_status = f"🟢 Active — {hours_left}h left"
         else:
-            plan_status = "🔴 Expired"
-            plan_badge = "⚠️ EXPIRED"
-            plan_type = "Expired"
+            plan_status = "⚪ Free User (Paid Plan Expired)"
+            plan_badge = "⚪ FREE USER"
+            plan_type = "Free User"
     else:
-        plan_status = "⚪ No Plan"
-        plan_badge = "❌ NONE"
-        plan_type = "None"
+        plan_status = "⚪ Free User (No Paid Plan)"
+        plan_badge = "⚪ FREE USER"
+        plan_type = "Free User"
     
     phone_display = session.get("phone", "Unknown") if session else ("Owner Check" if target_user_id != user_id else "Unknown")
     from core.config import DEFAULT_INTERVAL_MINUTES

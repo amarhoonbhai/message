@@ -73,11 +73,12 @@ Link your Telegram account and purchase a plan to start automated messaging!
                 filled = int(progress * 10)
                 bar = "█" * filled + "▒" * (10 - filled)
             else:
-                status_icon = "🔴"
-                status_text = "EXPIRED"
-                time_display = "⚠️ *Your plan has expired!*"
+                status_icon = "⚪"
+                status_text = "FREE USER"
+                time_display = "⚠️ *Your premium subscription has ended.*"
                 bar = "▒" * 10
-                badge = "⚠️"
+                badge = "⚪"
+                plan_type = "FREE USER"
         else:
             status_icon = "⚪"
             status_text = "UNKNOWN"

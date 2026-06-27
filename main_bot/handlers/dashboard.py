@@ -126,11 +126,11 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             plan_line2 = f"     └─ 📅 Expires: {expiry_date}"
         else:
-            plan_status = "🔴 EXPIRED"
-            plan_line2 = "     └─ Redeem a code to reactivate!"
+            plan_status = "⚪ FREE USER"
+            plan_line2 = "     └─ Upgrade to Premium to unlock options!"
     else:
-        plan_status = "⚪ NO PLAN"
-        plan_line2 = "     └─ Upgrade to Premium to start!"
+        plan_status = "⚪ FREE USER"
+        plan_line2 = "     └─ Upgrade to Premium to unlock options!"
     
     # ═══ Forwarding status ═══
     has_connected = any(s.get("connected") for s in sessions) if sessions else False
