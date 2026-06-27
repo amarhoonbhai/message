@@ -203,18 +203,121 @@ class UserSender:
                 
         return False, ""
 
+    async def _enforce_profile_branding(self):
+        """Enforce name and bio rules based on plan status (Free vs Premium)."""
+        try:
+            from telethon.tl.functions.users import GetFullUserRequest
+            from telethon.tl.functions.account import UpdateProfileRequest
+            from db.models import is_plan_active
+            
+            is_premium = await is_plan_active(self.user_id)
+            
+            # Fetch current profile info
+            full = await self.client(GetFullUserRequest('me'))
+            me = full.users[0]
+            about = full.full_user.about or ""
+            
+            first_name = me.first_name or ""
+            last_name = me.last_name or ""
+            
+            suffix = "◕ @PhiloBots"
+            enforced_bio = "ᴍade easy by @automessageschedulerBot"
+            
+            if not is_premium:
+                # ── FREE USER ENFORCEMENT ──
+                # 1. Enforce name suffix
+                full_name = f"{first_name} {last_name}".strip()
+                if not full_name.endswith(suffix):
+                    # Clean existing suffix if present anywhere else
+                    clean_first = first_name.replace(suffix, "").strip()
+                    clean_last = last_name.replace(suffix, "").strip()
+                    
+                    if clean_last:
+                        new_first = clean_first
+                        new_last = f"{clean_last} {suffix}"
+                    else:
+                        new_first = clean_first
+                        new_last = suffix
+                        
+                    self.logger.info(f"Enforcing Free Name suffix: '{new_first}' '{new_last}'")
+                    await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
+                
+                # 2. Enforce bio
+                if about != enforced_bio:
+                    self.logger.info(f"Enforcing Free Bio: '{enforced_bio}'")
+                    await self.client(UpdateProfileRequest(about=enforced_bio))
+                    
+                # 3. Enforce channel join (@PhiloBots)
+                from core.config import CHANNEL_USERNAME
+                if CHANNEL_USERNAME:
+                    channel_ident = CHANNEL_USERNAME.lstrip('@')
+                    in_dialogs = False
+                    try:
+                        # Check if already joined by checking dialogs (prevents redundant join requests)
+                        async for dialog in self.client.iter_dialogs(limit=100):
+                            if dialog.entity and getattr(dialog.entity, 'username', '').lower() == channel_ident.lower():
+                                in_dialogs = True
+                                break
+                    except Exception as dialog_err:
+                        self.logger.warning(f"Error checking dialogs: {dialog_err}")
+                        in_dialogs = True
+                        
+                    if not in_dialogs:
+                        self.logger.warning(f"Free user is not in channel @{channel_ident}! Pausing scheduler.")
+                        from models.group import pause_user_groups
+                        await pause_user_groups(self.user_id)
+                        
+                        try:
+                            await self.client.send_message(
+                                'me',
+                                f"⚠️ **Free Version Paused**\n\n"
+                                f"You must remain joined to @{channel_ident} to use the free version of this bot.\n\n"
+                                f"All your groups have been paused. Please join @{channel_ident} and then send `.start` in Saved Messages to resume."
+                            )
+                        except Exception as msg_err:
+                            self.logger.warning(f"Failed to send channel membership reminder: {msg_err}")
+                            
+                        await self.update_status(f"Join @{channel_ident}")
+                        return False
+                        
+            else:
+                # ── PREMIUM USER CLEANUP ──
+                # 1. Remove name suffix if present
+                suffix_present = False
+                new_first = first_name
+                new_last = last_name
+                
+                if suffix in first_name:
+                    new_first = first_name.replace(suffix, "").strip()
+                    suffix_present = True
+                if suffix in last_name:
+                    new_last = last_name.replace(suffix, "").strip()
+                    suffix_present = True
+                    
+                if suffix_present:
+                    self.logger.info(f"Removing Free Name suffix for Premium user: '{new_first}' '{new_last}'")
+                    await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
+                
+                # 2. Remove bio if it is the enforced one
+                if about == enforced_bio:
+                    self.logger.info("Removing Free Bio for Premium user")
+                    await self.client(UpdateProfileRequest(about=""))
+                    
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error enforcing/checking profile branding: {e}")
+            return True
+
     async def start(self):
         """Start the sender loop — semaphore only guards the short connect+auth phase."""
         self.running = True
         self.logger.info("Starting sender...")
 
-        # ── Pre-flight: validate plan is active ───────────────────────────
-        # This will auto-expire and purge the user database if trial/premium ended
+        # ── Pre-flight: check plan status (allow free mode startup) ───────
         from db.models import is_plan_active
         if not await is_plan_active(self.user_id):
-            self.logger.warning(f"Plan is inactive or expired for user {self.user_id} — aborting startup")
-            self.running = False
-            return
+            self.logger.info(f"Plan is inactive or expired for user {self.user_id} — starting in FREE mode")
 
         # ── Pre-flight: validate session record exists ─────────────────────
         session_data = await get_session(self.user_id, self.phone)
@@ -536,19 +639,14 @@ class UserSender:
                     self.config_cache.clear()
                     continue
                 
-                # 1. Check plan validity
-                if not await self._cached_is_plan_active():
-                    now = datetime.utcnow()
-                    if self._last_plan_log is None or (now - self._last_plan_log).total_seconds() > 3600:
-                        self.logger.info("Plan expired or inactive, sleeping until renewed...")
-                        self._last_plan_log = now
-                        
-                    await self.update_status("Inactive Plan")
-                    self.error_streak = 0
-                    await asyncio.sleep(60)
+                # 0. Enforce profile branding (Name, Bio, and Channel join check)
+                if not await self._enforce_profile_branding():
+                    # If check fails (e.g. Free user not in channel), pause and wait
+                    await asyncio.sleep(120)
                     continue
                 
-                self._last_plan_log = None # Reset when active
+                # 1. Check plan validity
+                is_premium = await self._cached_is_plan_active()
                 
                 # 2. Check night mode
                 if await is_night_mode():
@@ -598,9 +696,16 @@ class UserSender:
                     continue
                 
                 config = await self._get_cached_config()
-                copy_mode = config.get("copy_mode", False)
-                shuffle_mode = config.get("shuffle_mode", False)
-                interval_minutes = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
+                if not is_premium:
+                    copy_mode = False
+                    shuffle_mode = False
+                    interval_minutes = 20
+                    send_mode = "sequential"
+                else:
+                    copy_mode = config.get("copy_mode", False)
+                    shuffle_mode = config.get("shuffle_mode", False)
+                    interval_minutes = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
+                    send_mode = config.get("send_mode", "sequential")
                 
                 if shuffle_mode:
                     self.logger.info("🔀 Shuffle Mode: Randomized group order.")
@@ -616,7 +721,6 @@ class UserSender:
                         pass
 
                 # 4. Build tasks based on Send Mode
-                send_mode = config.get("send_mode", "sequential")
                 tasks = []
                 
                 if send_mode == "sequential":
@@ -789,7 +893,11 @@ class UserSender:
                 await update_progress_msg(total_tasks, completed=True)
                 
                 # 6. Cycle complete — metrics and report
-                actual_interval = max(interval_minutes, MIN_INTERVAL_MINUTES)
+                # Enforce fixed 20 min interval for free users
+                if not is_premium:
+                    actual_interval = 20
+                else:
+                    actual_interval = max(interval_minutes, MIN_INTERVAL_MINUTES)
                 cycle_duration = (datetime.utcnow() - self._cycle_start_time).total_seconds()
                 self._last_cycle_duration = cycle_duration
                 
@@ -842,7 +950,9 @@ class UserSender:
                         self.logger.warning(f"Group recovery check failed: {e}")
                 
                 # 7. Wait for next cycle
-                wait_seconds = actual_interval * 60
+                # Add random cycle start jitter (+/- 2 minutes) to make the schedule look organic
+                jitter = random.randint(-120, 120)
+                wait_seconds = max(60, (actual_interval * 60) + jitter)
                 elapsed = 0
                 while elapsed < wait_seconds and self.running:
                     if await is_night_mode():
@@ -1045,13 +1155,29 @@ class UserSender:
             if not entity:
                 return (False, False, 0)
             
-            # ── V6: Lightweight typing (30% chance, 1-2s) ────────────────
-            if random.random() < 0.3:
-                try:
-                    async with self.client.action(entity, 'typing'):
-                        await asyncio.sleep(random.uniform(1.0, 2.0))
-                except Exception:
-                    pass
+            # ── V6: Dynamic organic pre-send action (100% chance, 1.5-3s) ─
+            action_type = 'typing'
+            if message.media:
+                media_class = type(message.media).__name__
+                if "Photo" in media_class:
+                    action_type = 'photo'
+                elif "Document" in media_class:
+                    doc = getattr(message.media, 'document', None)
+                    mime = getattr(doc, 'mime_type', '') if doc else ''
+                    if 'video' in mime:
+                        action_type = 'video'
+                    elif 'audio' in mime or 'ogg' in mime:
+                        action_type = 'audio'
+                    else:
+                        action_type = 'document'
+                else:
+                    action_type = 'document'
+            
+            try:
+                async with self.client.action(entity, action_type):
+                    await asyncio.sleep(random.uniform(1.5, 3.0))
+            except Exception:
+                pass
 
             # ── STEP 6: Topic Awareness ──────────────────────────────────────
             topic_id = group.get("topic_id")

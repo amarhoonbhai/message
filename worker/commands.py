@@ -7,7 +7,7 @@ import logging
 import re
 import random
 from typing import Optional, List
-from telethon import TelegramClient
+from telethon import TelegramClient, utils
 from telethon.errors import (
     ChannelPrivateError,
     ChannelInvalidError,
@@ -46,6 +46,20 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
     
     cmd = text.lower().split()[0]
     
+    # Restrict premium commands for free version users
+    from models.plan import is_plan_active
+    is_premium = await is_plan_active(user_id)
+    
+    premium_commands = {
+        ".interval", ".shuffle", ".copymode", ".sendmode", ".responder",
+        ".folders", ".addfolder", ".nightmode", ".stats", ".health",
+        ".check", ".rmpaused", ".addplan"
+    }
+    
+    if cmd in premium_commands and not is_premium:
+        await reply_to_command(client, message, "⚠️ **Premium Feature**\nThis command is restricted to Premium users. Upgrade your plan to unlock.")
+        return True
+        
     try:
         if cmd == ".help":
             await handle_help(client, user_id, message)
@@ -241,7 +255,9 @@ async def handle_status(client: TelegramClient, user_id: int, message, text: str
     
     phone_display = session.get("phone", "Unknown") if session else ("Owner Check" if target_user_id != user_id else "Unknown")
     from core.config import DEFAULT_INTERVAL_MINUTES
-    interval = config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
+    from models.plan import is_plan_active
+    is_premium = await is_plan_active(target_user_id)
+    interval = 20 if not is_premium else config.get("interval_min", DEFAULT_INTERVAL_MINUTES)
     
     # Setting indicators
     send_mode = config.get("send_mode", "sequential").title()
@@ -496,7 +512,7 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
                     failed.append((group_input, "Timeout resolving group"))
                     continue
 
-            chat_id = entity.id
+            chat_id = utils.get_peer_id(entity)
             chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
             
             # Get member count
@@ -538,7 +554,16 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
         # If processing multiple groups, apply a safety gap to prevent hitting Telegram limits
         if idx < total:
             is_invite_link = isinstance(group_identifier, str) and any(x in group_identifier for x in ["joinchat/", "t.me/+"])
-            delay = random.uniform(5.0, 10.0) if is_invite_link else random.uniform(2.0, 5.0)
+            # Base delay: 20-40s for joining via invite links, 5-10s for username resolutions
+            if is_invite_link:
+                delay = random.uniform(20.0, 40.0)
+            else:
+                delay = random.uniform(5.0, 10.0)
+                
+            # Additional cool-down break after every 5 groups to mimic human rest periods
+            if idx % 5 == 0:
+                rest_break = random.uniform(30.0, 60.0)
+                delay += rest_break
             
             current_status = f"{slot_limit_warning}⏳ **Importing Groups ({idx}/{total})**\n"
             current_status += f"⏳ Applying safety gap ({delay:.1f}s)...\n"
@@ -641,7 +666,7 @@ async def handle_rmgroup(client: TelegramClient, user_id: int, message, text: st
                 # Resolve entity or match by username/title in existing list
                 try:
                     entity = await client.get_entity(group_identifier)
-                    chat_id = entity.id
+                    chat_id = utils.get_peer_id(entity)
                 except Exception:
                     pass
                 
@@ -1339,7 +1364,7 @@ async def process_folder_peers(client, user_id, message, folder_name, peers):
             if not isinstance(entity, (Channel, Chat)):
                 continue
                 
-            chat_id = entity.id
+            chat_id = utils.get_peer_id(entity)
             chat_title = entity.title
             
             # Get member count

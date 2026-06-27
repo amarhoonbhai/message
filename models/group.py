@@ -22,7 +22,7 @@ async def add_group(
     now = datetime.utcnow()
 
     result = await db.groups.find_one_and_update(
-        {"user_id": user_id, "chat_id": chat_id, "topic_id": topic_id},
+        {"user_id": user_id, "chat_id": chat_id},
         {
             "$set": {
                 "chat_title": chat_title,
