@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from db.models import get_all_user_sessions, get_plan, get_user_config, get_group_count, get_account_stats, update_user_config
-from main_bot.utils.keyboards import get_dashboard_keyboard, get_add_account_keyboard
+from main_bot.utils.keyboards import get_premium_dashboard_keyboard, get_free_dashboard_keyboard, get_add_account_keyboard
 from config import MIN_INTERVAL_MINUTES
 from shared.utils import escape_markdown
 import datetime
@@ -108,53 +108,49 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         account_section = "  ○ No accounts connected\n  └─ Tap *Add Account* below"
 
     
-    # ═══ Plan badge ═══
-    if plan:
-        if plan.get("status") == "active":
-            p_type = plan.get("plan_type", "premium")
-            plan_type = "Free User" if p_type in ("free_trial", "free_user") else p_type.title()
+    # ═══ Build plan and dashboard based on subscription ═══
+    from config import OWNER_ID
+    is_premium = (plan and plan.get("status") == "active") or user_id == OWNER_ID
+    has_connected = any(s.get("connected") for s in sessions) if sessions else False
+    
+    if is_premium:
+        p_type = plan.get("plan_type", "premium") if plan else "premium"
+        plan_type = "Free User" if p_type in ("free_trial", "free_user") else p_type.title()
+        
+        if user_id == OWNER_ID:
+            plan_status = "👑 DEVELOPER/OWNER"
+            plan_line2 = "     └─ Lifetime developer license active."
+        else:
             days_left = (plan["expires_at"] - datetime.datetime.utcnow()).days
             hours_left = ((plan["expires_at"] - datetime.datetime.utcnow()).seconds // 3600)
             expiry_date = format_expiry_date(plan["expires_at"])
-            
             plan_badge = "💎 PREMIUM"
             
             if days_left > 0:
                 plan_status = f"{plan_badge} ▪ {days_left}d {hours_left}h left"
             else:
                 plan_status = f"{plan_badge} ▪ {hours_left}h left"
-            
             plan_line2 = f"     └─ 📅 Expires: {expiry_date}"
+            
+        if has_connected and group_count > 0:
+            fwd_status = "🟢 *ACTIVE*"
+        elif has_connected and group_count == 0:
+            fwd_status = "🟡 *NO GROUPS*"
+        elif not has_connected:
+            fwd_status = "🔴 *NO ACCOUNT*"
         else:
-            plan_status = "⚪ FREE USER"
-            plan_line2 = "     └─ Upgrade to Premium to unlock options!"
-    else:
-        plan_status = "⚪ FREE USER"
-        plan_line2 = "     └─ Upgrade to Premium to unlock options!"
-    
-    # ═══ Forwarding status ═══
-    has_connected = any(s.get("connected") for s in sessions) if sessions else False
-    if has_connected and group_count > 0 and plan and plan.get("status") == "active":
-        fwd_status = "🟢 *ACTIVE*"
-    elif has_connected and group_count == 0:
-        fwd_status = "🟡 *NO GROUPS*"
-    elif not has_connected:
-        fwd_status = "🔴 *NO ACCOUNT*"
-    else:
-        fwd_status = "🔴 *PAUSED*"
-    
-    interval = config.get("interval_min", MIN_INTERVAL_MINUTES)
-    
-    # ═══ Settings section ═══
-    copy_icon = "🟢" if config.get("copy_mode") else "⚫"
-    shuffle_icon = "🟢" if config.get("shuffle_mode") else "⚫"
-    send_mode = config.get("send_mode", "sequential").title()
-    responder_icon = "🟢" if config.get("auto_reply_enabled") else "⚫"
-    reply_text = config.get("auto_reply_text", "")
-    reply_preview = escape_markdown(reply_text[:25] + "..." if len(reply_text) > 25 else reply_text)
-    
-    dashboard_text = f"""
-📊 *DASHBOARD* — {user_name}
+            fwd_status = "🔴 *PAUSED*"
+            
+        interval = config.get("interval_min", MIN_INTERVAL_MINUTES)
+        copy_icon = "🟢" if config.get("copy_mode") else "⚫"
+        shuffle_icon = "🟢" if config.get("shuffle_mode") else "⚫"
+        send_mode = config.get("send_mode", "sequential").title()
+        responder_icon = "🟢" if config.get("auto_reply_enabled") else "⚫"
+        reply_text = config.get("auto_reply_text", "")
+        reply_preview = escape_markdown(reply_text[:25] + "..." if len(reply_text) > 25 else reply_text)
+        
+        dashboard_text = f"""
+💎 *PREMIUM DASHBOARD* — {user_name}
 
 📱 *ACCOUNTS* ({len(sessions) if sessions else 0})
 {account_section}
@@ -168,16 +164,58 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
   ➤ Status: {await get_group_status_summary(user_id)}
   ➤ Interval: {interval} min ▪ Night: 12-6 AM
 
-⚙️ *SETTINGS*
+⚙️ *PREMIUM SETTINGS*
   {copy_icon} Copy Mode ▪ {shuffle_icon} Shuffle
   🔄 Send Mode: {send_mode}
   {responder_icon} Responder: _{reply_preview}_
 
-💡 *TIP:* Send `.addgroup <url>` in Saved Messages!
+💡 *TIP:* Send `.addgroup <url>` in Saved Messages to add target groups!
 """
-    
+        reply_markup = get_premium_dashboard_keyboard()
+    else:
+        plan_status = "⚪ FREE USER"
+        plan_line2 = "     └─ Upgrade to Premium to unlock options!"
+        
+        if has_connected and group_count > 0:
+            fwd_status = "🟢 *ACTIVE (FREE)*"
+        elif has_connected and group_count == 0:
+            fwd_status = "🟡 *NO GROUPS*"
+        elif not has_connected:
+            fwd_status = "🔴 *NO ACCOUNT*"
+        else:
+            fwd_status = "🔴 *PAUSED*"
+            
+        dashboard_text = f"""
+📊 *FREE DASHBOARD* — {user_name}
+
+📱 *ACCOUNTS* ({len(sessions) if sessions else 0})
+{account_section}
+
+🏷️ *SUBSCRIPTION*
+  ➤ {plan_status}
+{plan_line2}
+
+📤 *FORWARDING:* {fwd_status}
+  ➤ Groups: {group_count} ▪ Total Sent: {total_sends}
+  ➤ Status: {await get_group_status_summary(user_id)}
+  ➤ Interval: ⏳ Fixed 20 min (Premium: custom)
+  ➤ Send Mode: 🔄 Sequential only (Premium: rotate/random)
+
+📢 *FREE TIER REQUIREMENTS:*
+  1. Add `◕ @PhiloBots` to your Telegram Last Name.
+  2. Set your Telegram Bio to: `ᴍade easy by @automessageschedulerBot`.
+  3. Must remain joined to official channel @philobots.
+
+⚙️ *PREMIUM SETTINGS (LOCKED 🔒)*
+  ⚫ Copy Mode ▪ ⚫ Shuffle
+  🔄 Auto-Responder (DMs)
+
+💡 *TIP:* Send `.addgroup <url>` in Saved Messages to begin!
+"""
+        reply_markup = get_free_dashboard_keyboard()
+        
     from shared.utils import safe_reply
-    await safe_reply(update, dashboard_text, reply_markup=get_dashboard_keyboard())
+    await safe_reply(update, dashboard_text, reply_markup=reply_markup)
 
 
 

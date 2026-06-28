@@ -40,8 +40,8 @@ def get_add_account_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_dashboard_keyboard() -> InlineKeyboardMarkup:
-    """Build dashboard keyboard."""
+def get_premium_dashboard_keyboard() -> InlineKeyboardMarkup:
+    """Build premium dashboard keyboard."""
     keyboard = [
         [
             InlineKeyboardButton("➕ Add Account", callback_data="add_account"),
@@ -56,6 +56,30 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🔄 Toggle Send Mode", callback_data="toggle_send_mode"),
+        ],
+        [
+            InlineKeyboardButton("📢 Updates Logs Channel", url=LOG_CHANNEL_URL),
+        ],
+        [
+            InlineKeyboardButton("🏠 Back to Home", callback_data="home"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_free_dashboard_keyboard() -> InlineKeyboardMarkup:
+    """Build free dashboard keyboard."""
+    keyboard = [
+        [
+            InlineKeyboardButton("➕ Add Account", callback_data="add_account"),
+            InlineKeyboardButton("⚙️ Manage Accounts", callback_data="accounts_list"),
+        ],
+        [
+            InlineKeyboardButton("💎 Upgrade to Premium", callback_data="my_plan"),
+        ],
+        [
+            InlineKeyboardButton("🧾 Redeem Promo Code", callback_data="redeem_code"),
+            InlineKeyboardButton("📘 Commands Map", callback_data="help"),
         ],
         [
             InlineKeyboardButton("📢 Updates Logs Channel", url=LOG_CHANNEL_URL),

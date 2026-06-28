@@ -22,7 +22,7 @@ from shared.bot_init import setup_logging, create_base_application, run_bot_grac
 from shared.decorators import require_premium
 
 # Import handlers
-from main_bot.handlers.start import start_handler, home_callback
+from main_bot.handlers.start import start_handler, home_callback, check_channel_join_callback
 from main_bot.handlers.dashboard import (
     dashboard_callback,
     add_account_callback,
@@ -119,7 +119,7 @@ def create_application() -> Application:
         },
         fallbacks=[
             CallbackQueryHandler(home_callback, pattern="^home$"),
-            CallbackQueryHandler(require_premium(dashboard_callback), pattern="^dashboard$"),
+            CallbackQueryHandler(dashboard_callback, pattern="^dashboard$"),
         ],
         per_user=True,
         per_chat=True,
@@ -160,21 +160,22 @@ def create_application() -> Application:
     # (pattern, callback, needs_premium)
     handlers_config = [
         ("^home$", home_callback, False),
-        ("^dashboard$", dashboard_callback, True),
+        ("^check_channel_join$", check_channel_join_callback, False),
+        ("^dashboard$", dashboard_callback, False),
         ("^toggle_send_mode$", toggle_send_mode_callback, True),
-        ("^add_account$", add_account_callback, True),
+        ("^add_account$", add_account_callback, False),
         ("^help$", help_callback, False),
         ("^my_plan$", my_plan_callback, False),
-        ("^profile$", profile_callback, True),
+        ("^profile$", profile_callback, False),
         ("^admin$", admin_callback, False),
         ("^admin_stats$", admin_stats_callback, False),
         ("^admin_broadcast$", admin_broadcast_callback, False),
         ("^gen_code:", gen_code_callback, False),
         ("^admin_users$", admin_users_callback, False),
-        ("^accounts_list$", accounts_list_callback, True),
-        ("^manage_account:", manage_account_callback, True),
-        ("^disconnect_account:", disconnect_account_callback, True),
-        ("^confirm_disconnect:", confirm_disconnect_callback, True),
+        ("^accounts_list$", accounts_list_callback, False),
+        ("^manage_account:", manage_account_callback, False),
+        ("^disconnect_account:", disconnect_account_callback, False),
+        ("^confirm_disconnect:", confirm_disconnect_callback, False),
         ("^admin_nightmode$", admin_nightmode_callback, False),
         ("^set_nightmode:", set_nightmode_callback, False),
         ("^admin_health$", admin_health_callback, False),

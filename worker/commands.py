@@ -1050,6 +1050,9 @@ def parse_group_input(input_str: str) -> tuple[Optional[str], Optional[int]]:
     input_str = input_str.strip().rstrip('/')
     if not input_str:
         return None, None
+        
+    # Normalize alternative domains to t.me
+    input_str = input_str.replace("telegram.me/", "t.me/").replace("telegram.dog/", "t.me/")
     
     # 1. Private Topic/Forum Pattern (t.me/c/123/456)
     private_topic_match = re.search(r"t\.me/c/(\d+)/(\d+)$", input_str)
@@ -1071,7 +1074,7 @@ def parse_group_input(input_str: str) -> tuple[Optional[str], Optional[int]]:
         return f"addlist:{slug}", None
 
     # 4. Direct Join/Invite Links
-    if any(x in input_str for x in ["t.me/+", "joinchat/", "t.me/joinchat/"]):
+    if any(x in input_str for x in ["t.me/+", "joinchat/", "tg://join?invite="]):
         return input_str, None
 
     # 5. Standard private links (t.me/c/1839485732)

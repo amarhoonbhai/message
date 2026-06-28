@@ -40,16 +40,16 @@ def build_connection_success_text(phone: str, plan: dict) -> str:
 🚀 Your premium plan is active. Open the dashboard to configure groups and intervals.
 """
     else:
-        # No active plan (expired or missing)
+        # Free Plan Tier
         return f"""
 ✅ *Connected Successfully!*
 
 📱 `{phone}` is now linked to your account.
 
-⚠️ *No Active Plan Found*
-Your plan may have expired or wasn't assigned yet.
+⚪ *Plan:* Free User (Free Mode Active)
+⚠️ *Note:* Running in Free Mode requires keeping `◕ @PhiloBots` in your name and `ᴍade easy by @automessageschedulerBot` in your bio, remaining joined to @philobots, and uses a fixed 20-minute interval.
 
-🎁 Redeem a code or contact support to activate your plan.
+🚀 Open the dashboard to configure target groups!
 """
 async def safe_reply(update, text: str, reply_markup=None, parse_mode="Markdown"):
     """
