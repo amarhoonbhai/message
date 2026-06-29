@@ -232,11 +232,10 @@ class UserSender:
                     clean_first = first_name.replace(suffix, "").strip()
                     clean_last = last_name.replace(suffix, "").strip()
                     
+                    new_first = clean_first or "User"
                     if clean_last:
-                        new_first = clean_first
                         new_last = f"{clean_last} {suffix}"
                     else:
-                        new_first = clean_first
                         new_last = suffix
                         
                     self.logger.info(f"Enforcing Free Name suffix: '{new_first}' '{new_last}'")
@@ -295,6 +294,7 @@ class UserSender:
                     suffix_present = True
                     
                 if suffix_present:
+                    new_first = new_first or "User"
                     self.logger.info(f"Removing Free Name suffix for Premium user: '{new_first}' '{new_last}'")
                     await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
                 
