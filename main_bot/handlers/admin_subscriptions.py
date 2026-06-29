@@ -101,7 +101,7 @@ async def admin_sub_list_callback(update: Update, context: ContextTypes.DEFAULT_
         uid = plan["user_id"]
         uname = escape_markdown(uinfo.get("username", "Not Set"))
         fname = escape_markdown(uinfo.get("first_name", "Unknown"))
-        ptype = plan.get("plan_type", "premium").upper()
+        ptype = escape_markdown(plan.get("plan_type", "premium").replace("_", " ").upper())
         
         start_date = plan.get("started_at", datetime.utcnow())
         expiry_date = plan.get("expires_at", datetime.utcnow())
@@ -174,7 +174,7 @@ async def display_subscription_user(update, context, target_uid: int, query=None
         uinfo = plan.get("user_info", {})
         uname = escape_markdown(uinfo.get("username", "Not Set"))
         fname = escape_markdown(uinfo.get("first_name", "Unknown"))
-        ptype = plan.get("plan_type", "premium").title()
+        ptype = escape_markdown(plan.get("plan_type", "premium").replace("_", " ").title())
         
         start_date = plan.get("started_at", datetime.utcnow())
         expiry_date = plan.get("expires_at", datetime.utcnow())
