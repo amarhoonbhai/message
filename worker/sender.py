@@ -1025,10 +1025,10 @@ class UserSender:
             return None
         except (ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError) as e:
             err_name = type(e).__name__
-            self.logger.warning(f"⚠️ Pre-check: {chat_title} restricted ({err_name}). Marking failing.")
+            self.logger.warning(f"❌ Pre-check: {chat_title} restricted ({err_name}). Removing.")
             self._failed_entities[chat_id] = (now, f"Restricted: {err_name}")
-            asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"Pre-check: {err_name}"))
-            asyncio.create_task(self.log_send(chat_id, message_id, "failing", f"Pre-check: {err_name}"))
+            asyncio.create_task(remove_group(self.user_id, chat_id))
+            asyncio.create_task(self.log_send(chat_id, message_id, "removed", f"Pre-check: {err_name}"))
             return None
         except ValueError:
             # Private group not in cache — scan dialogs to find it
@@ -1045,10 +1045,10 @@ class UserSender:
                 else:
                     raise ValueError("Not found in dialogs either")
             except Exception as dial_e:
-                self.logger.warning(f"Could not resolve entity for {chat_id} via dialog scan: {dial_e}")
+                self.logger.warning(f"Could not resolve entity for {chat_id} via dialog scan: {dial_e}. Removing.")
                 self._failed_entities[chat_id] = (now, f"Value/Dialog error: {dial_e}")
-                asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"Entity error: {dial_e}"))
-                asyncio.create_task(self.log_send(chat_id, message_id, "failing", f"Entity error: {dial_e}"))
+                asyncio.create_task(remove_group(self.user_id, chat_id))
+                asyncio.create_task(self.log_send(chat_id, message_id, "removed", f"Entity error: {dial_e}"))
                 return None
         except Exception as e:
             self.logger.warning(f"Could not resolve entity for {chat_id}: {e}")
@@ -1111,6 +1111,9 @@ class UserSender:
         """Log sending attempt in DB and notify central log channel."""
         await db_log_send(self.user_id, chat_id, saved_msg_id, status, error, phone=self.phone)
         
+        if status == "removed":
+            return
+            
         emoji = "🟢" if status == "success" else "🔴" if status in ("failed", "error", "removed", "failing") else "🟡"
         msg_status = status.upper()
         
@@ -1290,19 +1293,13 @@ class UserSender:
                 self.running = False
                 return (False, False, 0)
                 
-            elif err_code == "LINK_INVALID" or (err_code == "PERMISSION_DENIED" and "BANNED" in str(e).upper()):
-                self.logger.warning(f"❌ Removing group {chat_title}: {disp_msg}")
+            elif err_code in ("LINK_INVALID", "TOPIC_CLOSED", "PERMISSION_DENIED", "FORBIDDEN", "DISCUSSION_GROUP_REQUIRED", "ENTITY_NOT_FOUND"):
+                self.logger.warning(f"❌ Removing group {chat_title}: {disp_msg} ({err_code})")
                 asyncio.create_task(remove_group(self.user_id, chat_id))
                 asyncio.create_task(self.log_send(chat_id, message.id, "removed", disp_msg))
                 return (False, False, 0)
                 
-            elif err_code == "PERMISSION_DENIED" or err_code == "FORBIDDEN":
-                self.logger.warning(f"⚠️ Group {chat_title} restricted: {disp_msg}")
-                asyncio.create_task(mark_group_failing(self.user_id, chat_id, disp_msg))
-                asyncio.create_task(self.log_send(chat_id, message.id, "failing", disp_msg))
-                return (False, False, 0)
-                
-            elif err_code in ["MESSAGE_DELETED", "TOPIC_CLOSED", "EMPTY_MESSAGE", "ENTITY_NOT_FOUND", "DISCUSSION_GROUP_REQUIRED"]:
+            elif err_code in ["MESSAGE_DELETED", "EMPTY_MESSAGE"]:
                 self.logger.warning(f"⚠️ {disp_msg} — skipping {chat_title}")
                 asyncio.create_task(self.log_send(chat_id, message.id, "skipped", disp_msg))
                 return (False, False, 0)

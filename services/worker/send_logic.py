@@ -71,11 +71,11 @@ async def send_message_to_group(
 
         except (ChatWriteForbiddenError, ChannelPrivateError,
                 ChatAdminRequiredError, UserBannedInChannelError) as e:
-            logger.warning(f"⚠️ Group {group_id} restricted ({type(e).__name__}). Marking as failing.")
-            asyncio.create_task(mark_group_failing(user_id, group_id, f"Locked: {type(e).__name__}"))
+            logger.warning(f"❌ Group {group_id} restricted ({type(e).__name__}). Removing.")
+            asyncio.create_task(remove_group(user_id, group_id))
             await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                "failing", f"Restricted: {type(e).__name__}")
-            return ("failing", 0)
+                                "removed", f"Restricted: {type(e).__name__}")
+            return ("removed", 0)
 
         except ValueError:
             # Not in cache! Try resolving raw ID or via recent dialogs
@@ -93,11 +93,11 @@ async def send_message_to_group(
                 except Exception: pass
             
             if not entity:
-                logger.warning(f"🚨 Entity {group_id} not found after recovery attempts.")
-                asyncio.create_task(mark_group_failing(user_id, group_id, "Entity Not Found"))
+                logger.warning(f"🚨 Entity {group_id} not found after recovery attempts. Removing.")
+                asyncio.create_task(remove_group(user_id, group_id))
                 await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                    "failing", "Entity Not Found (Membership Required)")
-                return ("failing", 0)
+                                    "removed", "Entity Not Found (Membership Required)")
+                return ("removed", 0)
 
         except Exception as e:
             logger.warning(f"Unexpected entity resolve error for {group_id}: {e}")
@@ -200,19 +200,13 @@ async def send_message_to_group(
             await log_job_event(job_id, user_id, phone, group_id, message_id, "failed", disp_msg)
             return ("deactivated", 0)
             
-        elif err_code == "LINK_INVALID" or (err_code == "PERMISSION_DENIED" and "BANNED" in str(e).upper()):
-            logger.warning(f"❌ Removing group {group_id}: {disp_msg}")
+        elif err_code in ("LINK_INVALID", "TOPIC_CLOSED", "PERMISSION_DENIED", "FORBIDDEN", "DISCUSSION_GROUP_REQUIRED", "ENTITY_NOT_FOUND"):
+            logger.warning(f"❌ Removing group {group_id}: {disp_msg} ({err_code})")
             asyncio.create_task(remove_group(user_id, group_id))
             await log_job_event(job_id, user_id, phone, group_id, message_id, "removed", disp_msg)
             return ("removed", 0)
             
-        elif err_code == "PERMISSION_DENIED" or err_code == "FORBIDDEN":
-            logger.warning(f"⚠️ Group {group_id} restricted: {disp_msg}")
-            asyncio.create_task(mark_group_failing(user_id, group_id, disp_msg))
-            await log_job_event(job_id, user_id, phone, group_id, message_id, "failing", disp_msg)
-            return ("failing", 0)
-            
-        elif err_code in ["MESSAGE_DELETED", "TOPIC_CLOSED", "EMPTY_MESSAGE", "ENTITY_NOT_FOUND", "DISCUSSION_GROUP_REQUIRED", "SLOWMODE"]:
+        elif err_code in ["MESSAGE_DELETED", "EMPTY_MESSAGE", "SLOWMODE"]:
             logger.warning(f"⚠️ {disp_msg} — skipping group {group_id}")
             await log_job_event(job_id, user_id, phone, group_id, message_id, "skipped", disp_msg)
             return ("failed", 0) # Return failed to task_worker to ensure stats track it as non-success

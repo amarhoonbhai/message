@@ -361,7 +361,7 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
     header += f"🟢 Active: {enabled_count} ▪ 🔴 Paused: {total_count - enabled_count}\n\n"
     
     # Professional Summarization if list is long
-    display_groups = groups[:15]
+    display_groups = groups[:100]
     
     text = header
     for i, group in enumerate(display_groups, 1):
@@ -375,8 +375,8 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
         
         text += f"  {i}. {icon} `{title}`{topic}\n"
     
-    if len(groups) > 15:
-        text += f"  ...\n  _And {len(groups) - 15} more groups._\n"
+    if len(groups) > 100:
+        text += f"  ...\n  _And {len(groups) - 100} more groups._\n"
         
     text += f"\n══════════════════════\n"
     text += f"Slots: {total_count}/{MAX_GROUPS_PER_USER} ▪ `.rmgroup [idx]`"

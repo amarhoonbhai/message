@@ -7,6 +7,12 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Force UTF-8 encoding for stdout/stderr to support emojis on Windows terminals
+if sys.platform.startswith("win"):
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
+
 async def main():
     print("=" * 60)
     print("🤖 VPS DIAGNOSTIC SCRIPT")
