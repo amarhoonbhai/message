@@ -749,6 +749,8 @@ class UserSender:
                 success_count = 0
                 failed_count = 0
                 skipped_count = 0
+                health_success = 0
+                health_failed = 0
                 
                 # Build initial report
                 user_label = await self.get_user_label()
@@ -860,12 +862,14 @@ class UserSender:
                         success_groups.append(chat_title)
                         self._sent_this_cycle.add(dedup_key)
                         success_count += 1
+                        health_success += 1
                     else:
                         failed_groups.append(chat_title)
                         failed_count += 1
+                        health_failed += 1
                     
                     # Check account health and take a break if weak mid-cycle
-                    is_weak, reason = await self.check_account_health(success_count, failed_count)
+                    is_weak, reason = await self.check_account_health(health_success, health_failed)
                     if is_weak:
                         cooldown_minutes = 15
                         self.logger.warning(f"⚠️ Account health is weak ({reason}). Taking a {cooldown_minutes}-minute break...")
@@ -880,6 +884,8 @@ class UserSender:
                         await self.update_status(f"Health Break ({cooldown_minutes}m)")
                         await asyncio.sleep(cooldown_minutes * 60)
                         self.error_streak = 0
+                        health_success = 0
+                        health_failed = 0
                         await self.update_status(f"Sending ({i+1}/{len(tasks)})")
                     
                     await update_progress_msg(i + 1)
