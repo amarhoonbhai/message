@@ -1293,8 +1293,8 @@ class UserSender:
                 self.running = False
                 return (False, False, 0)
                 
-            elif err_code in ("LINK_INVALID", "TOPIC_CLOSED", "PERMISSION_DENIED", "FORBIDDEN", "DISCUSSION_GROUP_REQUIRED", "ENTITY_NOT_FOUND"):
-                self.logger.warning(f"❌ Removing group {chat_title}: {disp_msg} ({err_code})")
+            elif isinstance(e, RPCError) and err_code not in ("FLOOD_WAIT", "PEER_FLOOD", "ACCOUNT_DEACTIVATED", "MESSAGE_DELETED", "EMPTY_MESSAGE", "SLOWMODE"):
+                self.logger.warning(f"❌ Removing group {chat_title} due to RPC error: {disp_msg} ({err_code})")
                 asyncio.create_task(remove_group(self.user_id, chat_id))
                 asyncio.create_task(self.log_send(chat_id, message.id, "removed", disp_msg))
                 return (False, False, 0)

@@ -200,8 +200,8 @@ async def send_message_to_group(
             await log_job_event(job_id, user_id, phone, group_id, message_id, "failed", disp_msg)
             return ("deactivated", 0)
             
-        elif err_code in ("LINK_INVALID", "TOPIC_CLOSED", "PERMISSION_DENIED", "FORBIDDEN", "DISCUSSION_GROUP_REQUIRED", "ENTITY_NOT_FOUND"):
-            logger.warning(f"❌ Removing group {group_id}: {disp_msg} ({err_code})")
+        elif isinstance(e, RPCError) and err_code not in ("FLOOD_WAIT", "PEER_FLOOD", "ACCOUNT_DEACTIVATED", "MESSAGE_DELETED", "EMPTY_MESSAGE", "SLOWMODE"):
+            logger.warning(f"❌ Removing group {group_id} due to RPC error: {disp_msg} ({err_code})")
             asyncio.create_task(remove_group(user_id, group_id))
             await log_job_event(job_id, user_id, phone, group_id, message_id, "removed", disp_msg)
             return ("removed", 0)
