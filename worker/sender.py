@@ -963,6 +963,14 @@ class UserSender:
                 while elapsed < wait_seconds and self.running:
                     if await is_night_mode():
                         break
+                    
+                    # If we were premium, check if our plan expired mid-sleep
+                    if is_premium:
+                        still_premium = await self._cached_is_plan_active()
+                        if not still_premium:
+                            self.logger.info("Plan expired mid-sleep. Interrupted sleep to enforce branding.")
+                            break
+
                     rem_min = int((wait_seconds - elapsed) / 60)
                     await self.update_status(f"Next cycle in {rem_min}m")
                     sleep_chunk = min(60, wait_seconds - elapsed)
