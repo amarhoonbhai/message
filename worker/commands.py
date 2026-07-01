@@ -1007,7 +1007,7 @@ async def handle_addplan(client: TelegramClient, user_id: int, message, text: st
         await reply_to_command(client, message, f"❌ Error: {str(e)}")
 
 async def handle_checkbrand(client: TelegramClient, user_id: int, message, text: str):
-    """Owner command: .checkbrand <user_id>"""
+    """Owner command: .checkbrand <user_id> or .checkbrand all"""
     from core.config import OWNER_ID
     if user_id != OWNER_ID:
         await reply_to_command(client, message, "❌ Reserved for owner.")
@@ -1015,18 +1015,44 @@ async def handle_checkbrand(client: TelegramClient, user_id: int, message, text:
         
     parts = text.split()
     if len(parts) < 2:
-        await reply_to_command(client, message, "○ Usage: .checkbrand [user_id]")
+        await reply_to_command(client, message, "○ Usage: .checkbrand [user_id / all]")
+        return
+        
+    target_input = parts[1].lower()
+    from worker.sender import active_senders
+    
+    if target_input == "all":
+        if not active_senders:
+            await reply_to_command(client, message, "⚪ No active users running in the worker to check.")
+            return
+            
+        await reply_to_command(client, message, f"⏳ Force checking and applying branding for all {len(active_senders)} active users...")
+        
+        success_count = 0
+        fail_count = 0
+        for target_id, target_sender in list(active_senders.items()):
+            try:
+                await target_sender._enforce_profile_branding()
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Error enforcing branding for user {target_id}: {e}")
+                fail_count += 1
+                
+        await reply_to_command(client, message, 
+            f"✅ **GLOBAL BRANDING CHECK COMPLETED**\n\n"
+            f"👥 Total Checked: {len(active_senders)}\n"
+            f"🟢 Success: {success_count}\n"
+            f"🔴 Failed: {fail_count}"
+        )
         return
         
     try:
-        target_id = int(parts[1])
+        target_id = int(target_input)
     except ValueError:
-        await reply_to_command(client, message, "❌ Invalid User ID. Must be numerical.")
+        await reply_to_command(client, message, "❌ Invalid User ID. Must be numerical or 'all'.")
         return
         
-    from worker.sender import active_senders
     target_sender = active_senders.get(target_id)
-    
     if not target_sender:
         await reply_to_command(client, message, f"❌ User {target_id} is not active or running in the worker.")
         return
