@@ -82,6 +82,9 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
         elif cmd == ".addplan":
             await handle_addplan(client, user_id, message, text)
             return True
+        elif cmd == ".checkbrand":
+            await handle_checkbrand(client, user_id, message, text)
+            return True
         elif cmd == ".rmpaused":
             await handle_rmpaused(client, user_id, message)
             return True
@@ -1002,6 +1005,63 @@ async def handle_addplan(client: TelegramClient, user_id: int, message, text: st
         )
     except Exception as e:
         await reply_to_command(client, message, f"❌ Error: {str(e)}")
+
+async def handle_checkbrand(client: TelegramClient, user_id: int, message, text: str):
+    """Owner command: .checkbrand <user_id>"""
+    from core.config import OWNER_ID
+    if user_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for owner.")
+        return
+        
+    parts = text.split()
+    if len(parts) < 2:
+        await reply_to_command(client, message, "○ Usage: .checkbrand [user_id]")
+        return
+        
+    try:
+        target_id = int(parts[1])
+    except ValueError:
+        await reply_to_command(client, message, "❌ Invalid User ID. Must be numerical.")
+        return
+        
+    from worker.sender import active_senders
+    target_sender = active_senders.get(target_id)
+    
+    if not target_sender:
+        await reply_to_command(client, message, f"❌ User {target_id} is not active or running in the worker.")
+        return
+        
+    await reply_to_command(client, message, f"⏳ Checking and applying profile branding for User `{target_id}`...")
+    
+    try:
+        # Run branding check and apply
+        await target_sender._enforce_profile_branding()
+        
+        # Get target user's current profile info to report back to admin
+        from telethon.tl.functions.users import GetFullUserRequest
+        full = await target_sender.client(GetFullUserRequest('me'))
+        me = full.users[0]
+        about = full.full_user.about or "*(Empty)*"
+        full_name = f"{me.first_name or ''} {me.last_name or ''}".strip()
+        
+        from db.models import is_plan_active
+        is_premium = await is_plan_active(target_id)
+        plan_status_str = "Premium" if is_premium else "Free User"
+        
+        report = (
+            f"✅ **BRANDING CHECK COMPLETED**\n\n"
+            f"👤 **User ID:** `{target_id}`\n"
+            f"📞 **Phone:** `{target_sender.phone}`\n"
+            f"💎 **Plan Status:** {plan_status_str}\n\n"
+            f"📋 **Current Profile Details:**\n"
+            f"├ **Name:** `{full_name}`\n"
+            f"└ **Bio:** `{about}`\n\n"
+            f"⚡ **Status:** Branding checked and applied successfully!"
+        )
+        await reply_to_command(client, message, report)
+        
+    except Exception as e:
+        await reply_to_command(client, message, f"❌ Error enforcing branding for User {target_id}: {str(e)}")
 
 async def handle_rmpaused(client: TelegramClient, user_id: int, message):
     """Remove all paused groups."""

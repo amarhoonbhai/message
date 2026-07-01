@@ -55,7 +55,8 @@ from shared.telegram_error_mapper import map_telegram_error
 from shared.utils import get_telegram_client_kwargs
 from worker.commands import process_command  # Used by event handler
 
-logger = logging.getLogger(__name__)
+# Global active senders registry (user_id -> UserSender instance)
+active_senders = {}
 
 
 class AdaptiveDelayController:
@@ -368,7 +369,11 @@ class UserSender:
             return
 
         # ── Phase 2: Run session (no semaphore — slot is already freed) ─────
-        await self._run_session()
+        active_senders[self.user_id] = self
+        try:
+            await self._run_session()
+        finally:
+            active_senders.pop(self.user_id, None)
 
     async def _connect_and_authenticate(self) -> bool:
         """
