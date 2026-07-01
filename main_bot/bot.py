@@ -57,6 +57,7 @@ from main_bot.handlers.admin import (
     admin_upgrade_perform_callback,
     upgrade_command,
     WAITING_UPGRADE_USER_ID,
+    admin_enforce_all_branding_callback,
 )
 from main_bot.handlers.help import help_callback, help_command
 from main_bot.handlers.account import (
@@ -185,6 +186,7 @@ def create_application() -> Application:
         ("^adm_sub_list:", admin_sub_list_callback, False),
         ("^adm_sub_act:", admin_sub_action_callback, False),
         ("^adm_sub_export$", admin_sub_export_callback, False),
+        ("^admin_enforce_all_branding$", admin_enforce_all_branding_callback, False),
     ]
     
     for pattern, callback, needs_premium in handlers_config:

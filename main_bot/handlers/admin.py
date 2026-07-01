@@ -662,3 +662,22 @@ async def upgrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
     except:
         await update.message.reply_text("❌ Invalid arguments. Example: `/upgrade 123456 week`")
+
+async def admin_enforce_all_branding_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle Callback to trigger global branding check on all active accounts."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        await query.answer("⛔ Access denied", show_alert=True)
+        return
+        
+    from db.models import update_global_settings
+    import datetime
+    
+    try:
+        # Set the global force check timestamp in settings collection
+        await update_global_settings(force_branding_check_at=datetime.datetime.utcnow())
+        await query.answer("🔄 Global branding check requested! All active accounts will update within 60 seconds.", show_alert=True)
+    except Exception as e:
+        await query.answer(f"❌ Error: {str(e)}", show_alert=True)

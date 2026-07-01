@@ -201,6 +201,7 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("⚡ Quick Upgrade User", callback_data="admin_upgrade_init"),
+            InlineKeyboardButton("🔍 Enforce Branding (All)", callback_data="admin_enforce_all_branding"),
         ],
         [
             InlineKeyboardButton("👥 User Database", callback_data="admin_users"),

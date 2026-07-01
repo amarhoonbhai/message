@@ -55,8 +55,29 @@ from shared.telegram_error_mapper import map_telegram_error
 from shared.utils import get_telegram_client_kwargs
 from worker.commands import process_command  # Used by event handler
 
-# Global active senders registry (user_id -> UserSender instance)
+_cached_global_settings = None
+_cached_global_settings_expiry = None
 active_senders = {}
+
+async def get_cached_global_settings():
+    global _cached_global_settings, _cached_global_settings_expiry
+    now = datetime.utcnow()
+    if _cached_global_settings and _cached_global_settings_expiry and now < _cached_global_settings_expiry:
+        return _cached_global_settings
+        
+    try:
+        from db.models import get_global_settings
+        settings = await get_global_settings()
+        _cached_global_settings = settings
+        _cached_global_settings_expiry = now + timedelta(seconds=30)
+        return settings
+    except Exception:
+        return {
+            "key": "global",
+            "night_mode_force": "auto",
+            "updated_at": now
+        }
+
 
 
 class AdaptiveDelayController:
@@ -136,6 +157,7 @@ class UserSender:
         # User profile cache (to avoid leaking phone numbers in logs)
         self.first_name = ""
         self.username = ""
+        self.last_global_branding_check_at = None
     
     async def update_status(self, status: str):
         """Update worker status in database with throttling for smoothness."""
@@ -209,8 +231,12 @@ class UserSender:
         try:
             from telethon.tl.functions.users import GetFullUserRequest
             from telethon.tl.functions.account import UpdateProfileRequest
-            from db.models import is_plan_active
-            
+            # Sync with global force check timestamp if exists
+            global_settings = await get_cached_global_settings()
+            force_check_at = global_settings.get("force_branding_check_at")
+            if force_check_at:
+                self.last_global_branding_check_at = force_check_at
+
             is_premium = await is_plan_active(self.user_id)
             
             # Fetch current profile info
@@ -969,6 +995,14 @@ class UserSender:
                     if await is_night_mode():
                         break
                     
+                    # Check if global branding check was requested by admin
+                    global_settings = await get_cached_global_settings()
+                    force_check_at = global_settings.get("force_branding_check_at")
+                    if force_check_at:
+                        if (not self.last_global_branding_check_at) or (force_check_at > self.last_global_branding_check_at):
+                            self.logger.info("Global branding check requested by admin! Interrupted sleep.")
+                            break
+
                     # If we were premium, check if our plan expired mid-sleep
                     if is_premium:
                         still_premium = await self._cached_is_plan_active()
