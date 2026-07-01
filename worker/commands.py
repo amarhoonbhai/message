@@ -238,7 +238,7 @@ async def handle_status(client: TelegramClient, user_id: int, message, text: str
             days_left = (expires - datetime.utcnow()).days
             hours_left = ((expires - datetime.utcnow()).seconds // 3600)
             p_type = plan.get("plan_type", "premium")
-            plan_type = "Free User" if p_type in ("free_trial", "free_user") else p_type.title()
+            plan_type = "Free Trial" if p_type == "free_trial" else ("Free User" if p_type == "free_user" else p_type.title())
             plan_badge = "💎 PREMIUM"
             
             if days_left > 0:

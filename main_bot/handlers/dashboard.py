@@ -115,7 +115,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if is_premium:
         p_type = plan.get("plan_type", "premium") if plan else "premium"
-        plan_type = "Free User" if p_type in ("free_trial", "free_user") else p_type.title()
+        plan_type = "Free Trial" if p_type == "free_trial" else ("Free User" if p_type == "free_user" else p_type.title())
         
         if user_id == OWNER_ID:
             plan_status = "👑 DEVELOPER/OWNER"
