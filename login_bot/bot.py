@@ -79,10 +79,10 @@ def create_application() -> Application:
         ("^send_otp$", require_premium(send_otp_callback)),
         ("^resend_otp$", require_premium(resend_otp_callback)),
         ("^otp:", require_premium(otp_keypad_callback)),
-        ("^manage_accounts$", require_premium(manage_accounts_callback)),
-        ("^manage_acc:", require_premium(manage_acc_details_callback)),
-        ("^disconnect_acc:", require_premium(disconnect_acc_callback)),
-        ("^confirm_disc_acc:", require_premium(confirm_disconnect_acc_callback)),
+        ("^manage_accounts$", manage_accounts_callback),
+        ("^manage_acc:", manage_acc_details_callback),
+        ("^disconnect_acc:", disconnect_acc_callback),
+        ("^confirm_disc_acc:", confirm_disconnect_acc_callback),
         ("^login_home$", login_home_callback),
     ]
     
