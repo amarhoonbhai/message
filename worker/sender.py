@@ -251,24 +251,23 @@ class UserSender:
             suffix = "ϟ @SpinifyAdsBot"
             enforced_bio = "ᴍade easy by @SpinifyAdsBot"
             
+            # 1. Clean any existing suffixes (old or new) to get base names
+            clean_first = first_name
+            clean_last = last_name
+            for old_suffix in ["◕ @PhiloBots", "◕ @SpinifyAdsBot", "ϟ @PhiloBots", "ϟ @SpinifyAdsBot"]:
+                clean_first = clean_first.replace(old_suffix, "").strip()
+                clean_last = clean_last.replace(old_suffix, "").strip()
+
             if not is_premium:
                 # ── FREE USER ENFORCEMENT ──
-                # 1. Enforce name suffix
-                full_name = f"{first_name} {last_name}".strip()
-                if not full_name.endswith(suffix):
-                    # Clean existing suffix if present anywhere else
-                    clean_first = first_name
-                    clean_last = last_name
-                    for old_suffix in ["◕ @PhiloBots", "◕ @SpinifyAdsBot", "ϟ @PhiloBots", "ϟ @SpinifyAdsBot"]:
-                        clean_first = clean_first.replace(old_suffix, "").strip()
-                        clean_last = clean_last.replace(old_suffix, "").strip()
+                # Rebuild names with suffix at the end of last name
+                new_first = clean_first or "User"
+                if clean_last:
+                    new_last = f"{clean_last} {suffix}"
+                else:
+                    new_last = suffix
                     
-                    new_first = clean_first or "User"
-                    if clean_last:
-                        new_last = f"{clean_last} {suffix}"
-                    else:
-                        new_last = suffix
-                        
+                if new_first != first_name or new_last != last_name:
                     self.logger.info(f"Enforcing Free Name suffix: '{new_first}' '{new_last}'")
                     await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
                 
@@ -320,21 +319,11 @@ class UserSender:
                         
             else:
                 # ── PREMIUM USER CLEANUP ──
-                # 1. Remove name suffix if present (checking current and old suffixes)
-                suffix_present = False
-                new_first = first_name
-                new_last = last_name
+                # Rebuild names without any suffix
+                new_first = clean_first or "User"
+                new_last = clean_last
                 
-                for old_suffix in ["◕ @PhiloBots", "◕ @SpinifyAdsBot", "ϟ @PhiloBots", "ϟ @SpinifyAdsBot"]:
-                    if old_suffix in new_first:
-                        new_first = new_first.replace(old_suffix, "").strip()
-                        suffix_present = True
-                    if old_suffix in new_last:
-                        new_last = new_last.replace(old_suffix, "").strip()
-                        suffix_present = True
-                    
-                if suffix_present:
-                    new_first = new_first or "User"
+                if new_first != first_name or new_last != last_name:
                     self.logger.info(f"Removing Free Name suffix for Premium user: '{new_first}' '{new_last}'")
                     await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
                 
