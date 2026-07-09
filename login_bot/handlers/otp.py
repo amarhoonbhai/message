@@ -65,7 +65,7 @@ async def send_otp_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             StringSession(),
             api_id,
             api_hash,
-            device_model="Group Message Scheduler",
+            device_model="Spinify Ads Bot",
             system_version="1.0",
             app_version="1.0",
             **get_telegram_client_kwargs()

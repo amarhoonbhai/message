@@ -231,10 +231,32 @@ async def get_failing_groups_count() -> int:
 
 
 async def resume_user_groups(user_id: int) -> int:
-    """Re-enable all paused groups for a user. Returns count updated."""
+    """Re-enable paused groups for a user, respecting plan limits."""
+    from models.plan import is_plan_active
     db = get_database()
+    
+    is_premium = await is_plan_active(user_id)
+    limit = 50 if is_premium else 10
+    
+    # Get current active/enabled count
+    enabled_count = await db.groups.count_documents({"user_id": user_id, "enabled": True})
+    if enabled_count >= limit:
+        return 0
+        
+    slots_left = limit - enabled_count
+    
+    # Find paused groups
+    cursor = db.groups.find({"user_id": user_id, "enabled": False}).sort("created_at", 1)
+    paused_groups = await cursor.to_list(length=None)
+    
+    if not paused_groups or slots_left <= 0:
+        return 0
+        
+    groups_to_enable = paused_groups[:slots_left]
+    enable_ids = [g["chat_id"] for g in groups_to_enable]
+    
     result = await db.groups.update_many(
-        {"user_id": user_id, "enabled": False},
+        {"user_id": user_id, "chat_id": {"$in": enable_ids}},
         {
             "$set": {"enabled": True, "pause_reason": None},
             "$unset": {"first_fail_at": "", "fail_reason": ""}
@@ -256,3 +278,36 @@ async def clear_user_groups(user_id: int) -> int:
     db = get_database()
     result = await db.groups.delete_many({"user_id": user_id})
     return result.deleted_count
+
+async def enforce_user_group_limit(user_id: int) -> int:
+    """
+    Enforce group limits on database level based on the user's plan status.
+    Free users: maximum 10 enabled groups.
+    Premium users: maximum 50 enabled groups.
+    """
+    from models.plan import is_plan_active
+    db = get_database()
+    
+    is_premium = await is_plan_active(user_id)
+    limit = 50 if is_premium else 10
+    
+    # Get all enabled groups for this user
+    cursor = db.groups.find({"user_id": user_id, "enabled": True}).sort("created_at", 1)
+    enabled_groups = await cursor.to_list(length=None)
+    
+    if len(enabled_groups) > limit:
+        # Keep oldest groups up to limit, disable the rest
+        groups_to_disable = enabled_groups[limit:]
+        disable_ids = [g["chat_id"] for g in groups_to_disable]
+        
+        await db.groups.update_many(
+            {"user_id": user_id, "chat_id": {"$in": disable_ids}},
+            {
+                "$set": {
+                    "enabled": False,
+                    "pause_reason": f"Plan limit exceeded — limited to {limit} groups on Free Plan."
+                }
+            }
+        )
+        return len(groups_to_disable)
+    return 0

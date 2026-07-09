@@ -160,9 +160,31 @@ class Scheduler:
                 except Exception: pass
 
             # 2. Just Expired
+            from db.database import get_database
+            from models.group import enforce_user_group_limit
+            db = get_database()
+
+            # Ensure all expired active plans in the system are marked as expired and limits enforced
+            expired_cursor = db.plans.find({
+                "status": "active",
+                "expires_at": {"$lte": now}
+            })
+            async for p in expired_cursor:
+                uid = p["user_id"]
+                logger.info(f"Scheduler: Marking expired plan for user {uid} as expired.")
+                await db.plans.update_one({"user_id": uid}, {"$set": {"status": "expired"}})
+                disabled_count = await enforce_user_group_limit(uid)
+                if disabled_count > 0:
+                    logger.info(f"Scheduler: Reduced user {uid} enabled groups to 10. Disabled {disabled_count} extra groups.")
+
             expired = await get_plans_needing_expiry_reminder()
             for p in expired:
                 uid = p["user_id"]
+                # Always ensure status is set to expired if expires_at <= now
+                if p.get("status") != "expired":
+                    await db.plans.update_one({"user_id": uid}, {"$set": {"status": "expired"}})
+                    await enforce_user_group_limit(uid)
+
                 if p.get("plan_type") == "free_trial":
                     msg = (
                         "🔴 *TRIAL EXPIRED*\n\n"

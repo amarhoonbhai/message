@@ -214,20 +214,28 @@ def build_cycle_report(user_label: str, success_groups: list, failed_groups: lis
 
     # Success list
     if success_groups:
-        text += f"<b>✅ SENT ({len(success_groups)}):</b>\n"
-        for i, g in enumerate(success_groups[:15], 1):
+        unique_success = []
+        for g in success_groups:
+            if g not in unique_success:
+                unique_success.append(g)
+        text += f"<b>✅ SENT ({len(unique_success)}):</b>\n"
+        for i, g in enumerate(unique_success[:15], 1):
             text += f"  {i}. {g}\n"
-        if len(success_groups) > 15:
-            text += f"  <i>...+{len(success_groups)-15} more groups</i>\n"
+        if len(unique_success) > 15:
+            text += f"  <i>...+{len(unique_success)-15} more groups</i>\n"
         text += "\n"
 
     # Failed list
     if failed_groups:
-        text += f"<b>❌ FAILED ({len(failed_groups)}):</b>\n"
-        for i, g in enumerate(failed_groups[:10], 1):
+        unique_failed = []
+        for g in failed_groups:
+            if g not in unique_failed:
+                unique_failed.append(g)
+        text += f"<b>❌ FAILED ({len(unique_failed)}):</b>\n"
+        for i, g in enumerate(unique_failed[:10], 1):
             text += f"  {i}. {g}\n"
-        if len(failed_groups) > 10:
-            text += f"  <i>...+{len(failed_groups)-10} more groups</i>\n"
+        if len(unique_failed) > 10:
+            text += f"  <i>...+{len(unique_failed)-10} more groups</i>\n"
         text += "\n"
 
     text += f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"

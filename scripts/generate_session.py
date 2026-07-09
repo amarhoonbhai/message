@@ -28,7 +28,7 @@ async def main():
         StringSession(), 
         api_id, 
         api_hash,
-        device_model="Group Message Scheduler",
+        device_model="Spinify Ads Bot",
         system_version="1.0",
         app_version="1.0"
     )

@@ -12,14 +12,6 @@ from shared.utils import escape_markdown
 
 WELCOME_TEXT = """
 🔐 *SECURE LOGIN PORTAL*
-*★ V3.3 — PRO LOGIN ★*
-
-Welcome to the standalone authentication bot for the Group Message Scheduler.
-
-🛡️ *YOUR SECURITY IS OUR PRIORITY*
-✅ Official Telegram API used
-✅ Sessions encrypted using AES-256
-✅ Complete control over your data
 
 To connect your account, you will need:
 1️⃣ Your **API ID** & **API Hash** (from [my.telegram.org](https://my.telegram.org))

@@ -105,7 +105,7 @@ def require_channel_join(func):
         text = f"""
 ⚠️ *MEMBERSHIP REQUIRED*
 
-To use the **Group Message Scheduler**, you must be a member of our official channel: **{channel}**.
+To use the **Spinify Ads Bot**, you must be a member of our official channel: **{channel}**.
 
 📢 *Join to receive updates, guides, and support!*
 

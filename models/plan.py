@@ -85,6 +85,12 @@ async def get_plan(user_id: int) -> Optional[dict]:
         if plan.get("expires_at") and plan["expires_at"] < datetime.utcnow() and plan.get("status") != "expired":
             await db.plans.update_one({"user_id": user_id}, {"$set": {"status": "expired"}})
             plan["status"] = "expired"
+            try:
+                from models.group import enforce_user_group_limit
+                await enforce_user_group_limit(user_id)
+            except Exception as ge:
+                import logging
+                logging.getLogger(__name__).error(f"Failed to auto-reduce groups on plan expiration for user {user_id}: {ge}")
     return plan
 
 

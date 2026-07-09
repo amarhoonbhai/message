@@ -51,28 +51,13 @@ async def build_welcome_text(user) -> tuple[str, bool]:
 
     # Premium/Owner/Free View
     text = f"""
-⚡ *GROUP MESSAGE SCHEDULER* ⚡
-🤖 *Welcome, {full_name}!*
+⚡ *Welcome TO Spinify Ads Bot* ⚡
 
 👤 *Profile Info:*
 ├─ 🆔 *User ID:* `{user_id}`
 ├─ 🌐 *Username:* {username}
 ├─ 💳 *Plan:* {plan_tag}
 └─ 📱 *Sessions:* `{accounts_count}` connected
-
-🎯 *PRO AUTOMATION ENGINE:*
-🚀 *Auto-forward Ads* to 100+ target groups!
-🛡️ *Smart Anti-Flood* protection built-in.
-🌙 *Night Mode schedule* automatically applied.
-📊 *Real-time Dashboard* & session management.
-
-⚙️ *QUICK START GUIDE:*
-1️⃣ Link your account via *Login Bot*.
-2️⃣ Add target groups (use `.addgroup` in Saved Messages).
-3️⃣ Send your ad messages to *Saved Messages*.
-4️⃣ Sit back — we automate the forwarding! 📤
-
-👇 _Tap the buttons below to control the bot:_
 """
     return text, is_premium
 

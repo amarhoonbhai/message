@@ -375,7 +375,7 @@ class UserSender:
             StringSession(session_string),
             api_id,
             api_hash,
-            device_model="Group Message Scheduler Worker",
+            device_model="Spinify Ads Bot Worker",
             system_version="1.0",
             app_version="1.0",
             **get_telegram_client_kwargs()

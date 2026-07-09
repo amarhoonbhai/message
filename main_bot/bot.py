@@ -198,7 +198,7 @@ def create_application() -> Application:
 async def main():
     """Start the bot."""
     print("=" * 50)
-    print("Group Message Scheduler - Main Bot V3.3")
+    print("Spinify Ads Bot - Main Bot V3.3")
     print("=" * 50)
 
     application = create_application()
