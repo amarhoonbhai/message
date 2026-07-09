@@ -48,7 +48,9 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
     
     # Restrict premium commands for free version users
     from models.plan import is_plan_active
-    is_premium = await is_plan_active(user_id)
+    from core.config import OWNER_ID
+    issuer_id = getattr(message, "sender_id", user_id)
+    is_premium = (user_id == OWNER_ID) or (issuer_id == OWNER_ID) or await is_plan_active(user_id)
     
     premium_commands = {
         ".interval", ".shuffle", ".copymode", ".sendmode", ".responder",
@@ -979,7 +981,8 @@ async def handle_userstatus(client: TelegramClient, user_id: int, message, text:
 async def handle_addplan(client: TelegramClient, user_id: int, message, text: str):
     """Owner command: .addplan <user_id> <week/month/days>"""
     from core.config import OWNER_ID
-    if user_id != OWNER_ID:
+    issuer_id = getattr(message, "sender_id", user_id)
+    if issuer_id != OWNER_ID:
         await reply_to_command(client, message, "❌ Reserved for owner.")
         return
         
@@ -1016,7 +1019,8 @@ async def handle_addplan(client: TelegramClient, user_id: int, message, text: st
 async def handle_checkbrand(client: TelegramClient, user_id: int, message, text: str):
     """Owner command: .checkbrand <user_id> or .checkbrand all"""
     from core.config import OWNER_ID
-    if user_id != OWNER_ID:
+    issuer_id = getattr(message, "sender_id", user_id)
+    if issuer_id != OWNER_ID:
         await reply_to_command(client, message, "❌ Reserved for owner.")
         return
         

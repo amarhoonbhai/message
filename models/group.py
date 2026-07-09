@@ -300,12 +300,13 @@ async def enforce_user_group_limit(user_id: int) -> int:
         groups_to_disable = enabled_groups[limit:]
         disable_ids = [g["chat_id"] for g in groups_to_disable]
         
+        plan_name = "Premium" if is_premium else "Free"
         await db.groups.update_many(
             {"user_id": user_id, "chat_id": {"$in": disable_ids}},
             {
                 "$set": {
                     "enabled": False,
-                    "pause_reason": f"Plan limit exceeded — limited to {limit} groups on Free Plan."
+                    "pause_reason": f"Plan limit exceeded — limited to {limit} groups on {plan_name} Plan."
                 }
             }
         )
