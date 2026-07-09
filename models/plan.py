@@ -51,7 +51,7 @@ async def update_plan_notification(user_id: int, updates: dict):
 
 
 async def get_plan(user_id: int) -> Optional[dict]:
-    """Get user's plan. Automatically initializes a 2-day free trial for users with no plan."""
+    """Get user's plan. Automatically initializes a 1-day free trial for users with no plan."""
     db = get_database()
     plan = await db.plans.find_one({"user_id": user_id})
     
@@ -62,7 +62,7 @@ async def get_plan(user_id: int) -> Optional[dict]:
         if not created_at:
             created_at = datetime.utcnow()
             
-        expires_at = created_at + timedelta(days=2)
+        expires_at = created_at + timedelta(days=1)
         status = "active" if expires_at > datetime.utcnow() else "expired"
         
         plan = {
@@ -141,13 +141,28 @@ async def activate_plan(user_id: int, plan_type: str):
     await extend_plan(user_id, days)
 
 
+async def check_and_expire_all_plans():
+    """Find all active plans that have expired, mark them as expired, and enforce group limits."""
+    db = get_database()
+    now = datetime.utcnow()
+    expired_cursor = db.plans.find({"status": "active", "expires_at": {"$lte": now}})
+    async for p in expired_cursor:
+        uid = p["user_id"]
+        await db.plans.update_one({"user_id": uid}, {"$set": {"status": "expired"}})
+        try:
+            from models.group import enforce_user_group_limit
+            await enforce_user_group_limit(uid)
+        except Exception:
+            pass
+
 async def get_subscription_stats() -> dict:
     """Get overview stats for subscriptions."""
+    await check_and_expire_all_plans()
     db = get_database()
     now = datetime.utcnow()
     pipeline = [
         {"$facet": {
-            "total_subscribed": [{"$match": {"status": "active", "expires_at": {"$gt": now}}}, {"$count": "count"}],
+            "total_subscribed": [{"$count": "count"}],
             "active": [{"$match": {"status": "active", "expires_at": {"$gt": now}}}, {"$count": "count"}],
             "expired": [{"$match": {"$or": [{"status": "expired"}, {"expires_at": {"$lte": now}}]}}, {"$count": "count"}],
             "expiring_soon": [{"$match": {"status": "active", "expires_at": {"$gt": now, "$lte": now + timedelta(days=7)}}}, {"$count": "count"}],
@@ -169,10 +184,11 @@ async def get_subscription_stats() -> dict:
 
 async def query_subscriptions(filter_type="all", search_query="", skip=0, limit=10):
     """Query subscriptions with pagination and lookup user info."""
+    await check_and_expire_all_plans()
     db = get_database()
     now = datetime.utcnow()
     
-    match_query = {"status": "active", "expires_at": {"$gt": now}}
+    match_query = {}
     if filter_type == "active":
         match_query = {"status": "active", "expires_at": {"$gt": now}}
     elif filter_type == "expired":

@@ -39,7 +39,9 @@ async def admin_sub_menu_callback(update: Update, context: ContextTypes.DEFAULT_
 ══════════════════════════════
 
 📊 *OVERVIEW STATS*
+👥 Total Users: {stats['total_subscribed']}
 🟢 Active Subscriptions: {stats['active']}
+🔴 Free Users (Expired): {stats['expired']}
 ⏳ Expiring Soon (7d): {stats['expiring_soon']}
 💎 Lifetime Users: {stats['lifetime']}
 
@@ -109,7 +111,7 @@ async def admin_sub_list_callback(update: Update, context: ContextTypes.DEFAULT_
         days_left = (expiry_date - datetime.utcnow()).days
         
         if plan.get("status") == "expired" or days_left < 0:
-            status = "🔴 EXPIRED"
+            status = "🔴 FREE USER (EXPIRED)"
             days_left = 0
         elif days_left <= 7:
             status = "🟡 EXPIRING"

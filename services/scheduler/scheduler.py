@@ -188,7 +188,7 @@ class Scheduler:
                 if p.get("plan_type") == "free_trial":
                     msg = (
                         "🔴 *TRIAL EXPIRED*\n\n"
-                        "Your 2-day free trial has expired.\n"
+                        "Your 1-day free trial has expired.\n"
                         "If you want to continue, contact @spinify to buy the access."
                     )
                 else:
