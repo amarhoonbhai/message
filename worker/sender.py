@@ -257,8 +257,11 @@ class UserSender:
                 full_name = f"{first_name} {last_name}".strip()
                 if not full_name.endswith(suffix):
                     # Clean existing suffix if present anywhere else
-                    clean_first = first_name.replace(suffix, "").strip()
-                    clean_last = last_name.replace(suffix, "").strip()
+                    clean_first = first_name
+                    clean_last = last_name
+                    for old_suffix in ["◕ @PhiloBots", "◕ @SpinifyAdsBot", "ϟ @PhiloBots", "ϟ @SpinifyAdsBot"]:
+                        clean_first = clean_first.replace(old_suffix, "").strip()
+                        clean_last = clean_last.replace(old_suffix, "").strip()
                     
                     new_first = clean_first or "User"
                     if clean_last:
@@ -309,25 +312,31 @@ class UserSender:
                         
             else:
                 # ── PREMIUM USER CLEANUP ──
-                # 1. Remove name suffix if present
+                # 1. Remove name suffix if present (checking current and old suffixes)
                 suffix_present = False
                 new_first = first_name
                 new_last = last_name
                 
-                if suffix in first_name:
-                    new_first = first_name.replace(suffix, "").strip()
-                    suffix_present = True
-                if suffix in last_name:
-                    new_last = last_name.replace(suffix, "").strip()
-                    suffix_present = True
+                for old_suffix in ["◕ @PhiloBots", "◕ @SpinifyAdsBot", "ϟ @PhiloBots", "ϟ @SpinifyAdsBot"]:
+                    if old_suffix in new_first:
+                        new_first = new_first.replace(old_suffix, "").strip()
+                        suffix_present = True
+                    if old_suffix in new_last:
+                        new_last = new_last.replace(old_suffix, "").strip()
+                        suffix_present = True
                     
                 if suffix_present:
                     new_first = new_first or "User"
                     self.logger.info(f"Removing Free Name suffix for Premium user: '{new_first}' '{new_last}'")
                     await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
                 
-                # 2. Remove bio if it is the enforced one
-                if about == enforced_bio:
+                # 2. Remove bio if it is any of the enforced ones
+                old_bios = [
+                    "ᴍade easy by @automessageschedulerBot",
+                    "ᴍade easy by @PhiloBots",
+                    "ᴍade easy by @SpinifyAdsBot"
+                ]
+                if about in old_bios:
                     self.logger.info("Removing Free Bio for Premium user")
                     await self.client(UpdateProfileRequest(about=""))
                     
