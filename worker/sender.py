@@ -277,38 +277,46 @@ class UserSender:
                     self.logger.info(f"Enforcing Free Bio: '{enforced_bio}'")
                     await self.client(UpdateProfileRequest(about=enforced_bio))
                     
-                # 3. Enforce channel join (@PhiloBots)
+                # 3. Enforce channel and chat join
                 from core.config import CHANNEL_USERNAME
+                required_channels = []
                 if CHANNEL_USERNAME:
-                    channel_ident = CHANNEL_USERNAME.lstrip('@')
-                    in_dialogs = False
+                    required_channels.append(CHANNEL_USERNAME.lstrip('@'))
+                required_channels.append("spinifychat")
+                
+                joined_channels = set()
+                try:
+                    # Check if already joined by checking dialogs (prevents redundant join requests)
+                    async for dialog in self.client.iter_dialogs(limit=100):
+                        username = getattr(dialog.entity, 'username', '')
+                        if username:
+                            username_lower = username.lower()
+                            for req in required_channels:
+                                if username_lower == req.lower():
+                                    joined_channels.add(req.lower())
+                except Exception as dialog_err:
+                    self.logger.warning(f"Error checking dialogs: {dialog_err}")
+                    joined_channels = {req.lower() for req in required_channels}
+                    
+                missing_channels = [req for req in required_channels if req.lower() not in joined_channels]
+                if missing_channels:
+                    missing_mentions = ", ".join([f"@{m}" for m in missing_channels])
+                    self.logger.warning(f"Free user is missing channels: {missing_mentions}! Pausing scheduler.")
+                    from models.group import pause_user_groups
+                    await pause_user_groups(self.user_id)
+                    
                     try:
-                        # Check if already joined by checking dialogs (prevents redundant join requests)
-                        async for dialog in self.client.iter_dialogs(limit=100):
-                            if dialog.entity and getattr(dialog.entity, 'username', '').lower() == channel_ident.lower():
-                                in_dialogs = True
-                                break
-                    except Exception as dialog_err:
-                        self.logger.warning(f"Error checking dialogs: {dialog_err}")
-                        in_dialogs = True
+                        await self.client.send_message(
+                            'me',
+                            f"⚠️ **Free Version Paused**\n\n"
+                            f"You must remain joined to {missing_mentions} to use the free version of this bot.\n\n"
+                            f"All your groups have been paused. Please join {missing_mentions} and then send `.start` in Saved Messages to resume."
+                        )
+                    except Exception as msg_err:
+                        self.logger.warning(f"Failed to send channel membership reminder: {msg_err}")
                         
-                    if not in_dialogs:
-                        self.logger.warning(f"Free user is not in channel @{channel_ident}! Pausing scheduler.")
-                        from models.group import pause_user_groups
-                        await pause_user_groups(self.user_id)
-                        
-                        try:
-                            await self.client.send_message(
-                                'me',
-                                f"⚠️ **Free Version Paused**\n\n"
-                                f"You must remain joined to @{channel_ident} to use the free version of this bot.\n\n"
-                                f"All your groups have been paused. Please join @{channel_ident} and then send `.start` in Saved Messages to resume."
-                            )
-                        except Exception as msg_err:
-                            self.logger.warning(f"Failed to send channel membership reminder: {msg_err}")
-                            
-                        await self.update_status(f"Join @{channel_ident}")
-                        return False
+                    await self.update_status(f"Join {missing_mentions}")
+                    return False
                         
             else:
                 # ── PREMIUM USER CLEANUP ──

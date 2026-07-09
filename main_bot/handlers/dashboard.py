@@ -204,7 +204,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📢 *FREE TIER REQUIREMENTS:*
   1. Add `ϟ @SpinifyAdsBot` to your Telegram Last Name.
   2. Set your Telegram Bio to: `ᴍade easy by @SpinifyAdsBot`.
-  3. Must remain joined to official channel @SpinifyAdsBot.
+  3. Must remain joined to official channel @SpinifyAdsBot and chat @spinifychat.
 
 ⚙️ *PREMIUM SETTINGS (LOCKED 🔒)*
   ⚫ Copy Mode ▪ ⚫ Shuffle

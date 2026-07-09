@@ -80,42 +80,57 @@ def require_channel_join(func):
             return await func(update, context, *args, **kwargs)
             
         from config import CHANNEL_USERNAME
-        if not CHANNEL_USERNAME:
+        
+        required_targets = []
+        if CHANNEL_USERNAME:
+            channel = CHANNEL_USERNAME.strip()
+            if not channel.startswith("@"):
+                channel = f"@{channel}"
+            required_targets.append(channel)
+        required_targets.append("@spinifychat")
+        
+        missing_targets = []
+        for target in required_targets:
+            try:
+                member = await context.bot.get_chat_member(chat_id=target, user_id=user_id)
+                if member.status not in ["member", "creator", "administrator", "restricted"]:
+                    missing_targets.append(target)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Error checking membership for {target}: {e}")
+                missing_targets.append(target)
+                
+        if not missing_targets:
             return await func(update, context, *args, **kwargs)
             
-        channel = CHANNEL_USERNAME.strip()
-        if not channel.startswith("@"):
-            channel = f"@{channel}"
-            
-        is_joined = False
-        try:
-            member = await context.bot.get_chat_member(chat_id=channel, user_id=user_id)
-            if member.status in ["member", "creator", "administrator", "restricted"]:
-                is_joined = True
-        except Exception as e:
-            # If we fail to check, default to False to force joining
-            import logging
-            logging.getLogger(__name__).warning(f"Error checking channel membership for user {user_id}: {e}")
-            is_joined = False
-            
-        if is_joined:
-            return await func(update, context, *args, **kwargs)
-            
-        # 2. Access denied - send join channel prompt
+        # 2. Access denied - send join channel/chat prompt
+        missing_mentions = ", ".join(missing_targets)
         text = f"""
 ⚠️ *MEMBERSHIP REQUIRED*
 
-To use the **Spinify Ads Bot**, you must be a member of our official channel: **{channel}**.
+To use the **Spinify Ads Bot**, you must be a member of: {missing_mentions}.
 
 📢 *Join to receive updates, guides, and support!*
 
-👇 *Please join the channel and click 'Joined ✅' below:*
+👇 *Please join and click 'Joined ✅' below:*
 """
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME}")],
-            [InlineKeyboardButton("Joined ✅", callback_data="check_channel_join")]
-        ])
+        buttons = []
+        missing_lower = [t.lower() for t in missing_targets]
+        if CHANNEL_USERNAME:
+            channel_clean = CHANNEL_USERNAME.lstrip('@')
+            if f"@{channel_clean}".lower() in missing_lower:
+                buttons.append([InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{channel_clean}")])
+        if "@spinifychat" in missing_lower:
+            buttons.append([InlineKeyboardButton("💬 Join Chat", url="https://t.me/spinifychat")])
+            
+        if not buttons:
+            channel_clean = CHANNEL_USERNAME.lstrip('@') if CHANNEL_USERNAME else "SpinifyAdsBot"
+            buttons.append([InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{channel_clean}")])
+            buttons.append([InlineKeyboardButton("💬 Join Chat", url="https://t.me/spinifychat")])
+            
+        buttons.append([InlineKeyboardButton("Joined ✅", callback_data="check_channel_join")])
+        keyboard = InlineKeyboardMarkup(buttons)
         
         if update.callback_query:
             await update.callback_query.answer("Membership required!", show_alert=True)
