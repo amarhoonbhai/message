@@ -53,12 +53,13 @@ from worker.utils import (
 )
 from shared.telegram_error_mapper import map_telegram_error
 from shared.utils import get_telegram_client_kwargs
+active_senders = {}
+
 from worker.commands import process_command  # Used by event handler
 
 logger = logging.getLogger(__name__)
 _cached_global_settings = None
 _cached_global_settings_expiry = None
-active_senders = {}
 
 async def get_cached_global_settings():
     global _cached_global_settings, _cached_global_settings_expiry
