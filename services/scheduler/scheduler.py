@@ -41,10 +41,16 @@ class Scheduler:
 
     async def start(self):
         """Initialize connections and enter the main loop."""
-        setup_service_logging("scheduler")
-        logger.info("=" * 50)
-        logger.info("Scheduler Service Starting")
-        logger.info("=" * 50)
+        # Prevent multiple scheduler processes from running simultaneously
+        import socket
+        import sys
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(('127.0.0.1', 9889))
+            self._lock_socket = s
+        except OSError:
+            logger.error("🚨 CRITICAL: Another instance of scheduler.py is already running. Aborting startup.")
+            sys.exit(1)
 
         self.running = True
 

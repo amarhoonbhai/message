@@ -51,6 +51,17 @@ class WorkerManager:
     
     async def start(self):
         """Start the worker manager."""
+        # Prevent multiple worker processes from running simultaneously
+        import socket
+        import sys
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(('127.0.0.1', 9888))
+            self._lock_socket = s
+        except OSError:
+            logger.error("🚨 CRITICAL: Another instance of worker.py is already running. Aborting startup to prevent duplicate sending.")
+            sys.exit(1)
+
         self.running = True
         logger.info("Worker Manager starting...")
         
