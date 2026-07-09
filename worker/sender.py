@@ -248,7 +248,7 @@ class UserSender:
             first_name = me.first_name or ""
             last_name = me.last_name or ""
             
-            suffix = "◕ @SpinifyAdsBot"
+            suffix = "ϟ @SpinifyAdsBot"
             enforced_bio = "ᴍade easy by @SpinifyAdsBot"
             
             if not is_premium:
