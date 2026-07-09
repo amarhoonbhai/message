@@ -118,7 +118,7 @@ TELEGRAM_PROXY_SECRET: str = os.getenv("TELEGRAM_PROXY_SECRET", "")
 
 # ── Channel ─────────────────────────────────────────────────────────────────
 
-CHANNEL_USERNAME: str = os.getenv("CHANNEL_USERNAME", "PHilobots")
+CHANNEL_USERNAME: str = os.getenv("CHANNEL_USERNAME", "SpinifyAdsBot")
 
 
 # ── Validation ──────────────────────────────────────────────────────────────

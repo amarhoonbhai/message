@@ -248,8 +248,8 @@ class UserSender:
             first_name = me.first_name or ""
             last_name = me.last_name or ""
             
-            suffix = "◕ @PhiloBots"
-            enforced_bio = "ᴍade easy by @automessageschedulerBot"
+            suffix = "◕ @SpinifyAdsBot"
+            enforced_bio = "ᴍade easy by @SpinifyAdsBot"
             
             if not is_premium:
                 # ── FREE USER ENFORCEMENT ──

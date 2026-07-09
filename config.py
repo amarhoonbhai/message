@@ -60,7 +60,7 @@ def validate_config():
 validate_config()
 
 # ============== Channel ==============
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "PHilobots")
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "SpinifyAdsBot")
 PAYMENT_UPI_ID = os.getenv("PAYMENT_UPI_ID", "rain@slc")
 SUPPORT_HANDLE = os.getenv("SUPPORT_HANDLE", "@spinify")
 SUPPORT_URL = os.getenv("SUPPORT_URL", "https://t.me/spinify")

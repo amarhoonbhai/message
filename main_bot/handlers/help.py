@@ -49,7 +49,7 @@ HELP_TEXT = """
 🔹 `/redeem <code>` — Apply premium code
 🔹 `/help` — Show this menu
 
-👨‍💻 *SUPPORT & UPDATES:* @PHilobots
+👨‍💻 *SUPPORT & UPDATES:* @SpinifyAdsBot
 """
 
 
