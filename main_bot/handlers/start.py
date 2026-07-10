@@ -155,24 +155,12 @@ async def check_channel_join_callback(update: Update, context: ContextTypes.DEFA
     query = update.callback_query
     user_id = update.effective_user.id
     
-    from config import CHANNEL_USERNAME, OWNER_ID
-    channel = CHANNEL_USERNAME.strip()
-    if not channel.startswith("@"):
-        channel = f"@{channel}"
-        
-    is_joined = False
-    if user_id == OWNER_ID:
-        is_joined = True
-    else:
-        try:
-            member = await context.bot.get_chat_member(chat_id=channel, user_id=user_id)
-            if member.status in ["member", "creator", "administrator", "restricted"]:
-                is_joined = True
-        except Exception as e:
-            is_joined = False
+    from shared.decorators import get_missing_channels
+    missing_targets = await get_missing_channels(context.bot, user_id)
             
-    if is_joined:
+    if not missing_targets:
         await query.answer("✅ Verification successful!", show_alert=True)
         await home_callback(update, context)
     else:
-        await query.answer(f"❌ You have not joined {channel} yet. Please join and try again.", show_alert=True)
+        missing_mentions = ", ".join(missing_targets)
+        await query.answer(f"❌ You have not joined {missing_mentions} yet. Please join and try again.", show_alert=True)

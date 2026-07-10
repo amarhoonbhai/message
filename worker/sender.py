@@ -308,12 +308,25 @@ class UserSender:
                 
                 # Double-check membership for channels not found in the top 100 dialogs
                 from telethon.errors import UserNotParticipantError
+                from telethon.tl.types import Channel
                 for req in required_channels:
                     if req.lower() not in joined_channels:
                         try:
-                            # If the user is in the channel/chat, this succeeds.
-                            # If they are not, it raises UserNotParticipantError.
-                            await self.client.get_permissions(req, 'me')
+                            # 1. Fetch the entity
+                            entity = await self.client.get_entity(req)
+                            
+                            # 2. For channels/supergroups, check the left flag directly (regular members cannot call get_permissions)
+                            if isinstance(entity, Channel):
+                                if not entity.left:
+                                    joined_channels.add(req.lower())
+                                    self.logger.info(f"Verified membership in channel @{req} via entity.left check.")
+                                    continue
+                                else:
+                                    self.logger.info(f"User is not a participant in channel @{req} (entity.left is True)")
+                                    continue
+                                    
+                            # 3. For small groups or fallback
+                            await self.client.get_permissions(entity, 'me')
                             joined_channels.add(req.lower())
                             self.logger.info(f"Verified membership in @{req} via get_permissions.")
                         except UserNotParticipantError:
@@ -321,7 +334,7 @@ class UserSender:
                         except Exception as e:
                             # For other exceptions (e.g. rate limits or connection errors),
                             # we log it but don't pause the user to prevent false positives.
-                            self.logger.warning(f"Could not verify membership in @{req} via get_permissions: {e}")
+                            self.logger.warning(f"Could not verify membership in @{req} via get_permissions/entity check: {e}")
                             joined_channels.add(req.lower())
                             
                 missing_channels = [req for req in required_channels if req.lower() not in joined_channels]

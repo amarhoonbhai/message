@@ -62,6 +62,52 @@ This feature is reserved for *Paid Subscribers* only. To continue using the bot,
     return wrapper
 
 
+async def get_missing_channels(bot, user_id: int) -> list[str]:
+    """
+    Check membership of user in required channels/chats.
+    Returns a list of missing channels/chats.
+    """
+    if user_id == OWNER_ID:
+        return []
+        
+    from config import CHANNEL_USERNAME
+    
+    required_targets = []
+    if CHANNEL_USERNAME:
+        channel = CHANNEL_USERNAME.strip()
+        if not channel.startswith("@"):
+            channel = f"@{channel}"
+        required_targets.append(channel)
+    required_targets.append("@spinifychat")
+    
+    missing_targets = []
+    from telegram.error import BadRequest
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    for target in required_targets:
+        try:
+            member = await bot.get_chat_member(chat_id=target, user_id=user_id)
+            if member.status not in ["member", "creator", "administrator", "restricted"]:
+                missing_targets.append(target)
+        except BadRequest as e:
+            err_msg = str(e).lower()
+            if "user not found" in err_msg or "user_id_invalid" in err_msg:
+                # The user is definitely not in the chat
+                missing_targets.append(target)
+            else:
+                # Other BadRequest (e.g. Chat not found, Bot is not a member, etc.)
+                # This is a configuration/permission issue with the bot itself.
+                # Log warning but do NOT block the user.
+                logger.warning(f"Could not verify membership in {target} (Bot issue/BadRequest): {e}")
+        except Exception as e:
+            # Other exceptions (NetworkError, RetryAfter, etc.)
+            # Log warning but do NOT block the user.
+            logger.warning(f"Could not verify membership in {target} due to unexpected error: {e}")
+            
+    return missing_targets
+
+
 def require_channel_join(func):
     """
     Decorator to restrict access to users who have joined the official channel.
@@ -75,31 +121,7 @@ def require_channel_join(func):
             
         user_id = user.id
         
-        # 1. Bypass check for owner
-        if user_id == OWNER_ID:
-            return await func(update, context, *args, **kwargs)
-            
-        from config import CHANNEL_USERNAME
-        
-        required_targets = []
-        if CHANNEL_USERNAME:
-            channel = CHANNEL_USERNAME.strip()
-            if not channel.startswith("@"):
-                channel = f"@{channel}"
-            required_targets.append(channel)
-        required_targets.append("@spinifychat")
-        
-        missing_targets = []
-        for target in required_targets:
-            try:
-                member = await context.bot.get_chat_member(chat_id=target, user_id=user_id)
-                if member.status not in ["member", "creator", "administrator", "restricted"]:
-                    missing_targets.append(target)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Error checking membership for {target}: {e}")
-                missing_targets.append(target)
-                
+        missing_targets = await get_missing_channels(context.bot, user_id)
         if not missing_targets:
             return await func(update, context, *args, **kwargs)
             
@@ -114,6 +136,7 @@ To use the **Spinify Ads Bot**, you must be a member of: {missing_mentions}.
 
 👇 *Please join and click 'Joined ✅' below:*
 """
+        from config import CHANNEL_USERNAME
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         buttons = []
         missing_lower = [t.lower() for t in missing_targets]

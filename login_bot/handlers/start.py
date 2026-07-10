@@ -28,28 +28,12 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     
     # 1. Enforce channel and chat join check first
-    from config import CHANNEL_USERNAME, OWNER_ID
-    if user_id != OWNER_ID:
-        required_targets = []
-        if CHANNEL_USERNAME:
-            channel = CHANNEL_USERNAME.strip()
-            if not channel.startswith("@"):
-                channel = f"@{channel}"
-            required_targets.append(channel)
-        required_targets.append("@spinifychat")
+    from shared.decorators import get_missing_channels
+    missing_targets = await get_missing_channels(context.bot, user_id)
         
-        missing_targets = []
-        for target in required_targets:
-            try:
-                member = await context.bot.get_chat_member(chat_id=target, user_id=user_id)
-                if member.status not in ["member", "creator", "administrator", "restricted"]:
-                    missing_targets.append(target)
-            except Exception:
-                missing_targets.append(target)
-                
-        if missing_targets:
-            missing_mentions = ", ".join(missing_targets)
-            text = f"""
+    if missing_targets:
+        missing_mentions = ", ".join(missing_targets)
+        text = f"""
 ⚠️ *MEMBERSHIP REQUIRED*
 
 To connect your accounts, you must be a member of: {missing_mentions}.
@@ -58,28 +42,29 @@ To connect your accounts, you must be a member of: {missing_mentions}.
 
 👇 *Please join and send /start again:*
 """
-            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-            buttons = []
-            missing_lower = [t.lower() for t in missing_targets]
-            if CHANNEL_USERNAME:
-                channel_clean = CHANNEL_USERNAME.lstrip('@')
-                if f"@{channel_clean}".lower() in missing_lower:
-                    buttons.append([InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{channel_clean}")])
-            if "@spinifychat" in missing_lower:
-                buttons.append([InlineKeyboardButton("💬 Join Chat", url="https://t.me/spinifychat")])
-                
-            if not buttons:
-                channel_clean = CHANNEL_USERNAME.lstrip('@') if CHANNEL_USERNAME else "SpinifyAdsBot"
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from config import CHANNEL_USERNAME
+        buttons = []
+        missing_lower = [t.lower() for t in missing_targets]
+        if CHANNEL_USERNAME:
+            channel_clean = CHANNEL_USERNAME.lstrip('@')
+            if f"@{channel_clean}".lower() in missing_lower:
                 buttons.append([InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{channel_clean}")])
-                buttons.append([InlineKeyboardButton("💬 Join Chat", url="https://t.me/spinifychat")])
-                
-            keyboard = InlineKeyboardMarkup(buttons)
-            await update.message.reply_text(
-                text,
-                parse_mode="Markdown",
-                reply_markup=keyboard
-            )
-            return
+        if "@spinifychat" in missing_lower:
+            buttons.append([InlineKeyboardButton("💬 Join Chat", url="https://t.me/spinifychat")])
+            
+        if not buttons:
+            channel_clean = CHANNEL_USERNAME.lstrip('@') if CHANNEL_USERNAME else "SpinifyAdsBot"
+            buttons.append([InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{channel_clean}")])
+            buttons.append([InlineKeyboardButton("💬 Join Chat", url="https://t.me/spinifychat")])
+            
+        keyboard = InlineKeyboardMarkup(buttons)
+        await update.message.reply_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        return
             
     # Ensure user exists in db
     await create_user(user_id)
