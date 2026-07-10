@@ -73,12 +73,12 @@ def create_application() -> Application:
     # ============== Callback Query Handlers ==============
     # Protected functional callbacks
     patterns = [
-        ("^add_account$", require_premium(add_account_callback)),
-        ("^edit_phone$", require_premium(edit_phone_callback)),
+        ("^add_account$", add_account_callback),
+        ("^edit_phone$", edit_phone_callback),
         ("^cancel$", cancel_callback), # Cancel should be allowed
-        ("^send_otp$", require_premium(send_otp_callback)),
-        ("^resend_otp$", require_premium(resend_otp_callback)),
-        ("^otp:", require_premium(otp_keypad_callback)),
+        ("^send_otp$", send_otp_callback),
+        ("^resend_otp$", resend_otp_callback),
+        ("^otp:", otp_keypad_callback),
         ("^manage_accounts$", manage_accounts_callback),
         ("^manage_acc:", manage_acc_details_callback),
         ("^disconnect_acc:", disconnect_acc_callback),
@@ -90,9 +90,8 @@ def create_application() -> Application:
         application.add_handler(CallbackQueryHandler(callback, pattern=pattern))
 
     # ============== Message Handlers ==============
-    @require_premium
     async def handle_text_message(update, context):
-        """Route text messages based on state. Protected by premium check."""
+        """Route text messages based on state."""
         if not update.message or not update.message.text:
             return
 
