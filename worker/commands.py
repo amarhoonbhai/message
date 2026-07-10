@@ -1588,6 +1588,7 @@ async def handle_health(client: TelegramClient, user_id: int, message, text: str
         # Run resolution check
         is_writable = False
         reason = "Unknown error"
+        should_disable = False
         
         try:
             # Try to resolve entity (like _resolve_entity does)
@@ -1601,21 +1602,39 @@ async def handle_health(client: TelegramClient, user_id: int, message, text: str
                         entity = dialog.entity
                         break
                 if not entity:
-                    raise ValueError("Not found in dialog list")
+                    reason = "Entity Not Found (Membership Required)"
+                    should_disable = True
+                    is_writable = False
             
-            # Check permissions
-            permissions = await client.get_permissions(entity)
-            if entity.broadcast and not permissions.is_admin:
-                is_writable = False
-                reason = "ChannelPostForbidden (Not Admin)"
-            elif hasattr(permissions, 'can_send_messages') and not permissions.can_send_messages:
-                is_writable = False
-                reason = "GroupMuted (Send permission restricted)"
-            else:
-                is_writable = True
+            if entity:
+                # Check permissions
+                permissions = await client.get_permissions(entity)
+                if entity.broadcast and not permissions.is_admin:
+                    is_writable = False
+                    reason = "ChannelPostForbidden (Not Admin)"
+                    should_disable = True
+                elif hasattr(permissions, 'can_send_messages') and not permissions.can_send_messages:
+                    is_writable = False
+                    reason = "GroupMuted (Send permission restricted)"
+                    should_disable = True
+                else:
+                    is_writable = True
         except Exception as e:
+            from telethon.errors import (
+                ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError,
+                ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError
+            )
             is_writable = False
             reason = type(e).__name__
+            
+            permanent_errors = (
+                ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError,
+                ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError
+            )
+            if isinstance(e, permanent_errors):
+                should_disable = True
+            else:
+                should_disable = False
 
         if is_writable:
             passed += 1
@@ -1625,12 +1644,15 @@ async def handle_health(client: TelegramClient, user_id: int, message, text: str
                 sender._failed_entities.pop(chat_id, None)
         else:
             failed += 1
-            await mark_group_failing(user_id, chat_id, reason)
-            failures.append(f"• `{chat_title}`: {reason}")
-            # Add to negative cache of sender if sender exists
-            if sender and hasattr(sender, '_failed_entities'):
-                from datetime import datetime
-                sender._failed_entities[chat_id] = (datetime.utcnow(), f"Live check fail: {reason}")
+            if should_disable:
+                await mark_group_failing(user_id, chat_id, reason)
+                failures.append(f"• `{chat_title}`: {reason}")
+                # Add to negative cache of sender if sender exists
+                if sender and hasattr(sender, '_failed_entities'):
+                    from datetime import datetime
+                    sender._failed_entities[chat_id] = (datetime.utcnow(), f"Live check fail: {reason}")
+            else:
+                failures.append(f"• `{chat_title}`: Temporary check fail ({reason})")
                 
         # Delay slightly to avoid spamming / flood waits
         await asyncio.sleep(0.5)

@@ -26,7 +26,6 @@ from telethon.errors import (
     UsernameInvalidError,
     InviteHashExpiredError,
     AuthKeyDuplicatedError,
-    FrozenParticipantMissingError,
     AuthKeyUnregisteredError,
     SessionPasswordNeededError
 )
@@ -94,6 +93,16 @@ class AdaptiveDelayController:
 
     def get_gap(self) -> int:
         """Apply adaptive multiplier and random jitter for human-like behavior."""
+        # Dynamic Time-based Decay:
+        # If the account has rested since the last flood wait, gradually decrease the multiplier.
+        if self.last_flood_at and self.multiplier > 1.0:
+            elapsed_seconds = (datetime.utcnow() - self.last_flood_at).total_seconds()
+            # Every 5 minutes (300 seconds) of rest decays the excess multiplier by 15% (decay factor of 0.85)
+            # This ensures that after 30-40 minutes of rest or successful sends, the multiplier returns to normal (1.0).
+            decay_periods = elapsed_seconds / 300.0
+            decay_factor = 0.85 ** decay_periods
+            self.multiplier = max(1.0, 1.0 + (self.multiplier - 1.0) * decay_factor)
+
         jitter = random.uniform(0.8, 1.2)
         return int(self.base_gap * self.multiplier * jitter)
 
@@ -296,8 +305,25 @@ class UserSender:
                                     joined_channels.add(req.lower())
                 except Exception as dialog_err:
                     self.logger.warning(f"Error checking dialogs: {dialog_err}")
-                    joined_channels = {req.lower() for req in required_channels}
-                    
+                
+                # Double-check membership for channels not found in the top 100 dialogs
+                from telethon.errors import UserNotParticipantError
+                for req in required_channels:
+                    if req.lower() not in joined_channels:
+                        try:
+                            # If the user is in the channel/chat, this succeeds.
+                            # If they are not, it raises UserNotParticipantError.
+                            await self.client.get_permissions(req, 'me')
+                            joined_channels.add(req.lower())
+                            self.logger.info(f"Verified membership in @{req} via get_permissions.")
+                        except UserNotParticipantError:
+                            self.logger.info(f"User is not a participant in @{req}")
+                        except Exception as e:
+                            # For other exceptions (e.g. rate limits or connection errors),
+                            # we log it but don't pause the user to prevent false positives.
+                            self.logger.warning(f"Could not verify membership in @{req} via get_permissions: {e}")
+                            joined_channels.add(req.lower())
+                            
                 missing_channels = [req for req in required_channels if req.lower() not in joined_channels]
                 if missing_channels:
                     missing_mentions = ", ".join([f"@{m}" for m in missing_channels])
@@ -1370,7 +1396,7 @@ class UserSender:
                 asyncio.create_task(self.log_send(chat_id, message.id, "skipped", disp_msg))
                 return (False, False, 0)
                 
-            elif isinstance(e, FrozenParticipantMissingError):
+            elif getattr(e, 'message', '') == "FROZEN_PARTICIPANT_MISSING":
                 self.logger.error(f"🛑 Account {self.phone} is FROZEN by Telegram!")
                 asyncio.create_task(mark_group_failing(self.user_id, chat_id, "Account Frozen"))
                 return (False, False, 0)

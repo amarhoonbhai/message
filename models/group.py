@@ -111,6 +111,7 @@ GROUP_LEVEL_FAIL_REASONS = [
 # Account-level failures — group is fine, but the sending account is restricted
 ACCOUNT_LEVEL_FAIL_KEYWORDS = [
     "403", "FORBIDDEN", "AUTH_KEY", "PeerFlood", "RPCError 403",
+    "Frozen", "FROZEN_PARTICIPANT_MISSING", "Account Frozen",
 ]
 
 
