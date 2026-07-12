@@ -2077,9 +2077,11 @@ async def handle_join(client: TelegramClient, user_id: int, message, text: str):
             else:
                 # Clean username
                 clean_input = raw_input.strip()
-                if clean_input.startswith("https://t.me/"):
-                    clean_input = clean_input.replace("https://t.me/", "")
+                if "t.me/" in clean_input:
+                    clean_input = clean_input.split("t.me/")[-1]
                 clean_input = clean_input.lstrip('@')
+                if "/" in clean_input:
+                    clean_input = clean_input.split("/")[0]
                 
                 # Safe delay if processing multiple individual groups (except first)
                 if idx > 1:
