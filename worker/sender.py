@@ -1130,9 +1130,11 @@ class UserSender:
         try:
             messages = []
             async for msg in self.client.iter_messages('me', limit=100):
-                # Skip command messages
-                if msg.text and msg.text.strip().startswith("."):
-                    continue
+                # Skip command messages and warning notifications
+                if msg.text:
+                    stripped = msg.text.strip()
+                    if stripped.startswith(".") or "Free Version Paused" in stripped or "remain joined" in stripped:
+                        continue
                 # Skip MessageService (calls, pins, joins — cannot be forwarded)
                 if hasattr(msg, 'action') and msg.action is not None:
                     continue
