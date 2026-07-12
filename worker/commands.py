@@ -1861,7 +1861,7 @@ async def handle_check(client: TelegramClient, user_id: int, message, text: str,
 
 
 async def handle_clearads(client: TelegramClient, user_id: int, message, sender=None):
-    """Owner command: .clearads to clear all Saved Messages for this account."""
+    """Owner command: .clearads to clear all Saved Messages for this account in one shot."""
     from core.config import OWNER_ID
     issuer_id = getattr(message, "sender_id", user_id)
     if issuer_id != OWNER_ID:
@@ -1870,26 +1870,15 @@ async def handle_clearads(client: TelegramClient, user_id: int, message, sender=
 
     status_msg = await reply_to_command(client, message, "⏳ Clearing all Saved Messages...", auto_delete=False)
     try:
-        deleted_count = 0
-        while True:
-            message_ids = []
-            async for msg in client.iter_messages('me', limit=100):
-                if msg.id != status_msg.id:
-                    message_ids.append(msg.id)
-            if not message_ids:
-                break
-            await client.delete_messages('me', message_ids)
-            deleted_count += len(message_ids)
-            
-            # Show live progress
-            try:
-                await status_msg.edit(f"⏳ **Clearing Saved Messages...**\n\nProgress: `{deleted_count}` messages deleted.")
-            except Exception:
-                pass
-                
-            await asyncio.sleep(0.5)
-            
-        await status_msg.edit(f"🗑️ **SUCCESS**\n\nAll {deleted_count} messages have been cleared from Saved Messages.")
+        from telethon.tl.functions.messages import DeleteHistoryRequest
+        # Clear the entire history of Saved Messages in one shot
+        await client(DeleteHistoryRequest(peer='me', max_id=0, just_clear=True))
+        
+        # Send a fresh success message since all previous messages (including status_msg) are deleted
+        success_msg = await client.send_message(
+            'me',
+            "🗑️ **SUCCESS**\n\nAll messages have been cleared from Saved Messages in one shot."
+        )
         
         # Trigger wake up if sender is active to handle status update
         if sender:
@@ -1901,15 +1890,17 @@ async def handle_clearads(client: TelegramClient, user_id: int, message, sender=
         async def _auto_delete():
             await asyncio.sleep(30)
             try:
-                await status_msg.delete()
-                await message.delete()
+                await success_msg.delete()
             except Exception:
                 pass
         asyncio.create_task(_auto_delete())
         
     except Exception as e:
         logger.error(f"[User {user_id}] Error in .clearads: {e}")
-        await status_msg.edit(f"❌ **Error clearing ads:** {str(e)}")
+        try:
+            await status_msg.edit(f"❌ **Error clearing ads:** {str(e)}")
+        except Exception:
+            pass
 
 
 async def handle_setads(client: TelegramClient, user_id: int, message, sender=None):
