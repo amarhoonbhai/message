@@ -99,6 +99,9 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
         elif cmd == ".join":
             await handle_join(client, user_id, message, text)
             return True
+        elif cmd == ".show":
+            await handle_show(client, user_id, message)
+            return True
         elif cmd == ".rmpaused":
             await handle_rmpaused(client, user_id, message)
             return True
@@ -2134,6 +2137,68 @@ async def handle_join(client: TelegramClient, user_id: int, message, text: str):
         except Exception:
             pass
     asyncio.create_task(_auto_delete())
+
+
+async def handle_show(client: TelegramClient, user_id: int, message):
+    """Owner command: .show to show how many messages are in Saved Messages and a preview of active ads."""
+    from core.config import OWNER_ID
+    issuer_id = getattr(message, "sender_id", user_id)
+    if issuer_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for owner.")
+        return
+
+    status_msg = await reply_to_command(client, message, "⏳ Fetching Saved Messages details...", auto_delete=False)
+    try:
+        raw_count = 0
+        ads = []
+        
+        async for msg in client.iter_messages('me', limit=1000):
+            raw_count += 1
+            # Filter like get_all_saved_messages
+            if msg.text and msg.text.strip().startswith("."):
+                continue
+            if hasattr(msg, 'action') and msg.action is not None:
+                continue
+            if not msg.text and not msg.media:
+                continue
+            ads.append(msg)
+            
+        # Reverse to show chronological order
+        ads.reverse()
+        
+        response_text = f"📊 **Saved Messages Summary**\n\n"
+        response_text += f"▪ Total Raw Messages: `{raw_count}`\n"
+        response_text += f"▪ Active Ad Messages: `{len(ads)}`\n\n"
+        
+        if not ads:
+            response_text += "⚠️ **No active ads configured.** Add some messages to Saved Messages to start forwarding."
+        else:
+            response_text += "📢 **Active Ads Preview:**\n"
+            # Show up to 5 previews to avoid hitting Telegram message length limits
+            for idx, ad in enumerate(ads[:5], start=1):
+                preview_text = ""
+                if ad.text:
+                    clean_text = ad.text.strip()
+                    # Truncate preview to 100 characters
+                    preview_text = clean_text[:100] + ("..." if len(clean_text) > 100 else "")
+                else:
+                    preview_text = "*(No text)*"
+                    
+                media_type = "None"
+                if ad.media:
+                    media_type = type(ad.media).__name__.replace("MessageMedia", "")
+                    
+                response_text += f"\n{idx}️⃣ **Ad ID:** `{ad.id}` | 📁 **Media:** `{media_type}`\n"
+                response_text += f"📝 **Preview:** `{preview_text}`\n"
+                
+            if len(ads) > 5:
+                response_text += f"\n*...and {len(ads) - 5} more ads.*"
+                
+        await status_msg.edit(response_text)
+        
+    except Exception as e:
+        logger.error(f"[User {user_id}] Error in .show: {e}")
+        await status_msg.edit(f"❌ **Error displaying Saved Messages:** {str(e)}")
 
 
 
