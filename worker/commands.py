@@ -1868,16 +1868,16 @@ async def handle_clearads(client: TelegramClient, user_id: int, message, sender=
     status_msg = await reply_to_command(client, message, "⏳ Clearing all Saved Messages...", auto_delete=False)
     try:
         deleted_count = 0
-        message_ids = []
-        async for msg in client.iter_messages('me', limit=500):
-            message_ids.append(msg.id)
-            if len(message_ids) >= 100:
-                await client.delete_messages('me', message_ids)
-                deleted_count += len(message_ids)
-                message_ids = []
-        if message_ids:
+        while True:
+            message_ids = []
+            async for msg in client.iter_messages('me', limit=100):
+                if msg.id != status_msg.id:
+                    message_ids.append(msg.id)
+            if not message_ids:
+                break
             await client.delete_messages('me', message_ids)
             deleted_count += len(message_ids)
+            await asyncio.sleep(0.5)
             
         await status_msg.edit(f"🗑️ **SUCCESS**\n\nAll {deleted_count} messages have been cleared from Saved Messages.")
         
