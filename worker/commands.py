@@ -1933,7 +1933,7 @@ async def handle_setads(client: TelegramClient, user_id: int, message, sender=No
 
 
 async def handle_join(client: TelegramClient, user_id: int, message, text: str):
-    """Owner command: .join <username/link/folder_link>... with safe delays and native folder supports."""
+    """Owner command: .join <username/link/folder_link>... with safe delays and native folder supports (joins only, does not add to DB)."""
     from core.config import OWNER_ID
     issuer_id = getattr(message, "sender_id", user_id)
     if issuer_id != OWNER_ID:
@@ -1998,17 +1998,6 @@ async def handle_join(client: TelegramClient, user_id: int, message, text: str):
                 try:
                     await client(JoinChatlistInviteRequest(slug, peers))
                     joined.append(f"Folder `{title}` ({len(peers)} groups)")
-                    
-                    # Add all peers to the database
-                    for peer in peers:
-                        try:
-                            entity = await client.get_entity(peer)
-                            chat_id = utils.get_peer_id(entity)
-                            chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
-                            from models.group import add_group
-                            await add_group(user_id, chat_id, chat_title, client.phone)
-                        except Exception as db_err:
-                            logger.error(f"Failed to add group {peer} to DB: {db_err}")
                             
                 except Exception as folder_err:
                     if "CHATLISTS_TOO_MUCH" in str(folder_err) or "chatlists too much" in str(folder_err).lower():
@@ -2025,16 +2014,6 @@ async def handle_join(client: TelegramClient, user_id: int, message, text: str):
                                     
                                 await client(JoinChannelRequest(peer))
                                 folder_joined_count += 1
-                                
-                                # Add to DB
-                                try:
-                                    entity = await client.get_entity(peer)
-                                    chat_id = utils.get_peer_id(entity)
-                                    chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
-                                    from models.group import add_group
-                                    await add_group(user_id, chat_id, chat_title, client.phone)
-                                except Exception as db_err:
-                                    logger.error(f"Failed to add group {peer} to DB: {db_err}")
                                     
                             except Exception as peer_err:
                                 logger.error(f"Failed to join folder peer {peer}: {peer_err}")
@@ -2054,22 +2033,15 @@ async def handle_join(client: TelegramClient, user_id: int, message, text: str):
                 invite = await client(CheckChatInviteRequest(invite_hash))
                 
                 if isinstance(invite, ChatInviteAlready):
-                    # Already joined, just add to DB if missing
                     entity = invite.chat
-                    chat_id = utils.get_peer_id(entity)
-                    chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
-                    from models.group import add_group
-                    await add_group(user_id, chat_id, chat_title, client.phone)
+                    chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(utils.get_peer_id(entity)))
                     joined.append(f"{chat_title} (Already joined)")
                 else:
                     # Join via invite link
                     updates = await client(ImportChatInviteRequest(invite_hash))
                     if updates.chats:
                         entity = updates.chats[0]
-                        chat_id = utils.get_peer_id(entity)
-                        chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
-                        from models.group import add_group
-                        await add_group(user_id, chat_id, chat_title, client.phone)
+                        chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(utils.get_peer_id(entity)))
                         joined.append(chat_title)
                     else:
                         failed.append((raw_input, "Could not resolve chat from invite"))
@@ -2106,10 +2078,7 @@ async def handle_join(client: TelegramClient, user_id: int, message, text: str):
                 if not already_joined:
                     await client(JoinChannelRequest(entity))
                     
-                chat_id = utils.get_peer_id(entity)
-                chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
-                from models.group import add_group
-                await add_group(user_id, chat_id, chat_title, client.phone)
+                chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(utils.get_peer_id(entity)))
                 joined.append(f"{chat_title}" + (" (Already joined)" if already_joined else ""))
                 
         except Exception as e:
@@ -2118,7 +2087,7 @@ async def handle_join(client: TelegramClient, user_id: int, message, text: str):
     # Final response
     final_text = "🏁 **Join Session Completed**\n\n"
     if joined:
-        final_text += "✅ **Successfully Joined/Added:**\n" + "\n".join(f"  ▸ 🟢 {j}" for j in joined) + "\n\n"
+        final_text += "✅ **Successfully Joined:**\n" + "\n".join(f"  ▸ 🟢 {j}" for j in joined) + "\n\n"
     if failed:
         final_text += "❌ **Failed to Join:**\n" + "\n".join(f"  ▸ 🔴 {f} — {r}" for f, r in failed) + "\n\n"
         
