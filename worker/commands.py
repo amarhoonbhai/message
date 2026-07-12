@@ -2117,7 +2117,20 @@ async def handle_join(client: TelegramClient, user_id: int, message, text: str):
                 joined.append(f"{chat_title}" + (" (Already joined)" if already_joined else ""))
                 
         except Exception as e:
-            failed.append((raw_input, str(e)[:30]))
+            err_msg = str(e)
+            if "ChannelPrivateError" in err_msg or "channel specified is private" in err_msg.lower():
+                err_msg = "Private channel or banned"
+            elif "InviteHashExpiredError" in err_msg or "invite hash expired" in err_msg.lower():
+                err_msg = "Invite link expired"
+            elif "InviteHashInvalidError" in err_msg or "invite hash invalid" in err_msg.lower():
+                err_msg = "Invalid invite link"
+            elif "ValueError" in err_msg:
+                err_msg = "Not found or invalid username"
+            elif "FloodWaitError" in err_msg or "flood" in err_msg.lower():
+                err_msg = "Rate limited (FloodWait)"
+            else:
+                err_msg = err_msg[:50]
+            failed.append((raw_input, err_msg))
             
     # Final response
     final_text = "🏁 **Join Session Completed**\n\n"
