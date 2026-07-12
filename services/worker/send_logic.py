@@ -104,6 +104,15 @@ async def send_message_to_group(
             # If it's a generic connection error, don't mark as failing, just fail this attempt
             return ("failed", 0)
 
+        # ── 1.5 Check if target is a broadcast channel (auto-remove) ─────
+        from telethon.tl.types import Channel
+        if isinstance(entity, Channel) and getattr(entity, 'broadcast', False):
+            logger.warning(f"❌ Target {group_id} is a broadcast channel. Auto-removing from sending list.")
+            asyncio.create_task(remove_group(user_id, group_id))
+            await log_job_event(job_id, user_id, phone, group_id, message_id,
+                                "removed", "Target is a Channel (Broadcast)")
+            return ("removed", 0)
+
         # ── 2. Stealth: Read History Simulation (Level Up) ──────────
         # Mimics a user opening the group before posting.
         if random.random() > 0.4:

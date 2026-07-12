@@ -553,6 +553,12 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
                     failed.append((group_input, "Timeout resolving group"))
                     continue
 
+            # Reject broadcast channels
+            from telethon.tl.types import Channel
+            if isinstance(entity, Channel) and getattr(entity, 'broadcast', False):
+                failed.append((group_input, "Target is a channel, not a group"))
+                continue
+
             chat_id = utils.get_peer_id(entity)
             chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
             
@@ -1489,8 +1495,10 @@ async def process_folder_peers(client, user_id, message, folder_name, peers):
             else:
                 entity = await client.get_entity(peer)
             
-            # We only want groups or channels
+            # We only want groups (megagroups) or chats, not broadcast channels
             if not isinstance(entity, (Channel, Chat)):
+                continue
+            if isinstance(entity, Channel) and getattr(entity, 'broadcast', False):
                 continue
                 
             chat_id = utils.get_peer_id(entity)
