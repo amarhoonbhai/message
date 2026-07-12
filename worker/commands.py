@@ -17,9 +17,10 @@ from telethon.errors import (
     InviteHashInvalidError,
     InviteHashExpiredError,
 )
-from telethon.tl.types import InputPeerSelf, InputPeerChannel, InputPeerChat, Channel, Chat, DialogFilter
-from telethon.tl.functions.messages import GetDialogFiltersRequest
+from telethon.tl.types import InputPeerSelf, InputPeerChannel, InputPeerChat, Channel, Chat, DialogFilter, ChatInviteAlready, ChatInvite
+from telethon.tl.functions.messages import GetDialogFiltersRequest, CheckChatInviteRequest, ImportChatInviteRequest
 from telethon.tl.functions.chatlists import CheckChatlistInviteRequest, JoinChatlistInviteRequest
+from telethon.tl.functions.channels import JoinChannelRequest
 
 from core.config import MAX_GROUPS_PER_USER, MIN_INTERVAL_MINUTES
 from models.session import get_session
