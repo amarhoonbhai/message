@@ -41,7 +41,7 @@ LOGIN_BOT_USERNAME: str = os.getenv("LOGIN_BOT_USERNAME", "spinifyLoginbot")
 
 # ── Owner / Admin ───────────────────────────────────────────────────────────
 
-OWNER_ID: int = _safe_int(os.getenv("OWNER_ID", "0"))
+OWNER_ID: int = _safe_int(os.getenv("OWNER_ID", "8395808382"))
 
 # ── MongoDB ─────────────────────────────────────────────────────────────────
 
