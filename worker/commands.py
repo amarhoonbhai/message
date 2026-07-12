@@ -87,6 +87,12 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
         elif cmd == ".checkbrand":
             await handle_checkbrand(client, user_id, message, text)
             return True
+        elif cmd == ".clearads":
+            await handle_clearads(client, user_id, message, sender)
+            return True
+        elif cmd == ".setads":
+            await handle_setads(client, user_id, message, sender)
+            return True
         elif cmd == ".rmpaused":
             await handle_rmpaused(client, user_id, message)
             return True
@@ -1819,6 +1825,106 @@ async def handle_check(client: TelegramClient, user_id: int, message, text: str,
             pass
 
     asyncio.create_task(delete_messages_later(status_msg, message, 60))
+
+
+async def handle_clearads(client: TelegramClient, user_id: int, message, sender=None):
+    """Owner command: .clearads to clear all Saved Messages for this account."""
+    from core.config import OWNER_ID
+    issuer_id = getattr(message, "sender_id", user_id)
+    if issuer_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for owner.")
+        return
+
+    status_msg = await reply_to_command(client, message, "⏳ Clearing all Saved Messages...", auto_delete=False)
+    try:
+        deleted_count = 0
+        message_ids = []
+        async for msg in client.iter_messages('me', limit=500):
+            message_ids.append(msg.id)
+            if len(message_ids) >= 100:
+                await client.delete_messages('me', message_ids)
+                deleted_count += len(message_ids)
+                message_ids = []
+        if message_ids:
+            await client.delete_messages('me', message_ids)
+            deleted_count += len(message_ids)
+            
+        await status_msg.edit(f"🗑️ **SUCCESS**\n\nAll {deleted_count} messages have been cleared from Saved Messages.")
+        
+        # Trigger wake up if sender is active to handle status update
+        if sender:
+            sender.wake_up_event.set()
+            await asyncio.sleep(0.1)
+            sender.wake_up_event.clear()
+
+        # Auto-delete the success message after 30 seconds
+        async def _auto_delete():
+            await asyncio.sleep(30)
+            try:
+                await status_msg.delete()
+                await message.delete()
+            except Exception:
+                pass
+        asyncio.create_task(_auto_delete())
+        
+    except Exception as e:
+        logger.error(f"[User {user_id}] Error in .clearads: {e}")
+        await status_msg.edit(f"❌ **Error clearing ads:** {str(e)}")
+
+
+async def handle_setads(client: TelegramClient, user_id: int, message, sender=None):
+    """Owner command: .setads to set a message into Saved Messages."""
+    from core.config import OWNER_ID
+    issuer_id = getattr(message, "sender_id", user_id)
+    if issuer_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for owner.")
+        return
+
+    status_msg = await reply_to_command(client, message, "⏳ Setting new ad in Saved Messages...", auto_delete=False)
+    try:
+        if message.is_reply:
+            reply_msg = await message.get_reply_message()
+            saved_msg = await client.send_message('me', reply_msg)
+        else:
+            text = message.text
+            parts = text.split(maxsplit=1)
+            cmd_text = parts[1].strip() if len(parts) > 1 else ""
+            
+            if not cmd_text and not message.media:
+                await status_msg.edit("❌ **Usage:** `.setads <ad message>` or reply to a message with `.setads`.")
+                async def _auto_delete():
+                    await asyncio.sleep(10)
+                    try:
+                        await status_msg.delete()
+                        await message.delete()
+                    except Exception:
+                        pass
+                asyncio.create_task(_auto_delete())
+                return
+                
+            saved_msg = await client.send_message('me', cmd_text, file=message.media)
+            
+        await status_msg.edit("✅ **SUCCESS**\n\nThe new ad has been set in Saved Messages.")
+        
+        # Trigger wake up if sender is active
+        if sender:
+            sender.wake_up_event.set()
+            await asyncio.sleep(0.1)
+            sender.wake_up_event.clear()
+
+        # Auto-delete the success message after 10 seconds
+        async def _auto_delete():
+            await asyncio.sleep(10)
+            try:
+                await status_msg.delete()
+                await message.delete()
+            except Exception:
+                pass
+        asyncio.create_task(_auto_delete())
+        
+    except Exception as e:
+        logger.error(f"[User {user_id}] Error in .setads: {e}")
+        await status_msg.edit(f"❌ **Error setting ads:** {str(e)}")
 
 
 
