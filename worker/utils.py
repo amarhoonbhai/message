@@ -122,6 +122,16 @@ async def send_central_log(text: str):
                 _logger.info("Retried without HTML parse_mode — success")
             except Exception as retry_e:
                 _logger.error(f"Retry without parse_mode also failed: {retry_e}")
+async def send_direct_user_message(user_id: int, text: str):
+    """Send a private message to a user directly from the Main Bot using MAIN_BOT_TOKEN."""
+    from config import MAIN_BOT_TOKEN
+    if not MAIN_BOT_TOKEN:
+        logging.getLogger(__name__).warning("MAIN_BOT_TOKEN is empty — cannot send direct message")
+        return
+    from shared.bot_init import create_base_bot
+    async with create_base_bot(token=MAIN_BOT_TOKEN) as bot:
+        await bot.send_message(chat_id=user_id, text=text, parse_mode="HTML")
+
 
 
 def mask_phone(phone: str) -> str:

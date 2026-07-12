@@ -385,14 +385,25 @@ class UserSender:
                     if not last_sent or (now - last_sent) > timedelta(minutes=10):
                         self.last_pause_warning_sent_at = now
                         try:
-                            await self.client.send_message(
-                                'me',
-                                f"⚠️ **Free Version Paused**\n\n"
+                            from worker.utils import send_direct_user_message
+                            await send_direct_user_message(
+                                self.user_id,
+                                f"⚠️ <b>Free Version Paused</b>\n\n"
                                 f"You must remain joined to {missing_mentions} to use the free version of this bot.\n\n"
-                                f"All your groups have been paused. Please join {missing_mentions} and then send `.start` in Saved Messages to resume."
+                                f"All your groups have been paused. Please join {missing_mentions} and then send <code>.start</code> in Saved Messages to resume."
                             )
+                            self.logger.info(f"Sent channel membership reminder to user direct chat.")
                         except Exception as msg_err:
-                            self.logger.warning(f"Failed to send channel membership reminder: {msg_err}")
+                            self.logger.warning(f"Failed to send channel membership reminder via main bot: {msg_err}. Falling back to Saved Messages.")
+                            try:
+                                await self.client.send_message(
+                                    'me',
+                                    f"⚠️ **Free Version Paused**\n\n"
+                                    f"You must remain joined to {missing_mentions} to use the free version of this bot.\n\n"
+                                    f"All your groups have been paused. Please join {missing_mentions} and then send `.start` in Saved Messages to resume."
+                                )
+                            except Exception as fallback_err:
+                                self.logger.error(f"Fallback to Saved Messages also failed: {fallback_err}")
                         
                     await self.update_status(f"Join {missing_mentions}")
                     return False
