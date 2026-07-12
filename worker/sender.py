@@ -343,6 +343,13 @@ class UserSender:
                             # 1. Fetch the entity
                             entity = await self.client.get_entity(req)
                             
+                            # For User/Bot entities, they cannot be joined like channels, so we count them as joined
+                            from telethon.tl.types import User
+                            if isinstance(entity, User):
+                                joined_channels.add(req.lower())
+                                self.logger.info(f"Verified @{req} is a User/Bot (bypassing channel join check).")
+                                continue
+
                             # 2. For channels/supergroups, check the left flag directly (regular members cannot call get_permissions)
                             if isinstance(entity, Channel):
                                 if not entity.left:

@@ -16,6 +16,7 @@ from telethon.errors import (
     UsernameInvalidError,
     InviteHashInvalidError,
     InviteHashExpiredError,
+    UserAlreadyParticipantError,
 )
 from telethon.tl.types import InputPeerSelf, InputPeerChannel, InputPeerChat, Channel, Chat, DialogFilter, ChatInviteAlready, ChatInvite
 from telethon.tl.functions.messages import GetDialogFiltersRequest, CheckChatInviteRequest, ImportChatInviteRequest
@@ -500,9 +501,25 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
                         if isinstance(invite, ChatInviteAlready):
                             entity = invite.chat
                         else:
-                            updates = await asyncio.wait_for(client(ImportChatInviteRequest(invite_hash)), timeout=15.0)
-                            if updates.chats:
-                                entity = updates.chats[0]
+                            try:
+                                updates = await asyncio.wait_for(client(ImportChatInviteRequest(invite_hash)), timeout=15.0)
+                                if updates.chats:
+                                    entity = updates.chats[0]
+                            except UserAlreadyParticipantError:
+                                # User is already in the group! Let's search dialogs to resolve the entity
+                                chat_title = getattr(invite, 'title', '')
+                                if chat_title:
+                                    dialogs = await client.get_dialogs(limit=100)
+                                    for dialog in dialogs:
+                                        if dialog.name == chat_title or getattr(dialog.entity, 'title', '') == chat_title:
+                                            entity = dialog.entity
+                                            break
+                                if not entity:
+                                    if hasattr(invite, 'chat') and invite.chat:
+                                        entity = invite.chat
+                                    else:
+                                        failed.append((group_input, "Already joined. Open group first."))
+                                        continue
                     except asyncio.TimeoutError:
                         failed.append((group_input, "Invite check timeout"))
                         continue
