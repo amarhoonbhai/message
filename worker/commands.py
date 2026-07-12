@@ -1877,6 +1877,13 @@ async def handle_clearads(client: TelegramClient, user_id: int, message, sender=
                 break
             await client.delete_messages('me', message_ids)
             deleted_count += len(message_ids)
+            
+            # Show live progress
+            try:
+                await status_msg.edit(f"⏳ **Clearing Saved Messages...**\n\nProgress: `{deleted_count}` messages deleted.")
+            except Exception:
+                pass
+                
             await asyncio.sleep(0.5)
             
         await status_msg.edit(f"🗑️ **SUCCESS**\n\nAll {deleted_count} messages have been cleared from Saved Messages.")
