@@ -47,7 +47,7 @@ def build_connection_success_text(phone: str, plan: dict) -> str:
 📱 `{phone}` is now linked to your account.
 
 ⚪ *Plan:* Free User (Free Mode Active)
-⚠️ *Note:* Running in Free Mode requires keeping `ϟ @SpinifyAdsBot` in your name and `ᴍade easy by @SpinifyAdsBot` in your bio, remaining joined to @SpinifyAdsBot and @spinifychat, and uses a fixed 20-minute interval.
+⚠️ *Note:* Running in Free Mode requires keeping `ϟ Vɪᴀ @SpinifyAdsBot` in your name and `ᴍade easy by @SpinifyAdsBot` in your bio, remaining joined to @SpinifyAdsBot and @spinifychat, and uses a fixed 20-minute interval.
 
 🚀 Open the dashboard to configure target groups!
 """

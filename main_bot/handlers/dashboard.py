@@ -202,7 +202,7 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
   ➤ Send Mode: 🔄 Sequential only (Premium: rotate/random)
 
 📢 *FREE TIER REQUIREMENTS:*
-  1. Add `ϟ @SpinifyAdsBot` to your Telegram Last Name.
+  1. Add `ϟ Vɪᴀ @SpinifyAdsBot` to your Telegram Last Name.
   2. Set your Telegram Bio to: `ᴍade easy by @SpinifyAdsBot`.
   3. Must remain joined to official channel @SpinifyAdsBot and chat @spinifychat.
 

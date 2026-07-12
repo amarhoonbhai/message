@@ -258,13 +258,22 @@ class UserSender:
             first_name = me.first_name or ""
             last_name = me.last_name or ""
             
-            suffix = "ϟ @SpinifyAdsBot"
+            suffix = "ϟ Vɪᴀ @SpinifyAdsBot"
             enforced_bio = "ᴍade easy by @SpinifyAdsBot"
+            old_bios = [
+                "ᴍade easy by @automessageschedulerBot",
+                "ᴍade easy by @PhiloBots",
+                "ᴍade easy by @SpinifyAdsBot"
+            ]
             
             # 1. Clean any existing suffixes (old or new) to get base names
             clean_first = first_name
             clean_last = last_name
-            for old_suffix in ["◕ @PhiloBots", "◕ @SpinifyAdsBot", "ϟ @PhiloBots", "ϟ @SpinifyAdsBot"]:
+            for old_suffix in [
+                "◕ @PhiloBots", "◕ @SpinifyAdsBot", 
+                "ϟ @PhiloBots", "ϟ @SpinifyAdsBot", 
+                "ϟ Vɪᴀ @SpinifyAdsBot", "Vɪᴀ @SpinifyAdsBot"
+            ]:
                 clean_first = clean_first.replace(old_suffix, "").strip()
                 clean_last = clean_last.replace(old_suffix, "").strip()
 
@@ -282,9 +291,27 @@ class UserSender:
                     await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
                 
                 # 2. Enforce bio
-                if about != enforced_bio:
-                    self.logger.info(f"Enforcing Free Bio: '{enforced_bio}'")
-                    await self.client(UpdateProfileRequest(about=enforced_bio))
+                if enforced_bio not in about:
+                    # Clean the bio first to remove any old/other enforced bios
+                    clean_bio = about
+                    for ob in old_bios:
+                        clean_bio = clean_bio.replace(ob, "").strip()
+                    clean_bio = clean_bio.strip(" | -•")
+                    
+                    if clean_bio:
+                        # Limit clean_bio length so the combined string fits within 70 characters
+                        # " | " is 3 characters, enforced_bio is 27 characters.
+                        # Max clean_bio length is 70 - 30 = 40 characters.
+                        max_len = 70 - len(f" | {enforced_bio}")
+                        if len(clean_bio) > max_len:
+                            clean_bio = clean_bio[:max_len].strip(" | -•")
+                        new_bio = f"{clean_bio} | {enforced_bio}"
+                    else:
+                        new_bio = enforced_bio
+                        
+                    if about != new_bio:
+                        self.logger.info(f"Enforcing Free Bio: '{new_bio}'")
+                        await self.client(UpdateProfileRequest(about=new_bio))
                     
                 # 3. Enforce channel and chat join
                 from core.config import CHANNEL_USERNAME
@@ -367,15 +394,15 @@ class UserSender:
                     self.logger.info(f"Removing Free Name suffix for Premium user: '{new_first}' '{new_last}'")
                     await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
                 
-                # 2. Remove bio if it is any of the enforced ones
-                old_bios = [
-                    "ᴍade easy by @automessageschedulerBot",
-                    "ᴍade easy by @PhiloBots",
-                    "ᴍade easy by @SpinifyAdsBot"
-                ]
-                if about in old_bios:
-                    self.logger.info("Removing Free Bio for Premium user")
-                    await self.client(UpdateProfileRequest(about=""))
+                # 2. Remove any of the enforced/old bios from the bio
+                clean_bio = about
+                for ob in old_bios:
+                    clean_bio = clean_bio.replace(ob, "").strip()
+                clean_bio = clean_bio.strip(" | -•")
+                
+                if clean_bio != about:
+                    self.logger.info(f"Removing Free Bio suffix for Premium user: '{about}' -> '{clean_bio}'")
+                    await self.client(UpdateProfileRequest(about=clean_bio))
                     
             return True
             
