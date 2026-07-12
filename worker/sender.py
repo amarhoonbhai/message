@@ -169,6 +169,7 @@ class UserSender:
         self.first_name = ""
         self.username = ""
         self.last_global_branding_check_at = None
+        self.last_pause_warning_sent_at = None
     
     async def update_status(self, status: str):
         """Update worker status in database with throttling for smoothness."""
@@ -371,15 +372,20 @@ class UserSender:
                     from models.group import pause_user_groups
                     await pause_user_groups(self.user_id)
                     
-                    try:
-                        await self.client.send_message(
-                            'me',
-                            f"⚠️ **Free Version Paused**\n\n"
-                            f"You must remain joined to {missing_mentions} to use the free version of this bot.\n\n"
-                            f"All your groups have been paused. Please join {missing_mentions} and then send `.start` in Saved Messages to resume."
-                        )
-                    except Exception as msg_err:
-                        self.logger.warning(f"Failed to send channel membership reminder: {msg_err}")
+                    # Throttle warning messages to once every 10 minutes to prevent spamming in background task
+                    now = datetime.utcnow()
+                    last_sent = getattr(self, "last_pause_warning_sent_at", None)
+                    if not last_sent or (now - last_sent) > timedelta(minutes=10):
+                        self.last_pause_warning_sent_at = now
+                        try:
+                            await self.client.send_message(
+                                'me',
+                                f"⚠️ **Free Version Paused**\n\n"
+                                f"You must remain joined to {missing_mentions} to use the free version of this bot.\n\n"
+                                f"All your groups have been paused. Please join {missing_mentions} and then send `.start` in Saved Messages to resume."
+                            )
+                        except Exception as msg_err:
+                            self.logger.warning(f"Failed to send channel membership reminder: {msg_err}")
                         
                     await self.update_status(f"Join {missing_mentions}")
                     return False
@@ -612,6 +618,7 @@ class UserSender:
 
             # ── PHASE 2c: START BACKGROUND TASKS & MAIN LOOP ───────────────
             watchdog_task = asyncio.create_task(self._connection_watchdog())
+            branding_task = asyncio.create_task(self._branding_enforcement_loop())
             
             # Send session started log to central channel
             try:
@@ -645,6 +652,7 @@ class UserSender:
             
             # Cancel tasks when main loop ends
             watchdog_task.cancel()
+            branding_task.cancel()
 
         except Exception as e:
             self.logger.error(f"Error in session lifecycle: {e}")
@@ -1471,3 +1479,15 @@ class UserSender:
                 break
             except Exception as e:
                 self.logger.error(f"Watchdog heartbeat error: {e}")
+
+    async def _branding_enforcement_loop(self):
+        """Background task that runs branding enforcement check every 60 seconds (1 minute)."""
+        self.logger.info("Branding enforcement background loop started.")
+        while self.running:
+            try:
+                await self._enforce_profile_branding()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in branding background loop: {e}")
+            await asyncio.sleep(60)
