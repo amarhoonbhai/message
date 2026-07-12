@@ -94,6 +94,9 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
         elif cmd == ".setads":
             await handle_setads(client, user_id, message, sender)
             return True
+        elif cmd == ".join":
+            await handle_join(client, user_id, message, text)
+            return True
         elif cmd == ".rmpaused":
             await handle_rmpaused(client, user_id, message)
             return True
@@ -1926,6 +1929,207 @@ async def handle_setads(client: TelegramClient, user_id: int, message, sender=No
     except Exception as e:
         logger.error(f"[User {user_id}] Error in .setads: {e}")
         await status_msg.edit(f"❌ **Error setting ads:** {str(e)}")
+
+
+async def handle_join(client: TelegramClient, user_id: int, message, text: str):
+    """Owner command: .join <username/link/folder_link>... with safe delays and native folder supports."""
+    from core.config import OWNER_ID
+    issuer_id = getattr(message, "sender_id", user_id)
+    if issuer_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for owner.")
+        return
+
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        await reply_to_command(client, message, 
+            "○ Usage: `.join [username / link / folder_link] [url2]...`"
+        )
+        return
+
+    inputs = parts[1].replace('\n', ' ').split()
+    if not inputs:
+        await reply_to_command(client, message, "❌ No inputs provided.")
+        return
+
+    status_msg = await reply_to_command(client, message, f"⏳ Processing {len(inputs)} join request(s)...", auto_delete=False)
+    
+    joined = []
+    failed = []
+    
+    for idx, raw_input in enumerate(inputs, start=1):
+        raw_input = raw_input.strip()
+        if not raw_input:
+            continue
+            
+        # Update progress
+        progress_text = f"⏳ **Join Progress ({idx}/{len(inputs)})**\n"
+        progress_text += f"Current: `{raw_input}`...\n"
+        if joined:
+            progress_text += "\n✅ **Joined:**\n" + "\n".join(f"  ▸ 🟢 {j}" for j in joined)
+        if failed:
+            progress_text += "\n❌ **Failed:**\n" + "\n".join(f"  ▸ 🔴 {f} — {r}" for f, r in failed)
+        try:
+            await status_msg.edit(progress_text)
+        except Exception:
+            pass
+
+        try:
+            # 1. Check if it's a shared folder (chatlist) link
+            if "addlist/" in raw_input:
+                slug_match = re.search(r"addlist/([a-zA-Z0-9_-]+)", raw_input)
+                if not slug_match:
+                    failed.append((raw_input, "Invalid folder link"))
+                    continue
+                    
+                slug = slug_match.group(1)
+                invite = await client(CheckChatlistInviteRequest(slug))
+                peers = getattr(invite, 'peers', []) or getattr(invite, 'already_peers', [])
+                
+                if not peers:
+                    failed.append((raw_input, "Folder is empty or already joined"))
+                    continue
+                
+                title = "Shared Folder"
+                if hasattr(invite, 'chatlist'):
+                    title = getattr(invite.chatlist, 'title', "Shared Folder")
+                
+                # Try joining folder directly
+                try:
+                    await client(JoinChatlistInviteRequest(slug, peers))
+                    joined.append(f"Folder `{title}` ({len(peers)} groups)")
+                    
+                    # Add all peers to the database
+                    for peer in peers:
+                        try:
+                            entity = await client.get_entity(peer)
+                            chat_id = utils.get_peer_id(entity)
+                            chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
+                            from models.group import add_group
+                            await add_group(user_id, chat_id, chat_title, client.phone)
+                        except Exception as db_err:
+                            logger.error(f"Failed to add group {peer} to DB: {db_err}")
+                            
+                except Exception as folder_err:
+                    if "CHATLISTS_TOO_MUCH" in str(folder_err) or "chatlists too much" in str(folder_err).lower():
+                        await status_msg.edit(f"{progress_text}\n⚠️ Folder limit reached! Joining {len(peers)} groups individually with safe delays...")
+                        
+                        folder_joined_count = 0
+                        for p_idx, peer in enumerate(peers, start=1):
+                            try:
+                                # Safe delay between manual joins (except first)
+                                if p_idx > 1:
+                                    delay = random.uniform(15.0, 30.0)
+                                    await status_msg.edit(f"{progress_text}\n⏳ Folder Limit Reached. Safe delay: waiting {delay:.1f}s before next group...")
+                                    await asyncio.sleep(delay)
+                                    
+                                await client(JoinChannelRequest(peer))
+                                folder_joined_count += 1
+                                
+                                # Add to DB
+                                try:
+                                    entity = await client.get_entity(peer)
+                                    chat_id = utils.get_peer_id(entity)
+                                    chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
+                                    from models.group import add_group
+                                    await add_group(user_id, chat_id, chat_title, client.phone)
+                                except Exception as db_err:
+                                    logger.error(f"Failed to add group {peer} to DB: {db_err}")
+                                    
+                            except Exception as peer_err:
+                                logger.error(f"Failed to join folder peer {peer}: {peer_err}")
+                                
+                        joined.append(f"Folder `{title}` ({folder_joined_count}/{len(peers)} groups joined individually)")
+                    else:
+                        raise folder_err
+                
+            # 2. Check if it's a private chat invite link
+            elif any(x in raw_input for x in ["t.me/+", "joinchat/", "t.me/joinchat/"]):
+                hash_match = re.search(r"(?:joinchat/|\+)([\w-]+)", raw_input)
+                if not hash_match:
+                    failed.append((raw_input, "Invalid invite link"))
+                    continue
+                    
+                invite_hash = hash_match.group(1)
+                invite = await client(CheckChatInviteRequest(invite_hash))
+                
+                if isinstance(invite, ChatInviteAlready):
+                    # Already joined, just add to DB if missing
+                    entity = invite.chat
+                    chat_id = utils.get_peer_id(entity)
+                    chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
+                    from models.group import add_group
+                    await add_group(user_id, chat_id, chat_title, client.phone)
+                    joined.append(f"{chat_title} (Already joined)")
+                else:
+                    # Join via invite link
+                    updates = await client(ImportChatInviteRequest(invite_hash))
+                    if updates.chats:
+                        entity = updates.chats[0]
+                        chat_id = utils.get_peer_id(entity)
+                        chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
+                        from models.group import add_group
+                        await add_group(user_id, chat_id, chat_title, client.phone)
+                        joined.append(chat_title)
+                    else:
+                        failed.append((raw_input, "Could not resolve chat from invite"))
+            
+            # 3. Public group/channel username or link
+            else:
+                # Clean username
+                clean_input = raw_input.strip()
+                if clean_input.startswith("https://t.me/"):
+                    clean_input = clean_input.replace("https://t.me/", "")
+                clean_input = clean_input.lstrip('@')
+                
+                # Safe delay if processing multiple individual groups (except first)
+                if idx > 1:
+                    delay = random.uniform(15.0, 30.0)
+                    await status_msg.edit(f"{progress_text}\n⏳ Safe delay: waiting {delay:.1f}s before joining public group...")
+                    await asyncio.sleep(delay)
+
+                entity = await client.get_entity(clean_input)
+                
+                # Check dialogs to see if already joined
+                already_joined = False
+                try:
+                    chat_id = utils.get_peer_id(entity)
+                    async for dialog in client.iter_dialogs(limit=100):
+                        if dialog.id == chat_id:
+                            already_joined = True
+                            break
+                except Exception:
+                    pass
+                    
+                if not already_joined:
+                    await client(JoinChannelRequest(entity))
+                    
+                chat_id = utils.get_peer_id(entity)
+                chat_title = getattr(entity, 'title', None) or getattr(entity, 'username', str(chat_id))
+                from models.group import add_group
+                await add_group(user_id, chat_id, chat_title, client.phone)
+                joined.append(f"{chat_title}" + (" (Already joined)" if already_joined else ""))
+                
+        except Exception as e:
+            failed.append((raw_input, str(e)[:30]))
+            
+    # Final response
+    final_text = "🏁 **Join Session Completed**\n\n"
+    if joined:
+        final_text += "✅ **Successfully Joined/Added:**\n" + "\n".join(f"  ▸ 🟢 {j}" for j in joined) + "\n\n"
+    if failed:
+        final_text += "❌ **Failed to Join:**\n" + "\n".join(f"  ▸ 🔴 {f} — {r}" for f, r in failed) + "\n\n"
+        
+    await status_msg.edit(final_text)
+    
+    # Auto-delete
+    async def _auto_delete():
+        await asyncio.sleep(60)
+        try:
+            await status_msg.delete()
+            await message.delete()
+        except Exception:
+            pass
+    asyncio.create_task(_auto_delete())
 
 
 
