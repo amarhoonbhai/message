@@ -1133,7 +1133,16 @@ class UserSender:
                 # Skip command messages and warning notifications
                 if msg.text:
                     stripped = msg.text.strip()
-                    if stripped.startswith(".") or "Free Version Paused" in stripped or "remain joined" in stripped:
+                    if (stripped.startswith(".") or 
+                        stripped.startswith("✅") or 
+                        stripped.startswith("🗑️") or 
+                        stripped.startswith("⏳") or 
+                        stripped.startswith("❌") or 
+                        stripped.startswith("⚠️") or
+                        "Free Version Paused" in stripped or 
+                        "remain joined" in stripped or
+                        "SUCCESS" in stripped or
+                        "Saved Messages" in stripped):
                         continue
                 # Skip MessageService (calls, pins, joins — cannot be forwarded)
                 if hasattr(msg, 'action') and msg.action is not None:

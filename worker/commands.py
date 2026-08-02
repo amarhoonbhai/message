@@ -793,9 +793,9 @@ async def handle_clear(client: TelegramClient, user_id: int, message):
     count = await clear_user_groups(user_id)
     
     if count > 0:
-        await reply_to_command(client, message, f"🗑️ *WIPED* — All {count} groups have been removed from your list.")
+        await reply_to_command(client, message, f"🗑️ *WIPED* — All {count} groups have been removed from your list.", auto_delete=False)
     else:
-        await reply_to_command(client, message, "⚪ Your group list is already empty.")
+        await reply_to_command(client, message, "⚪ Your group list is already empty.", auto_delete=False)
 
 async def handle_logs(client: TelegramClient, user_id: int, message):
     """Handle .logs command to show recent activity for this account."""
@@ -1870,7 +1870,7 @@ async def handle_clearads(client: TelegramClient, user_id: int, message, sender=
     from core.config import OWNER_ID
     issuer_id = getattr(message, "sender_id", user_id)
     if issuer_id != user_id and issuer_id != OWNER_ID:
-        await reply_to_command(client, message, "❌ Reserved for account owner.")
+        await reply_to_command(client, message, "❌ Reserved for account owner.", auto_delete=False)
         return
 
     status_msg = await reply_to_command(client, message, "⏳ Initializing Saved Messages cleanup...", auto_delete=False)
@@ -1927,16 +1927,6 @@ async def handle_clearads(client: TelegramClient, user_id: int, message, sender=
             await asyncio.sleep(0.1)
             sender.wake_up_event.clear()
 
-        # Auto-delete success message after 15 seconds
-        async def _auto_delete():
-            await asyncio.sleep(15)
-            try:
-                await status_msg.delete()
-                await message.delete()
-            except Exception:
-                pass
-        asyncio.create_task(_auto_delete())
-
     except Exception as e:
         logger.error(f"[User {user_id}] Error in .clearads: {e}")
         try:
@@ -1950,32 +1940,43 @@ async def handle_setads(client: TelegramClient, user_id: int, message, sender=No
     from core.config import OWNER_ID
     issuer_id = getattr(message, "sender_id", user_id)
     if issuer_id != user_id and issuer_id != OWNER_ID:
-        await reply_to_command(client, message, "❌ Reserved for account owner.")
+        await reply_to_command(client, message, "❌ Reserved for account owner.", auto_delete=False)
         return
 
     status_msg = await reply_to_command(client, message, "⏳ Setting new ad in Saved Messages...", auto_delete=False)
     try:
         if message.is_reply:
             reply_msg = await message.get_reply_message()
-            saved_msg = await client.send_message('me', reply_msg)
+            if not reply_msg:
+                await status_msg.edit("❌ **Error:** Could not fetch replied message.")
+                return
+            
+            # Send/copy reply_msg to Saved Messages
+            if reply_msg.text or reply_msg.media:
+                saved_msg = await client.send_message(
+                    'me',
+                    message=reply_msg.text or None,
+                    file=reply_msg.media,
+                    formatting_entities=reply_msg.entities if reply_msg.text else None
+                )
+            else:
+                await status_msg.edit("❌ **Error:** Replied message has no text or media.")
+                return
         else:
-            text = message.text
+            text = message.text or ""
             parts = text.split(maxsplit=1)
             cmd_text = parts[1].strip() if len(parts) > 1 else ""
             
             if not cmd_text and not message.media:
                 await status_msg.edit("❌ **Usage:** `.setads <ad message>` or reply to a message with `.setads`.")
-                async def _auto_delete():
-                    await asyncio.sleep(10)
-                    try:
-                        await status_msg.delete()
-                        await message.delete()
-                    except Exception:
-                        pass
-                asyncio.create_task(_auto_delete())
                 return
                 
-            saved_msg = await client.send_message('me', cmd_text, file=message.media)
+            saved_msg = await client.send_message(
+                'me',
+                message=cmd_text or None,
+                file=message.media,
+                formatting_entities=message.entities if (cmd_text and message.text) else None
+            )
             
         await status_msg.edit("✅ **SUCCESS**\n\nThe new ad has been set in Saved Messages.")
         
@@ -1985,19 +1986,18 @@ async def handle_setads(client: TelegramClient, user_id: int, message, sender=No
             await asyncio.sleep(0.1)
             sender.wake_up_event.clear()
 
-        # Auto-delete the success message after 10 seconds
-        async def _auto_delete():
-            await asyncio.sleep(10)
-            try:
-                await status_msg.delete()
-                await message.delete()
-            except Exception:
-                pass
-        asyncio.create_task(_auto_delete())
-        
+        # Clean up trigger command message so it isn't saved as an ad.
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
     except Exception as e:
         logger.error(f"[User {user_id}] Error in .setads: {e}")
-        await status_msg.edit(f"❌ **Error setting ads:** {str(e)}")
+        try:
+            await status_msg.edit(f"❌ **Error setting ads:** {str(e)}")
+        except Exception:
+            pass
 
 
 async def handle_join(client: TelegramClient, user_id: int, message, text: str):
@@ -2201,8 +2201,19 @@ async def handle_show(client: TelegramClient, user_id: int, message):
         async for msg in client.iter_messages('me', limit=1000):
             raw_count += 1
             # Filter like get_all_saved_messages
-            if msg.text and msg.text.strip().startswith("."):
-                continue
+            if msg.text:
+                stripped = msg.text.strip()
+                if (stripped.startswith(".") or 
+                    stripped.startswith("✅") or 
+                    stripped.startswith("🗑️") or 
+                    stripped.startswith("⏳") or 
+                    stripped.startswith("❌") or 
+                    stripped.startswith("⚠️") or
+                    "Free Version Paused" in stripped or 
+                    "remain joined" in stripped or
+                    "SUCCESS" in stripped or
+                    "Saved Messages" in stripped):
+                    continue
             if hasattr(msg, 'action') and msg.action is not None:
                 continue
             if not msg.text and not msg.media:
