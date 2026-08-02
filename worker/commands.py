@@ -215,7 +215,11 @@ async def handle_help(client: TelegramClient, user_id: int, message):
         "├ `.logs` — Recent activity feed\n"
         "├ `.pause` — Global pause all groups\n"
         "├ `.resume` — Global resume all groups\n"
-        "└ `.ping` — Connectivity test\n"
+        "└ `.ping` — Connectivity test\n\n"
+        "📢 *ADS MANAGEMENT*\n"
+        "├ `.show` — Preview active saved ads\n"
+        "├ `.setads` — Set ad into Saved Messages\n"
+        "└ `.clearads` — Clear all Saved Messages / ads\n"
     ).format(min=MIN_INTERVAL_MINUTES)
     
     await reply_to_command(client, message, text)
@@ -1861,40 +1865,78 @@ async def handle_check(client: TelegramClient, user_id: int, message, text: str,
 
 
 async def handle_clearads(client: TelegramClient, user_id: int, message, sender=None):
-    """Owner command: .clearads to clear all Saved Messages for this account in one shot."""
+    """Clear all Saved Messages (ads) for this account with real-time progress and robust deletion."""
+    import time
     from core.config import OWNER_ID
     issuer_id = getattr(message, "sender_id", user_id)
-    if issuer_id != OWNER_ID:
-        await reply_to_command(client, message, "❌ Reserved for owner.")
+    if issuer_id != user_id and issuer_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for account owner.")
         return
 
-    status_msg = await reply_to_command(client, message, "⏳ Clearing all Saved Messages...", auto_delete=False)
+    status_msg = await reply_to_command(client, message, "⏳ Initializing Saved Messages cleanup...", auto_delete=False)
+    
     try:
-        from telethon.tl.functions.messages import DeleteHistoryRequest
-        # Clear the entire history of Saved Messages in one shot
-        await client(DeleteHistoryRequest(peer='me', max_id=0, just_clear=True))
+        total_deleted = 0
+        last_update_time = time.time()
         
-        # Send a fresh success message since all previous messages (including status_msg) are deleted
-        success_msg = await client.send_message(
-            'me',
-            "🗑️ **SUCCESS**\n\nAll messages have been cleared from Saved Messages in one shot."
-        )
-        
-        # Trigger wake up if sender is active to handle status update
+        # Loop continuously until no messages remain (excluding status_msg)
+        while True:
+            batch = []
+            async for msg in client.iter_messages('me', limit=100):
+                if msg.id == status_msg.id:
+                    continue
+                batch.append(msg.id)
+            
+            if not batch:
+                break  # All saved messages cleared!
+                
+            # Delete batch of messages
+            try:
+                await client.delete_messages('me', batch)
+                total_deleted += len(batch)
+            except Exception as b_err:
+                logger.warning(f"[User {user_id}] Batch delete failed, attempting per-message delete: {b_err}")
+                for m_id in batch:
+                    try:
+                        await client.delete_messages('me', [m_id])
+                        total_deleted += 1
+                    except Exception:
+                        pass
+            
+            # Real-time progress update (throttled to 1.5s to respect Telegram edit limits)
+            now = time.time()
+            if now - last_update_time >= 1.5:
+                last_update_time = now
+                try:
+                    await status_msg.edit(f"⏳ **Clearing Saved Messages...**\n\n🗑️ Cleared: `{total_deleted}` message(s) so far...")
+                except Exception:
+                    pass
+            
+            await asyncio.sleep(0.3)
+
+        # Final success display
+        success_text = f"🗑️ **SUCCESS**\n\nAll `{total_deleted}` message(s) have been cleared from Saved Messages."
+        try:
+            await status_msg.edit(success_text)
+        except Exception:
+            status_msg = await client.send_message('me', success_text)
+
+        # Trigger wake up if sender is active to update status
         if sender:
             sender.wake_up_event.set()
             await asyncio.sleep(0.1)
             sender.wake_up_event.clear()
 
-        # Auto-delete the success message after 30 seconds
+        # Auto-delete success message after 15 seconds
         async def _auto_delete():
-            await asyncio.sleep(30)
+            await asyncio.sleep(15)
             try:
-                await success_msg.delete()
+                await status_msg.delete()
+                await message.delete()
             except Exception:
                 pass
         asyncio.create_task(_auto_delete())
-        
+
     except Exception as e:
         logger.error(f"[User {user_id}] Error in .clearads: {e}")
         try:
@@ -1904,11 +1946,11 @@ async def handle_clearads(client: TelegramClient, user_id: int, message, sender=
 
 
 async def handle_setads(client: TelegramClient, user_id: int, message, sender=None):
-    """Owner command: .setads to set a message into Saved Messages."""
+    """Set a message into Saved Messages."""
     from core.config import OWNER_ID
     issuer_id = getattr(message, "sender_id", user_id)
-    if issuer_id != OWNER_ID:
-        await reply_to_command(client, message, "❌ Reserved for owner.")
+    if issuer_id != user_id and issuer_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for account owner.")
         return
 
     status_msg = await reply_to_command(client, message, "⏳ Setting new ad in Saved Messages...", auto_delete=False)
@@ -2144,11 +2186,11 @@ async def handle_join(client: TelegramClient, user_id: int, message, text: str):
 
 
 async def handle_show(client: TelegramClient, user_id: int, message):
-    """Owner command: .show to show how many messages are in Saved Messages and a preview of active ads."""
+    """Show how many messages are in Saved Messages and a preview of active ads."""
     from core.config import OWNER_ID
     issuer_id = getattr(message, "sender_id", user_id)
-    if issuer_id != OWNER_ID:
-        await reply_to_command(client, message, "❌ Reserved for owner.")
+    if issuer_id != user_id and issuer_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for account owner.")
         return
 
     status_msg = await reply_to_command(client, message, "⏳ Fetching Saved Messages details...", auto_delete=False)

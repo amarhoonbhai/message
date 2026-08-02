@@ -33,6 +33,11 @@ HELP_TEXT = """
 🔸 `.responder <msg>` — Set auto-reply for incoming DMs
 🔸 `.status` — Check your live worker status
 
+*Ads Management:*
+🔸 `.show` — Preview saved ads
+🔸 `.setads <ad msg>` — Save new ad
+🔸 `.clearads` — Clear all Saved Messages / ads
+
 *General:*
 🔸 `.help` — Show worker commands list
 
