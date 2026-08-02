@@ -1129,20 +1129,14 @@ class UserSender:
         """Fetch ALL Saved Messages (excluding command messages and service messages)."""
         try:
             messages = []
+            STATUS_PREFIXES = (".", "✅", "🗑️", "⏳", "❌", "⚠️", "📊", "🔴", "⚪", "●", "📋")
             async for msg in self.client.iter_messages('me', limit=100):
                 # Skip command messages and warning notifications
                 if msg.text:
                     stripped = msg.text.strip()
-                    if (stripped.startswith(".") or 
-                        stripped.startswith("✅") or 
-                        stripped.startswith("🗑️") or 
-                        stripped.startswith("⏳") or 
-                        stripped.startswith("❌") or 
-                        stripped.startswith("⚠️") or
+                    if (stripped.startswith(STATUS_PREFIXES) or 
                         "Free Version Paused" in stripped or 
-                        "remain joined" in stripped or
-                        "SUCCESS" in stripped or
-                        "Saved Messages" in stripped):
+                        "remain joined" in stripped):
                         continue
                 # Skip MessageService (calls, pins, joins — cannot be forwarded)
                 if hasattr(msg, 'action') and msg.action is not None:

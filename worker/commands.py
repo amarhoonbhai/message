@@ -1953,12 +1953,15 @@ async def handle_setads(client: TelegramClient, user_id: int, message, sender=No
             
             # Send/copy reply_msg to Saved Messages
             if reply_msg.text or reply_msg.media:
-                saved_msg = await client.send_message(
-                    'me',
-                    message=reply_msg.text or None,
-                    file=reply_msg.media,
-                    formatting_entities=reply_msg.entities if reply_msg.text else None
-                )
+                try:
+                    saved_msg = await client.send_message(
+                        'me',
+                        message=reply_msg.text or None,
+                        file=reply_msg.media,
+                        formatting_entities=reply_msg.entities if reply_msg.text else None
+                    )
+                except Exception:
+                    saved_msg = await client.forward_messages('me', reply_msg)
             else:
                 await status_msg.edit("❌ **Error:** Replied message has no text or media.")
                 return
@@ -1974,8 +1977,7 @@ async def handle_setads(client: TelegramClient, user_id: int, message, sender=No
             saved_msg = await client.send_message(
                 'me',
                 message=cmd_text or None,
-                file=message.media,
-                formatting_entities=message.entities if (cmd_text and message.text) else None
+                file=message.media
             )
             
         await status_msg.edit("✅ **SUCCESS**\n\nThe new ad has been set in Saved Messages.")
@@ -2198,21 +2200,15 @@ async def handle_show(client: TelegramClient, user_id: int, message):
         raw_count = 0
         ads = []
         
+        STATUS_PREFIXES = (".", "✅", "🗑️", "⏳", "❌", "⚠️", "📊", "🔴", "⚪", "●", "📋")
         async for msg in client.iter_messages('me', limit=1000):
             raw_count += 1
             # Filter like get_all_saved_messages
             if msg.text:
                 stripped = msg.text.strip()
-                if (stripped.startswith(".") or 
-                    stripped.startswith("✅") or 
-                    stripped.startswith("🗑️") or 
-                    stripped.startswith("⏳") or 
-                    stripped.startswith("❌") or 
-                    stripped.startswith("⚠️") or
+                if (stripped.startswith(STATUS_PREFIXES) or 
                     "Free Version Paused" in stripped or 
-                    "remain joined" in stripped or
-                    "SUCCESS" in stripped or
-                    "Saved Messages" in stripped):
+                    "remain joined" in stripped):
                     continue
             if hasattr(msg, 'action') and msg.action is not None:
                 continue
