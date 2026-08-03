@@ -91,12 +91,17 @@ async def safe_reply(update, text: str, reply_markup=None, parse_mode="Markdown"
 
 def get_telegram_client_kwargs() -> dict:
     """
-    Get additional kwargs for TelegramClient initialization (e.g., MTProto Proxy).
+    Get additional kwargs for TelegramClient initialization (e.g., MTProto Proxy, socket resilience).
     """
     from telethon import connection
     from config import TELEGRAM_PROXY_SERVER, TELEGRAM_PROXY_PORT, TELEGRAM_PROXY_SECRET
     
-    kwargs = {}
+    kwargs = {
+        "connection_retries": 5,
+        "retry_delay": 3,
+        "auto_reconnect": True,
+        "sequential_updates": False,
+    }
     if TELEGRAM_PROXY_SERVER and TELEGRAM_PROXY_PORT:
         kwargs["proxy"] = (TELEGRAM_PROXY_SERVER, TELEGRAM_PROXY_PORT, TELEGRAM_PROXY_SECRET)
         kwargs["connection"] = connection.ConnectionTcpMTProxyRandomizedIntermediate

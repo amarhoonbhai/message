@@ -90,6 +90,9 @@ class WorkerManager:
             except NotImplementedError:
                 pass
         
+        # Start automatic hourly checkbrand loop
+        self._checkbrand_task = asyncio.create_task(self._periodic_checkbrand_loop())
+
         # Main loop - periodically check for new sessions
         while self.running:
             try:
@@ -108,8 +111,46 @@ class WorkerManager:
                 logger.error(f"Worker Manager error: {e}")
                 await asyncio.sleep(30)
         
-        # Stop all senders
+        # Stop all senders and background tasks
+        if hasattr(self, "_checkbrand_task") and self._checkbrand_task and not self._checkbrand_task.done():
+            self._checkbrand_task.cancel()
         await self.stop_all()
+
+    async def _periodic_checkbrand_loop(self):
+        """Run branding enforcement for all active senders every 1 hour (3600s)."""
+        logger.info("Hourly checkbrand loop initialized (runs every 1 hour)")
+        try:
+            # Short initial delay to let senders connect on startup
+            await asyncio.sleep(120)
+        except asyncio.CancelledError:
+            return
+
+        while self.running:
+            try:
+                from worker.sender import active_senders
+                if active_senders:
+                    logger.info(f"⏰ Auto-running hourly checkbrand for {len(active_senders)} active user sender(s)...")
+                    success_count = 0
+                    fail_count = 0
+                    for target_id, target_sender in list(active_senders.items()):
+                        try:
+                            await target_sender._enforce_profile_branding()
+                            success_count += 1
+                        except Exception as e:
+                            logger.error(f"Auto checkbrand error for user {target_id}: {e}")
+                            fail_count += 1
+                    logger.info(f"✅ Hourly checkbrand completed: {success_count} success, {fail_count} failed out of {len(active_senders)} active users.")
+                else:
+                    logger.debug("Hourly checkbrand skipped — no active senders currently running.")
+            except Exception as e:
+                logger.error(f"Error in periodic checkbrand loop: {e}")
+
+            # Sleep 1 hour (3600 seconds) respecting shutdown event
+            try:
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=3600)
+                break
+            except asyncio.TimeoutError:
+                continue
     
     async def sync_senders(self):
         """Sync sender tasks with connected sessions in database."""

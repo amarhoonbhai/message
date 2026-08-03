@@ -40,10 +40,12 @@ async def build_welcome_text(user) -> tuple[str, bool]:
     accounts_count = len(sessions) if sessions else 0
 
     # Plan badge
-    if plan and plan.get("status") == "active":
-        import datetime
-        days_left = (plan["expires_at"] - datetime.datetime.utcnow()).days
-        plan_tag = f"💎 PREMIUM ({max(0, days_left)}d left)"
+    import datetime
+    now_utc = datetime.datetime.utcnow()
+    if plan and plan.get("status") == "active" and bool(plan.get("expires_at")) and plan["expires_at"] > now_utc:
+        total_seconds = max(0, int((plan["expires_at"] - now_utc).total_seconds()))
+        days_left = total_seconds // 86400
+        plan_tag = f"💎 PREMIUM ({days_left}d left)"
         is_premium = True
     else:
         plan_tag = "⚪ Free User"

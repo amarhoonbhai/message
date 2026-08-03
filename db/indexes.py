@@ -31,11 +31,13 @@ async def ensure_indexes(db: AsyncIOMotorDatabase):
         
         # Groups: (user_id, chat_id) unique compound
         ("groups", [("user_id", 1), ("chat_id", 1)], {"unique": True}),
+        ("groups", [("user_id", 1), ("enabled", 1)], {"name": "idx_groups_user_enabled"}),
         ("groups", "user_id", {}),
         ("groups", "account_phone", {}),
         
         # Plans: user_id unique
         ("plans", "user_id", {"unique": True}),
+        ("plans", [("status", 1), ("expires_at", 1)], {"name": "idx_plans_status_expires"}),
         ("plans", "expires_at", {}),
         ("plans", "status", {}),
         
@@ -45,6 +47,7 @@ async def ensure_indexes(db: AsyncIOMotorDatabase):
         
         # Send logs
         ("send_logs", [("user_id", 1), ("phone", 1), ("chat_id", 1), ("saved_msg_id", 1), ("sent_at", -1)], {"name": "idx_anti_duplicate"}),
+        ("send_logs", [("user_id", 1), ("status", 1), ("sent_at", -1)], {"name": "idx_send_logs_status"}),
         ("send_logs", [("user_id", 1), ("sent_at", -1)], {}),
         ("send_logs", "sent_at", {}),
         # TTL Index: Automatically delete logs after 30 days (2,592,000 seconds)

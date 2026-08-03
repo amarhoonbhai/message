@@ -95,13 +95,19 @@ async def update_user_profile(user_id: int, username: str = None, first_name: st
 
 
 async def get_user_config(user_id: int) -> dict:
-    """Get user settings (interval, shuffle, etc)."""
+    """Get user settings (interval, shuffle, etc) with Redis caching."""
+    from core.cache import get_cached_user_config, set_cached_user_config
+    
+    cached = await get_cached_user_config(user_id)
+    if cached:
+        return cached
+
     from core.config import DEFAULT_INTERVAL_MINUTES
     db = get_database()
     doc = await db.config.find_one({"user_id": user_id})
     if not doc:
         # Return defaults
-        return {
+        doc = {
             "user_id": user_id,
             "interval_min": DEFAULT_INTERVAL_MINUTES,
             "shuffle_mode": False,
@@ -110,11 +116,14 @@ async def get_user_config(user_id: int) -> dict:
             "auto_reply_enabled": False,
             "auto_reply_text": "Hello! I am currently away. (Auto-reply)",
         }
+    
+    await set_cached_user_config(user_id, doc)
     return doc
 
 
 async def update_user_config(user_id: int, **kwargs):
-    """Update specific user settings."""
+    """Update specific user settings and invalidate Redis cache."""
+    from core.cache import invalidate_user_config_cache
     db = get_database()
     kwargs["updated_at"] = datetime.utcnow()
     await db.config.update_one(
@@ -122,3 +131,4 @@ async def update_user_config(user_id: int, **kwargs):
         {"$set": kwargs},
         upsert=True
     )
+    await invalidate_user_config_cache(user_id)

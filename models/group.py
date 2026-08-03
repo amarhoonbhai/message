@@ -232,12 +232,11 @@ async def get_failing_groups_count() -> int:
 
 
 async def resume_user_groups(user_id: int) -> int:
-    """Re-enable paused groups for a user, respecting plan limits."""
-    from models.plan import is_plan_active
+    """Re-enable paused groups for a user, respecting max group limit."""
+    from core.config import MAX_GROUPS_PER_USER
     db = get_database()
     
-    is_premium = await is_plan_active(user_id)
-    limit = 50 if is_premium else 10
+    limit = MAX_GROUPS_PER_USER
     
     # Get current active/enabled count
     enabled_count = await db.groups.count_documents({"user_id": user_id, "enabled": True})
@@ -282,15 +281,12 @@ async def clear_user_groups(user_id: int) -> int:
 
 async def enforce_user_group_limit(user_id: int) -> int:
     """
-    Enforce group limits on database level based on the user's plan status.
-    Free users: maximum 10 enabled groups.
-    Premium users: maximum 50 enabled groups.
+    Enforce group limits on database level based on MAX_GROUPS_PER_USER.
     """
-    from models.plan import is_plan_active
+    from core.config import MAX_GROUPS_PER_USER
     db = get_database()
     
-    is_premium = await is_plan_active(user_id)
-    limit = 50 if is_premium else 10
+    limit = MAX_GROUPS_PER_USER
     
     # Get all enabled groups for this user
     cursor = db.groups.find({"user_id": user_id, "enabled": True}).sort("created_at", 1)
@@ -301,13 +297,12 @@ async def enforce_user_group_limit(user_id: int) -> int:
         groups_to_disable = enabled_groups[limit:]
         disable_ids = [g["chat_id"] for g in groups_to_disable]
         
-        plan_name = "Premium" if is_premium else "Free"
         await db.groups.update_many(
             {"user_id": user_id, "chat_id": {"$in": disable_ids}},
             {
                 "$set": {
                     "enabled": False,
-                    "pause_reason": f"Plan limit exceeded — limited to {limit} groups on {plan_name} Plan."
+                    "pause_reason": f"Maximum limit exceeded — limited to {limit} groups."
                 }
             }
         )

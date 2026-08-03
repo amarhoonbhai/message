@@ -82,3 +82,6 @@ logs/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Scratch directory
+scratch/

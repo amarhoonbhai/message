@@ -403,9 +403,8 @@ async def handle_groups(client: TelegramClient, user_id: int, message):
         text += f"  ...\n  _And {len(groups) - 100} more groups._\n"
         
     text += f"\n══════════════════════\n"
-    from models.plan import is_plan_active
-    is_premium = await is_plan_active(user_id)
-    limit = 50 if is_premium else 10
+    from core.config import MAX_GROUPS_PER_USER
+    limit = MAX_GROUPS_PER_USER
     text += f"Slots: {total_count}/{limit} ▪ `.rmgroup [idx]`"
     
     await reply_to_command(client, message, text)
@@ -433,10 +432,9 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
         await reply_to_command(client, message, "○ No groups provided")
         return
     
-    # Check group limit based on premium status
-    from models.plan import is_plan_active
-    is_premium = await is_plan_active(user_id)
-    limit = 50 if is_premium else 10
+    # Check max group limit
+    from core.config import MAX_GROUPS_PER_USER
+    limit = MAX_GROUPS_PER_USER
     
     count = await get_group_count(user_id)
     available_slots = limit - count

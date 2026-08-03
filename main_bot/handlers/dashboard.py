@@ -110,7 +110,9 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # ═══ Build plan and dashboard based on subscription ═══
     from config import OWNER_ID
-    is_premium = (plan and plan.get("status") == "active") or user_id == OWNER_ID
+    now_utc = datetime.datetime.utcnow()
+    is_active_plan = plan and plan.get("status") == "active" and bool(plan.get("expires_at")) and plan["expires_at"] > now_utc
+    is_premium = is_active_plan or user_id == OWNER_ID
     has_connected = any(s.get("connected") for s in sessions) if sessions else False
     
     if is_premium:
@@ -121,8 +123,10 @@ async def show_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             plan_status = "👑 DEVELOPER/OWNER"
             plan_line2 = "     └─ Lifetime developer license active."
         else:
-            days_left = (plan["expires_at"] - datetime.datetime.utcnow()).days
-            hours_left = ((plan["expires_at"] - datetime.datetime.utcnow()).seconds // 3600)
+            time_diff = plan["expires_at"] - now_utc
+            total_seconds = max(0, int(time_diff.total_seconds()))
+            days_left = total_seconds // 86400
+            hours_left = (total_seconds % 86400) // 3600
             expiry_date = format_expiry_date(plan["expires_at"])
             plan_badge = "💎 PREMIUM"
             

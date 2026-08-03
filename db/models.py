@@ -420,87 +420,19 @@ async def get_failing_groups_count() -> int:
 
 
 
-async def get_plan(user_id: int) -> Optional[Dict[str, Any]]:
-    """Get user's plan. Automatically initializes a 2-day free trial for users with no plan."""
-    db = get_database()
-    plan = await db.plans.find_one({"user_id": user_id})
-    
-    if not plan:
-        # Check user's creation time to determine if trial is still active
-        user = await db.users.find_one({"user_id": user_id})
-        created_at = user.get("created_at") if user else None
-        if not created_at:
-            created_at = datetime.utcnow()
-            
-        expires_at = created_at + timedelta(days=2)
-        status = "active" if expires_at > datetime.utcnow() else "expired"
-        
-        plan = {
-            "user_id": user_id,
-            "plan_type": "free_trial",
-            "status": status,
-            "started_at": created_at,
-            "expires_at": expires_at
-        }
-        await db.plans.update_one(
-            {"user_id": user_id},
-            {"$setOnInsert": plan},
-            upsert=True
-        )
-        plan = await db.plans.find_one({"user_id": user_id})
-    
-    if plan:
-        # Check if expired
-        if plan.get("expires_at") and plan["expires_at"] < datetime.utcnow() and plan.get("status") != "expired":
-            await db.plans.update_one({"user_id": user_id}, {"$set": {"status": "expired"}})
-            plan["status"] = "expired"
-    
-    return plan
+from models.plan import (
+    get_plan,
+    is_plan_active,
+    extend_plan,
+    activate_plan,
+    check_and_expire_all_plans,
+    get_subscription_stats,
+    query_subscriptions,
+    reduce_plan,
+    mark_plan_expired,
+    delete_plan,
+)
 
-
-async def is_plan_active(user_id: int) -> bool:
-    """Check if user has an active plan."""
-    plan = await get_plan(user_id)
-    if not plan:
-        return False
-    return plan.get("status") == "active" and plan.get("expires_at") and plan["expires_at"] > datetime.utcnow()
-
-
-async def extend_plan(user_id: int, days: int):
-    """Extend user's plan by days."""
-    db = get_database()
-    
-    plan = await get_plan(user_id)
-    
-    if plan:
-        # Extend from current expiry or now
-        current_expiry = plan.get("expires_at") or datetime.utcnow()
-        base_date = max(current_expiry, datetime.utcnow())
-        new_expiry = base_date + timedelta(days=days)
-        
-        # Update plan - always 'paid' (premium)
-        update_fields = {"expires_at": new_expiry, "status": "active", "plan_type": "paid"}
-        
-        await db.plans.update_one(
-            {"user_id": user_id},
-            {"$set": update_fields}
-        )
-    else:
-        # Create new plan
-        plan_doc = {
-            "user_id": user_id,
-            "plan_type": "paid",
-            "expires_at": datetime.utcnow() + timedelta(days=days),
-            "status": "active",
-            "created_at": datetime.utcnow(),
-        }
-        await db.plans.insert_one(plan_doc)
-
-
-async def activate_plan(user_id: int, plan_type: str):
-    """Activate a paid plan for user."""
-    days = PLAN_DURATIONS.get(plan_type, 7)
-    await extend_plan(user_id, days)
 
 
 # ==================== REDEEM CODES ====================

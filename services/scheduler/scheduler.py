@@ -168,6 +168,7 @@ class Scheduler:
             # 2. Just Expired
             from db.database import get_database
             from models.group import enforce_user_group_limit
+            from core.cache import invalidate_plan_cache
             db = get_database()
 
             # Ensure all expired active plans in the system are marked as expired and limits enforced
@@ -179,6 +180,7 @@ class Scheduler:
                 uid = p["user_id"]
                 logger.info(f"Scheduler: Marking expired plan for user {uid} as expired.")
                 await db.plans.update_one({"user_id": uid}, {"$set": {"status": "expired"}})
+                await invalidate_plan_cache(uid)
                 disabled_count = await enforce_user_group_limit(uid)
                 if disabled_count > 0:
                     logger.info(f"Scheduler: Reduced user {uid} enabled groups to 10. Disabled {disabled_count} extra groups.")
@@ -189,12 +191,13 @@ class Scheduler:
                 # Always ensure status is set to expired if expires_at <= now
                 if p.get("status") != "expired":
                     await db.plans.update_one({"user_id": uid}, {"$set": {"status": "expired"}})
+                    await invalidate_plan_cache(uid)
                     await enforce_user_group_limit(uid)
 
                 if p.get("plan_type") == "free_trial":
                     msg = (
                         "🔴 *TRIAL EXPIRED*\n\n"
-                        "Your 1-day free trial has expired.\n"
+                        "Your 2-day free trial has expired.\n"
                         "If you want to continue, contact @spinify to buy the access."
                     )
                 else:

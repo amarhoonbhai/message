@@ -51,7 +51,20 @@ async def update_plan_notification(user_id: int, updates: dict):
 
 
 async def get_plan(user_id: int) -> Optional[dict]:
-    """Get user's plan. Automatically initializes a 1-day free trial for users with no plan."""
+    """Get user's plan. Uses Redis cache with DB fallback and auto 2-day free trial initialization."""
+    from core.cache import get_cached_plan, set_cached_plan
+    
+    # 1. Try Redis cache first
+    cached = await get_cached_plan(user_id)
+    if cached:
+        # Verify expiration if cached as active
+        if cached.get("expires_at") and cached["expires_at"] <= datetime.utcnow() and cached.get("status") != "expired":
+            cached["status"] = "expired"
+            from core.cache import invalidate_plan_cache
+            await invalidate_plan_cache(user_id)
+        else:
+            return cached
+
     db = get_database()
     plan = await db.plans.find_one({"user_id": user_id})
     
@@ -62,7 +75,7 @@ async def get_plan(user_id: int) -> Optional[dict]:
         if not created_at:
             created_at = datetime.utcnow()
             
-        expires_at = created_at + timedelta(days=1)
+        expires_at = created_at + timedelta(days=2)
         status = "active" if expires_at > datetime.utcnow() else "expired"
         
         plan = {
@@ -82,7 +95,7 @@ async def get_plan(user_id: int) -> Optional[dict]:
         plan = await db.plans.find_one({"user_id": user_id})
         
     if plan:
-        if plan.get("expires_at") and plan["expires_at"] < datetime.utcnow() and plan.get("status") != "expired":
+        if plan.get("expires_at") and plan["expires_at"] <= datetime.utcnow() and plan.get("status") != "expired":
             await db.plans.update_one({"user_id": user_id}, {"$set": {"status": "expired"}})
             plan["status"] = "expired"
             try:
@@ -91,19 +104,27 @@ async def get_plan(user_id: int) -> Optional[dict]:
             except Exception as ge:
                 import logging
                 logging.getLogger(__name__).error(f"Failed to auto-reduce groups on plan expiration for user {user_id}: {ge}")
+        
+        # Save to Redis cache
+        await set_cached_plan(user_id, plan)
+
     return plan
 
 
 async def is_plan_active(user_id: int) -> bool:
-    """Check if user has active plan."""
+    """Check if user has an active plan."""
     plan = await get_plan(user_id)
-    return plan is not None and plan.get("status") == "active"
+    if not plan:
+        return False
+    return plan.get("status") == "active" and bool(plan.get("expires_at")) and plan["expires_at"] > datetime.utcnow()
+
 
 
 
 
 async def extend_plan(user_id: int, days: int):
     """Extend user's plan by days."""
+    from core.cache import invalidate_plan_cache
     db = get_database()
     plan = await db.plans.find_one({"user_id": user_id})
     now = datetime.utcnow()
@@ -133,6 +154,8 @@ async def extend_plan(user_id: int, days: int):
             "notified_expired": False,
             "expiration_warnings_sent": 0
         })
+    
+    await invalidate_plan_cache(user_id)
 
 
 async def activate_plan(user_id: int, plan_type: str):
@@ -243,6 +266,7 @@ async def query_subscriptions(filter_type="all", search_query="", skip=0, limit=
 
 async def reduce_plan(user_id: int, days: int):
     """Reduce plan by days."""
+    from core.cache import invalidate_plan_cache
     db = get_database()
     plan = await db.plans.find_one({"user_id": user_id})
     if plan and plan.get("expires_at"):
@@ -252,16 +276,21 @@ async def reduce_plan(user_id: int, days: int):
             await db.plans.update_one({"user_id": user_id}, {"$set": {"expires_at": now, "status": "expired"}})
         else:
             await db.plans.update_one({"user_id": user_id}, {"$set": {"expires_at": new_expiry}})
+    await invalidate_plan_cache(user_id)
 
 async def mark_plan_expired(user_id: int):
     """Mark a plan as expired immediately."""
+    from core.cache import invalidate_plan_cache
     db = get_database()
     await db.plans.update_one(
         {"user_id": user_id}, 
         {"$set": {"status": "expired", "expires_at": datetime.utcnow()}}
     )
+    await invalidate_plan_cache(user_id)
 
 async def delete_plan(user_id: int):
     """Hard delete a plan."""
+    from core.cache import invalidate_plan_cache
     db = get_database()
     await db.plans.delete_one({"user_id": user_id})
+    await invalidate_plan_cache(user_id)

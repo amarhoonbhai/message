@@ -29,9 +29,11 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Plan info
     plan = data.get("plan")
-    if plan and plan.get("status") == "active":
-        days_left = (plan["expires_at"] - datetime.datetime.utcnow()).days
-        hours_left = (plan["expires_at"] - datetime.datetime.utcnow()).seconds // 3600
+    now_utc = datetime.datetime.utcnow()
+    if plan and plan.get("status") == "active" and bool(plan.get("expires_at")) and plan["expires_at"] > now_utc:
+        total_seconds = max(0, int((plan["expires_at"] - now_utc).total_seconds()))
+        days_left = total_seconds // 86400
+        hours_left = (total_seconds % 86400) // 3600
 
         plan_badge = "PREMIUM"
 
