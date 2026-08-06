@@ -681,3 +681,127 @@ async def admin_enforce_all_branding_callback(update: Update, context: ContextTy
         await query.answer("🔄 Global branding check requested! All active accounts will update within 60 seconds.", show_alert=True)
     except Exception as e:
         await query.answer(f"❌ Error: {str(e)}", show_alert=True)
+
+
+async def admin_set_all_pfp_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle callback to randomly set profile picture for all active userbot sessions."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        await query.answer("⛔ Access denied", show_alert=True)
+        return
+        
+    from shared.pfp_manager import set_all_connected_sessions_pfp, get_profile_photos
+    
+    photos = get_profile_photos()
+    if not photos:
+        await query.answer("⚠️ Photo pool is empty! Send photos to the bot first.", show_alert=True)
+        return
+        
+    await query.answer("🖼 Updating profile pictures for all accounts in background...", show_alert=True)
+    status_msg = await query.message.reply_text("⏳ *Updating profile photos for all connected accounts...*", parse_mode="Markdown")
+    
+    res = await set_all_connected_sessions_pfp()
+    
+    await status_msg.edit_text(
+        f"✅ *PROFILE PHOTOS UPDATED*\n══════════════════════════════\n\n"
+        f"👥 *Total Accounts:* {res['total']}\n"
+        f"🟢 *Successful:* {res['success']}\n"
+        f"🔴 *Failed:* {res['failed']}\n",
+        parse_mode="Markdown"
+    )
+
+
+async def admin_pfp_pool_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show profile photo pool dashboard to Admin."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        await query.answer("⛔ Access denied", show_alert=True)
+        return
+        
+    await query.answer()
+    
+    from shared.pfp_manager import get_profile_photos
+    from main_bot.utils.keyboards import get_admin_pfp_keyboard
+    
+    photos = get_profile_photos()
+    count = len(photos)
+    
+    text = (
+        f"📸 *PROFILE PHOTO POOL*\n"
+        f"══════════════════════════════\n\n"
+        f"🖼 Total photos in pool: *{count}*\n\n"
+        f"💡 *To add new photos:* Simply send any photo to this chat! "
+        f"They will automatically be saved to the pool."
+    )
+    
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_admin_pfp_keyboard()
+    )
+
+
+async def admin_upload_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle photos sent by owner in Main Bot to automatically add to PFP pool."""
+    user_id = update.effective_user.id
+    if not is_owner(user_id):
+        return
+        
+    if not update.message or not update.message.photo:
+        return
+        
+    # Download highest resolution photo
+    photo_file = await update.message.photo[-1].get_file()
+    file_bytes = await photo_file.download_as_bytearray()
+    
+    from shared.pfp_manager import save_profile_photo, get_profile_photos
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    
+    filename = f"pfp_{photo_file.file_unique_id}.jpg"
+    save_profile_photo(file_bytes, filename)
+    
+    total = len(get_profile_photos())
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🖼 Apply Random PFP to All Users Now", callback_data="admin_set_all_pfp")],
+        [InlineKeyboardButton("📸 View Photo Pool", callback_data="admin_pfp_pool")]
+    ])
+    
+    await update.message.reply_text(
+        f"✅ *Photo added to PFP Pool!*\n\n"
+        f"📸 Total photos in pool: *{total}*\n\n"
+        f"Click the button below to assign random photos to all connected user accounts.",
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+
+
+async def setallpfp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /setallpfp command in Main Bot (Owner only)."""
+    user_id = update.effective_user.id
+    if not is_owner(user_id):
+        await update.message.reply_text("⛔ Access denied")
+        return
+        
+    from shared.pfp_manager import set_all_connected_sessions_pfp, get_profile_photos
+    photos = get_profile_photos()
+    if not photos:
+        await update.message.reply_text("⚠️ *Photo pool is empty!* Upload photos to Main Bot first.", parse_mode="Markdown")
+        return
+        
+    status_msg = await update.message.reply_text("⏳ *Updating profile photos for all connected accounts...*", parse_mode="Markdown")
+    res = await set_all_connected_sessions_pfp()
+    
+    await status_msg.edit_text(
+        f"✅ *BULK PROFILE PHOTOS UPDATED*\n══════════════════════════════\n\n"
+        f"👥 *Total Accounts:* {res['total']}\n"
+        f"🟢 *Successful:* {res['success']}\n"
+        f"🔴 *Failed:* {res['failed']}\n",
+        parse_mode="Markdown"
+    )
+
+

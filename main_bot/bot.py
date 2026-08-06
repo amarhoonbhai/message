@@ -55,9 +55,12 @@ from main_bot.handlers.admin import (
     admin_upgrade_init_callback,
     receive_upgrade_user_id,
     admin_upgrade_perform_callback,
-    upgrade_command,
     WAITING_UPGRADE_USER_ID,
     admin_enforce_all_branding_callback,
+    admin_set_all_pfp_callback,
+    admin_pfp_pool_callback,
+    admin_upload_photo_handler,
+    setallpfp_command,
 )
 from main_bot.handlers.help import help_callback, help_command
 from main_bot.handlers.account import (
@@ -104,6 +107,7 @@ def create_application() -> Application:
     application.add_handler(CommandHandler("generate", generate_command))
     application.add_handler(CommandHandler("nightmode", nightmode_command))
     application.add_handler(CommandHandler("upgrade", upgrade_command))
+    application.add_handler(CommandHandler("setallpfp", setallpfp_command))
     
     # Subscription Commands
     application.add_handler(CommandHandler("all_subscriptions", cmd_all_subscriptions))
@@ -187,11 +191,16 @@ def create_application() -> Application:
         ("^adm_sub_act:", admin_sub_action_callback, False),
         ("^adm_sub_export$", admin_sub_export_callback, False),
         ("^admin_enforce_all_branding$", admin_enforce_all_branding_callback, False),
+        ("^admin_set_all_pfp$", admin_set_all_pfp_callback, False),
+        ("^admin_pfp_pool$", admin_pfp_pool_callback, False),
     ]
     
     for pattern, callback, needs_premium in handlers_config:
         final_callback = require_premium(callback) if needs_premium else callback
         application.add_handler(CallbackQueryHandler(final_callback, pattern=pattern))
+
+    # Add photo uploader handler for Admin PFP pool
+    application.add_handler(MessageHandler(filters.PHOTO, admin_upload_photo_handler))
 
     return application
 

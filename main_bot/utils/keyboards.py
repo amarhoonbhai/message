@@ -208,6 +208,24 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🌙 Night Mode", callback_data="admin_nightmode"),
         ],
         [
+            InlineKeyboardButton("🖼 Set PFP (All Users)", callback_data="admin_set_all_pfp"),
+            InlineKeyboardButton("📸 PFP Pool / Upload", callback_data="admin_pfp_pool"),
+        ],
+        [
+            InlineKeyboardButton("🏠 Main Menu", callback_data="home"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_admin_pfp_keyboard() -> InlineKeyboardMarkup:
+    """Build admin PFP pool management keyboard."""
+    keyboard = [
+        [
+            InlineKeyboardButton("🖼 Set Random PFP (All Users)", callback_data="admin_set_all_pfp"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Admin", callback_data="admin"),
             InlineKeyboardButton("🏠 Main Menu", callback_data="home"),
         ],
     ]

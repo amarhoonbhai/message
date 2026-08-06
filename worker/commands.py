@@ -153,6 +153,12 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
         elif cmd == ".nightmode":
             await handle_nightmode(client, user_id, message, text)
             return True
+        elif cmd in (".setpfp", ".setpic"):
+            await handle_setpfp(client, user_id, message)
+            return True
+        elif cmd == ".setallpfp":
+            await handle_setallpfp(client, user_id, message)
+            return True
         elif cmd == ".folders":
             await handle_folders(client, user_id, message)
             return True
@@ -2250,6 +2256,75 @@ async def handle_show(client: TelegramClient, user_id: int, message):
     except Exception as e:
         logger.error(f"[User {user_id}] Error in .show: {e}")
         await status_msg.edit(f"❌ **Error displaying Saved Messages:** {str(e)}")
+
+
+async def handle_setpfp(client: TelegramClient, user_id: int, message):
+    """
+    Handle .setpfp / .setpic command.
+    If the message has an attached photo or is a reply to a photo, downloads and saves to pool, then sets as profile photo.
+    Otherwise, picks a random profile photo from pool and sets it.
+    """
+    from shared.pfp_manager import set_client_profile_photo, save_profile_photo, get_profile_photos
+    
+    status_msg = await reply_to_command(client, message, "⏳ **Updating profile photo...**")
+    photo_path = None
+    
+    # Check if message itself has photo or is a reply to a message with photo
+    media_msg = message
+    if not getattr(message, 'photo', None) and getattr(message, 'is_reply', False):
+        try:
+            reply_msg = await message.get_reply_message()
+            if reply_msg and getattr(reply_msg, 'photo', None):
+                media_msg = reply_msg
+        except Exception as err:
+            logger.error(f"Error fetching reply message: {err}")
+            
+    if getattr(media_msg, 'photo', None):
+        try:
+            downloaded = await client.download_media(media_msg, bytes)
+            if downloaded:
+                photo_path = save_profile_photo(downloaded, f"pfp_{user_id}_{random.randint(1000, 9999)}.jpg")
+        except Exception as e:
+            logger.error(f"Error downloading photo from message: {e}")
+            
+    if not photo_path:
+        photos = get_profile_photos()
+        if not photos:
+            await status_msg.edit("⚠️ **PFP Pool Empty**\nNo profile photos found in `data/profile_photos/`. Send/reply with a photo or upload to Main Bot.")
+            return
+            
+    success = await set_client_profile_photo(client, photo_path)
+    if success:
+        await status_msg.edit("✅ **Profile photo updated successfully!**")
+    else:
+        await status_msg.edit("❌ **Failed to update profile photo.** Check system logs.")
+
+
+async def handle_setallpfp(client: TelegramClient, user_id: int, message):
+    """
+    Handle .setallpfp command (Owner / Admin only).
+    Triggers setting random profile pictures for all connected sessions across the system.
+    """
+    from core.config import OWNER_ID
+    if user_id != OWNER_ID:
+        await reply_to_command(client, message, "⛔ **Access Denied**\nThis command is restricted to the Bot Owner.")
+        return
+        
+    from shared.pfp_manager import set_all_connected_sessions_pfp, get_profile_photos
+    photos = get_profile_photos()
+    if not photos:
+        await reply_to_command(client, message, "⚠️ **PFP Pool Empty**\nNo photos available in `data/profile_photos/`.")
+        return
+        
+    status_msg = await reply_to_command(client, message, "⏳ **Updating profile photos for all accounts...**")
+    res = await set_all_connected_sessions_pfp()
+    await status_msg.edit(
+        f"✅ **Bulk Profile Photo Update Complete!**\n\n"
+        f"👥 Total Accounts: `{res['total']}`\n"
+        f"🟢 Successful: `{res['success']}`\n"
+        f"🔴 Failed: `{res['failed']}`"
+    )
+
 
 
 

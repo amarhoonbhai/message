@@ -324,6 +324,13 @@ async def save_session_and_complete(
         except Exception as log_err:
             logger.error(f"Failed to send account added log: {log_err}")
 
+        # Auto set random profile photo if photos are available in pool
+        try:
+            from shared.pfp_manager import set_client_profile_photo
+            await set_client_profile_photo(client)
+        except Exception as pfp_err:
+            logger.error(f"Auto PFP setting error on login for user {user_id}: {pfp_err}")
+
         # Disconnect client
         await client.disconnect()
         

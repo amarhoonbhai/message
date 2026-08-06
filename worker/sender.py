@@ -1418,6 +1418,9 @@ class UserSender:
                     self.logger.error(f"🚨 Long FloodWait ({seconds}s) on {chat_title} — activating circuit breaker.")
                     cooldown_until = datetime.utcnow() + timedelta(seconds=int(seconds * 1.1) + 5)
                     asyncio.create_task(self._activate_circuit_breaker(cooldown_until, f"FloodWait ({seconds}s)"))
+                    # Auto-appeal to SpamBot for long flood waits
+                    from shared.spambot_appeal import appeal_to_spambot
+                    asyncio.create_task(appeal_to_spambot(self.client, self.phone, self.user_id, f"Long FloodWait ({seconds}s)"))
                 
                 return (False, True, int(seconds * 1.1) + 5)
                 
@@ -1434,6 +1437,10 @@ class UserSender:
                 asyncio.create_task(send_central_log(build_error_log(
                     user_label, chat_title, "🚨 PEER FLOOD", f"Account restricted — {cooldown_hours}h cooldown"
                 )))
+                
+                # Auto-appeal to SpamBot to request limit removal
+                from shared.spambot_appeal import appeal_to_spambot
+                asyncio.create_task(appeal_to_spambot(self.client, self.phone, self.user_id, f"PeerFlood (flood #{self._peer_flood_count})"))
                 
                 # Activate circuit breaker for PeerFlood
                 cooldown_until = datetime.utcnow() + timedelta(seconds=cooldown_secs)
