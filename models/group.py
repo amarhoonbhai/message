@@ -105,13 +105,16 @@ GROUP_LEVEL_FAIL_REASONS = [
     "RPC: CHAT_ADMIN_REQUIRED", "RPC: CHAT_WRITE_FORBIDDEN",
     "RPC: USER_BANNED_IN_CHANNEL", "RPC: CHANNEL_INVALID",
     "RPC: USERNAME_NOT_OCCUPIED", "RPC: USERNAME_INVALID",
-    "RPC: INVITE_HASH_EXPIRED",
+    "RPC: INVITE_HASH_EXPIRED", "LINK_INVALID", "PERMISSION_DENIED",
 ]
 
-# Account-level failures — group is fine, but the sending account is restricted
+# Account-level / temporary / content / system failures — group is fine, but the sending account is restricted or there is a temporary issue
 ACCOUNT_LEVEL_FAIL_KEYWORDS = [
     "403", "FORBIDDEN", "AUTH_KEY", "PeerFlood", "RPCError 403",
     "Frozen", "FROZEN_PARTICIPANT_MISSING", "Account Frozen",
+    "Connection", "Timeout", "Socket", "Empty", "deleted", "deleted from Saved Messages",
+    "MESSAGE_DELETED", "EMPTY_MESSAGE", "SLOWMODE", "TOPIC_CLOSED", "DISCUSSION_GROUP_REQUIRED",
+    "ServerError", "RPCError 500", "500", "Slow mode", "Muted", "Flood", "FloodWait", "Rate limited"
 ]
 
 
@@ -126,8 +129,9 @@ def _is_group_level_failure(reason: str) -> bool:
     for keyword in ACCOUNT_LEVEL_FAIL_KEYWORDS:
         if keyword in reason:
             return False
-    # Unknown reasons are treated as group-level by default
-    return True
+    # Unknown/temporary/network/system errors are treated as temporary/account-level by default
+    # to prevent auto-removing users' groups.
+    return False
 
 
 async def mark_group_failing(user_id: int, chat_id: int, reason: str):

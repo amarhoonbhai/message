@@ -734,13 +734,18 @@ class UserSender:
                 self.logger.info(f"Starting new sending cycle (#{self._cycle_id})...")
                 asyncio.create_task(update_session_activity(self.user_id, self.phone))
                 
-                # AUTO-CLEANUP: Remove groups failing for > 24h
+                # AUTO-CLEANUP & AUTO-RECOVERY
                 try:
                     removed_count = await remove_stale_failing_groups(self.user_id)
                     if removed_count > 0:
                         self.logger.info(f"🧹 Auto-cleanup: Removed {removed_count} stale failing group(s).")
+                    
+                    from models.group import resume_account_paused_groups
+                    recovered = await resume_account_paused_groups(self.user_id)
+                    if recovered > 0:
+                        self.logger.info(f"🔄 Auto-recovery: Re-enabled {recovered} groups paused due to account restrictions.")
                 except Exception as e:
-                    self.logger.warning(f"Maintenance tasks error: {e}")
+                    self.logger.warning(f"Maintenance and recovery tasks error: {e}")
                 
                 # AUTO-RECOVERY: If error streak is dangerously high
                 if self.error_streak >= 20:

@@ -1869,61 +1869,52 @@ async def handle_check(client: TelegramClient, user_id: int, message, text: str,
 
 
 async def handle_clearads(client: TelegramClient, user_id: int, message, sender=None):
-    """Clear all Saved Messages (ads) for this account with real-time progress and robust deletion."""
-    import time
+    """Clear all Saved Messages (ads) for this account cleanly in a single pass without loops."""
+    import asyncio
     from core.config import OWNER_ID
     issuer_id = getattr(message, "sender_id", user_id)
     if issuer_id != user_id and issuer_id != OWNER_ID:
         await reply_to_command(client, message, "❌ Reserved for account owner.", auto_delete=False)
         return
 
-    status_msg = await reply_to_command(client, message, "⏳ Initializing Saved Messages cleanup...", auto_delete=False)
+    command_msg_id = message.id
     
     try:
-        total_deleted = 0
-        last_update_time = time.time()
+        # Retrieve up to 1000 messages from Saved Messages in a single pass
+        msg_ids_to_delete = []
+        async for msg in client.iter_messages('me', limit=1000):
+            if msg.id == command_msg_id:
+                continue
+            msg_ids_to_delete.append(msg.id)
+            
+        total_found = len(msg_ids_to_delete)
         
-        # Loop continuously until no messages remain (excluding status_msg)
-        while True:
-            batch = []
-            async for msg in client.iter_messages('me', limit=100):
-                if msg.id == status_msg.id:
-                    continue
-                batch.append(msg.id)
-            
-            if not batch:
-                break  # All saved messages cleared!
-                
-            # Delete batch of messages
-            try:
-                await client.delete_messages('me', batch)
-                total_deleted += len(batch)
-            except Exception as b_err:
-                logger.warning(f"[User {user_id}] Batch delete failed, attempting per-message delete: {b_err}")
-                for m_id in batch:
-                    try:
-                        await client.delete_messages('me', [m_id])
-                        total_deleted += 1
-                    except Exception:
-                        pass
-            
-            # Real-time progress update (throttled to 1.5s to respect Telegram edit limits)
-            now = time.time()
-            if now - last_update_time >= 1.5:
-                last_update_time = now
+        if total_found > 0:
+            # Delete in chunks of 100 to avoid Telegram request size limits
+            chunk_size = 100
+            for i in range(0, total_found, chunk_size):
+                chunk = msg_ids_to_delete[i:i+chunk_size]
                 try:
-                    await status_msg.edit(f"⏳ **Clearing Saved Messages...**\n\n🗑️ Cleared: `{total_deleted}` message(s) so far...")
-                except Exception:
-                    pass
-            
-            await asyncio.sleep(0.3)
+                    await client.delete_messages('me', chunk)
+                except Exception as b_err:
+                    logger.warning(f"[User {user_id}] Batch delete failed in clearads: {b_err}, trying fallback")
+                    # Fallback to single-message delete for this chunk
+                    for m_id in chunk:
+                        try:
+                            await client.delete_messages('me', [m_id])
+                        except Exception:
+                            pass
+                await asyncio.sleep(0.2)  # Respect rate limits between chunks
 
-        # Final success display
-        success_text = f"🗑️ **SUCCESS**\n\nAll `{total_deleted}` message(s) have been cleared from Saved Messages."
+        # Send a single success reply
+        success_text = f"🗑️ **SUCCESS**\n\nAll `{total_found}` message(s) have been cleared from Saved Messages."
+        await reply_to_command(client, message, success_text, auto_delete=True, delete_delay=15)
+
+        # Clean up the original command message immediately
         try:
-            await status_msg.edit(success_text)
+            await message.delete()
         except Exception:
-            status_msg = await client.send_message('me', success_text)
+            pass
 
         # Trigger wake up if sender is active to update status
         if sender:
@@ -1934,7 +1925,7 @@ async def handle_clearads(client: TelegramClient, user_id: int, message, sender=
     except Exception as e:
         logger.error(f"[User {user_id}] Error in .clearads: {e}")
         try:
-            await status_msg.edit(f"❌ **Error clearing ads:** {str(e)}")
+            await reply_to_command(client, message, f"❌ **Error clearing ads:** {str(e)}", auto_delete=False)
         except Exception:
             pass
 
