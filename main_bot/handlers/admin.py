@@ -689,17 +689,27 @@ async def admin_set_all_pfp_callback(update: Update, context: ContextTypes.DEFAU
     user_id = update.effective_user.id
     
     if not is_owner(user_id):
-        await query.answer("⛔ Access denied", show_alert=True)
+        try:
+            await query.answer("⛔ Access denied", show_alert=True)
+        except Exception:
+            pass
         return
         
     from shared.pfp_manager import set_all_connected_sessions_pfp, get_profile_photos
     
     photos = get_profile_photos()
     if not photos:
-        await query.answer("⚠️ Photo pool is empty! Send photos to the bot first.", show_alert=True)
+        try:
+            await query.answer("⚠️ Photo pool is empty! Send photos to the bot first.", show_alert=True)
+        except Exception:
+            pass
         return
         
-    await query.answer("🖼 Updating profile pictures for all accounts in background...", show_alert=True)
+    try:
+        await query.answer("🖼 Updating profile pictures for all accounts...", show_alert=True)
+    except Exception:
+        pass  # Stale query — proceed anyway
+    
     status_msg = await query.message.reply_text("⏳ *Updating profile photos for all connected accounts...*", parse_mode="Markdown")
     
     res = await set_all_connected_sessions_pfp()
