@@ -98,6 +98,8 @@ async def set_all_connected_sessions_pfp() -> Dict[str, int]:
     """
     Iterate over all connected sessions in MongoDB and set a random profile picture
     for each active Telethon account.
+    Photos are distributed using shuffled round-robin so each user
+    gets a different photo and all photos are used evenly.
     """
     from db.models import get_all_connected_sessions
     
@@ -113,7 +115,19 @@ async def set_all_connected_sessions_pfp() -> Dict[str, int]:
         logger.warning("Cannot bulk set profile photos: pool is empty.")
         return results
 
-    for s_doc in sessions:
+    # Shuffle sessions so assignment order is random
+    random.shuffle(sessions)
+    
+    # Build a shuffled round-robin photo list that covers all sessions
+    # e.g. 5 photos, 12 users → [p3,p1,p5,p2,p4, p1,p5,p3,p4,p2, p2,p3]
+    photo_assignments = []
+    while len(photo_assignments) < len(sessions):
+        batch = photos.copy()
+        random.shuffle(batch)
+        photo_assignments.extend(batch)
+    photo_assignments = photo_assignments[:len(sessions)]
+
+    for idx, s_doc in enumerate(sessions):
         user_id = s_doc.get("user_id")
         phone = s_doc.get("phone", "Unknown")
         session_str = s_doc.get("session_string")
@@ -150,11 +164,11 @@ async def set_all_connected_sessions_pfp() -> Dict[str, int]:
                 await client.disconnect()
                 continue
                 
-            photo_path = random.choice(photos)
+            photo_path = photo_assignments[idx]
             success = await set_client_profile_photo(client, photo_path)
             if success:
                 results["success"] += 1
-                logger.info(f"PFP set for user {user_id} ({phone})")
+                logger.info(f"PFP set for user {user_id} ({phone}) → {os.path.basename(photo_path)}")
             else:
                 results["failed"] += 1
                 
@@ -166,3 +180,4 @@ async def set_all_connected_sessions_pfp() -> Dict[str, int]:
                 await client.disconnect()
                 
     return results
+
