@@ -55,6 +55,7 @@ from main_bot.handlers.admin import (
     admin_upgrade_init_callback,
     receive_upgrade_user_id,
     admin_upgrade_perform_callback,
+    upgrade_command,
     WAITING_UPGRADE_USER_ID,
     admin_enforce_all_branding_callback,
     admin_set_all_pfp_callback,
