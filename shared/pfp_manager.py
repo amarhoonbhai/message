@@ -15,7 +15,6 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.errors import RPCError
 
-from config import API_ID, API_HASH
 from shared.utils import get_telegram_client_kwargs
 
 logger = logging.getLogger(__name__)
@@ -37,9 +36,6 @@ def get_profile_photos() -> List[str]:
     valid_extensions = {".jpg", ".jpeg", ".png", ".webp"}
     photos = []
     
-    if not os.path.exists(PFP_DIR):
-        return photos
-        
     for fname in os.listdir(PFP_DIR):
         ext = os.path.splitext(fname)[1].lower()
         if ext in valid_extensions:
@@ -85,7 +81,7 @@ async def set_client_profile_photo(client: TelegramClient, photo_path: Optional[
         return False
         
     try:
-        logger.info(f"Uploading profile photo {photo_path} for client...")
+        logger.info(f"Uploading profile photo {os.path.basename(photo_path)} for client...")
         uploaded_file = await client.upload_file(photo_path)
         await client(UploadProfilePhotoRequest(file=uploaded_file))
         logger.info("Successfully updated client profile photo!")
@@ -125,9 +121,15 @@ async def set_all_connected_sessions_pfp() -> Dict[str, int]:
         if not session_str:
             results["failed"] += 1
             continue
-            
-        api_id = s_doc.get("api_id") or API_ID
-        api_hash = s_doc.get("api_hash") or API_HASH
+        
+        # Each session stores its own API credentials
+        api_id = s_doc.get("api_id")
+        api_hash = s_doc.get("api_hash")
+        
+        if not api_id or not api_hash:
+            logger.warning(f"Skipping PFP for user {user_id} ({phone}): missing API credentials in session")
+            results["failed"] += 1
+            continue
         
         client = None
         try:
@@ -143,6 +145,7 @@ async def set_all_connected_sessions_pfp() -> Dict[str, int]:
             await client.connect()
             
             if not await client.is_user_authorized():
+                logger.warning(f"PFP: Client not authorized for user {user_id} ({phone})")
                 results["failed"] += 1
                 await client.disconnect()
                 continue
@@ -151,6 +154,7 @@ async def set_all_connected_sessions_pfp() -> Dict[str, int]:
             success = await set_client_profile_photo(client, photo_path)
             if success:
                 results["success"] += 1
+                logger.info(f"PFP set for user {user_id} ({phone})")
             else:
                 results["failed"] += 1
                 

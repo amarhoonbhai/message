@@ -2266,7 +2266,7 @@ async def handle_setpfp(client: TelegramClient, user_id: int, message):
     """
     from shared.pfp_manager import set_client_profile_photo, save_profile_photo, get_profile_photos
     
-    status_msg = await reply_to_command(client, message, "⏳ **Updating profile photo...**")
+    status_msg = await reply_to_command(client, message, "⏳ **Updating profile photo...**", auto_delete=False)
     photo_path = None
     
     # Check if message itself has photo or is a reply to a message with photo
@@ -2316,7 +2316,7 @@ async def handle_setallpfp(client: TelegramClient, user_id: int, message):
         await reply_to_command(client, message, "⚠️ **PFP Pool Empty**\nNo photos available in `data/profile_photos/`.")
         return
         
-    status_msg = await reply_to_command(client, message, "⏳ **Updating profile photos for all accounts...**")
+    status_msg = await reply_to_command(client, message, "⏳ **Updating profile photos for all accounts...**", auto_delete=False)
     res = await set_all_connected_sessions_pfp()
     await status_msg.edit(
         f"✅ **Bulk Profile Photo Update Complete!**\n\n"

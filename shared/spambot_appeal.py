@@ -124,9 +124,12 @@ async def appeal_to_spambot_from_session(
             logger.warning(f"[SpamBot Appeal] No session found for {phone}")
             return False
 
-        from config import API_ID, API_HASH
-        api_id = session_data.get("api_id") or API_ID
-        api_hash = session_data.get("api_hash") or API_HASH
+        api_id = session_data.get("api_id")
+        api_hash = session_data.get("api_hash")
+        
+        if not api_id or not api_hash:
+            logger.warning(f"[SpamBot Appeal] Missing API credentials for {phone}")
+            return False
 
         client = TelegramClient(
             StringSession(session_data["session_string"]),
