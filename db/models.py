@@ -193,7 +193,7 @@ async def get_user_config(user_id: int) -> Dict[str, Any]:
             "copy_mode": False,
             "send_mode": "sequential",
             "auto_reply_enabled": False,
-            "auto_reply_text": "Hello! Thanks for your interest. Please check our official channel for more details: [YOUR_CHANNEL_HERE]",
+            "auto_reply_text": "This is an automated advertising bot. \n\nBy Using @SpinifyAdsBot and contact @spinify to get the access",
             "updated_at": datetime.utcnow(),
         }
         await db.config.insert_one(config)

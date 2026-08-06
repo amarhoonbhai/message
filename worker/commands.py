@@ -974,17 +974,26 @@ async def handle_sendmode(client: TelegramClient, user_id: int, message, text: s
 
 async def handle_responder(client: TelegramClient, user_id: int, message, text: str):
     """Handle .responder on/off or .responder <message>."""
+    from db.models import is_plan_active
+    is_premium = await is_plan_active(user_id)
+    
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         config = await get_user_config(user_id)
         current = "ON" if config.get("auto_reply_enabled", False) else "OFF"
+        
+        if is_premium:
+            current_msg = config.get('auto_reply_text', '')
+        else:
+            current_msg = "This is an automated advertising bot. \n\nBy Using @SpinifyAdsBot and contact @spinify to get the access"
+            
         await reply_to_command(client, message,
             f"➤ Auto-Responder: {current}\n\n"
             f"Usage:\n"
             f"  .responder on/off\n"
             f"  .responder [your message]\n\n"
             f"Current message:\n"
-            f"\"{config.get('auto_reply_text')}\""
+            f"\"{current_msg}\""
         )
         return
     
@@ -998,11 +1007,21 @@ async def handle_responder(client: TelegramClient, user_id: int, message, text: 
         await reply_to_command(client, message, "■ Auto-Responder DISABLED ○")
     else:
         # Set message
-        await update_user_config(user_id, auto_reply_text=val, auto_reply_enabled=True)
-        await reply_to_command(client, message, 
-            f"● Auto-Responder set and ENABLED!\n\n"
-            f"➤ New message: {val}"
-        )
+        if not is_premium:
+            await reply_to_command(client, message, 
+                "⚠️ *Custom Auto-Responder is a Premium Feature!*\n\n"
+                "As a Free User, your auto-responder will use the default advertising message:\n"
+                "\"This is an automated advertising bot. \n\nBy Using @SpinifyAdsBot and contact @spinify to get the access\"\n\n"
+                "Upgrade to Premium to customize this message!"
+            )
+            # Enable it anyway, but don't set custom message
+            await update_user_config(user_id, auto_reply_enabled=True)
+        else:
+            await update_user_config(user_id, auto_reply_text=val, auto_reply_enabled=True)
+            await reply_to_command(client, message, 
+                f"● Auto-Responder set and ENABLED!\n\n"
+                f"➤ New message: {val}"
+            )
 
 
 async def handle_userstatus(client: TelegramClient, user_id: int, message, text: str):

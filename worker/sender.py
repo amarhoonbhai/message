@@ -711,7 +711,14 @@ class UserSender:
             if now - last_reply < 86400:  # 24 hours
                 return
             
-            reply_text = config.get("auto_reply_text", "Hello! Thanks for your message.")
+            is_premium = await self._cached_is_plan_active()
+            if is_premium:
+                reply_text = config.get("auto_reply_text", "Hello! Thanks for your message.")
+            else:
+                reply_text = (
+                    "This is an automated advertising bot. \n\n"
+                    "By Using @SpinifyAdsBot and contact @spinify to get the access"
+                )
             
             self.logger.info(f"Sending auto-reply to {sender_id}")
             await event.reply(reply_text)
