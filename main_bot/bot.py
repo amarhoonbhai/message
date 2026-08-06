@@ -200,8 +200,9 @@ def create_application() -> Application:
         final_callback = require_premium(callback) if needs_premium else callback
         application.add_handler(CallbackQueryHandler(final_callback, pattern=pattern))
 
-    # Add photo uploader handler for Admin PFP pool
-    application.add_handler(MessageHandler(filters.PHOTO, admin_upload_photo_handler))
+    # Add photo uploader handler for Admin PFP pool (Owner only)
+    from config import OWNER_ID
+    application.add_handler(MessageHandler(filters.PHOTO & filters.User(user_id=OWNER_ID), admin_upload_photo_handler))
 
     return application
 
