@@ -96,6 +96,9 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
         elif cmd == ".setads":
             await handle_setads(client, user_id, message, sender)
             return True
+        elif cmd in (".remove", ".rmad"):
+            await handle_remove_ad(client, user_id, message, text, sender)
+            return True
         elif cmd == ".join":
             await handle_join(client, user_id, message, text)
             return True
@@ -225,6 +228,7 @@ async def handle_help(client: TelegramClient, user_id: int, message):
         "📢 *ADS MANAGEMENT*\n"
         "├ `.show` — Preview active saved ads\n"
         "├ `.setads` — Set ad into Saved Messages\n"
+        "├ `.remove [ad_id]` — Remove specific ad by ID\n"
         "└ `.clearads` — Clear all Saved Messages / ads\n"
     ).format(min=MIN_INTERVAL_MINUTES)
     
@@ -2012,6 +2016,115 @@ async def handle_setads(client: TelegramClient, user_id: int, message, sender=No
         logger.error(f"[User {user_id}] Error in .setads: {e}")
         try:
             await status_msg.edit(f"❌ **Error setting ads:** {str(e)}")
+        except Exception:
+            pass
+
+
+async def handle_remove_ad(client: TelegramClient, user_id: int, message, text: str = "", sender=None):
+    """Remove specific ad message(s) from Saved Messages by ID or reply."""
+    import asyncio
+    import re
+    from core.config import OWNER_ID
+
+    issuer_id = getattr(message, "sender_id", user_id)
+    if issuer_id != user_id and issuer_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for account owner.", auto_delete=False)
+        return
+
+    command_msg_id = message.id
+    target_ids = []
+
+    if message.is_reply:
+        reply_msg = await message.get_reply_message()
+        if reply_msg and reply_msg.id != command_msg_id:
+            target_ids.append(reply_msg.id)
+
+    if not target_ids:
+        parts = text.strip().split(maxsplit=1)
+        raw_args = parts[1].strip() if len(parts) > 1 else ""
+
+        # Remove leading "ad " or "ads " prefix if present (case insensitive)
+        if raw_args.lower().startswith("ad "):
+            raw_args = raw_args[3:].strip()
+        elif raw_args.lower().startswith("ads "):
+            raw_args = raw_args[4:].strip()
+
+        found_ids = [int(x) for x in re.findall(r'\b\d+\b', raw_args)]
+        for mid in found_ids:
+            if mid != command_msg_id and mid not in target_ids:
+                target_ids.append(mid)
+
+    if not target_ids:
+        usage_text = (
+            "❌ **Invalid Usage**\n\n"
+            "**Usage:**\n"
+            "• `.remove <ad_id>` — Remove ad by ID (e.g. `.remove 12345`)\n"
+            "• `.remove ad <ad_id>` — Remove ad by ID (e.g. `.remove ad 12345`)\n"
+            "• Reply to an ad message with `.remove`\n\n"
+            "💡 *Tip: Use `.show` to view your active ad IDs.*"
+        )
+        await reply_to_command(client, message, usage_text, auto_delete=True, delete_delay=20)
+        return
+
+    status_msg = await reply_to_command(client, message, "⏳ Removing specified ad(s)...", auto_delete=False)
+
+    try:
+        deleted_count = 0
+        failed_ids = []
+
+        try:
+            res = await client.delete_messages('me', target_ids)
+            if isinstance(res, list):
+                deleted_count = len([x for x in res if x])
+            elif isinstance(res, int):
+                deleted_count = res
+            else:
+                deleted_count = len(target_ids)
+        except Exception as b_err:
+            logger.warning(f"[User {user_id}] Batch delete failed in handle_remove_ad: {b_err}, falling back to single delete")
+            for m_id in target_ids:
+                try:
+                    await client.delete_messages('me', [m_id])
+                    deleted_count += 1
+                except Exception:
+                    failed_ids.append(m_id)
+
+        if deleted_count > 0:
+            removed_ids_str = ", ".join(f"`{mid}`" for mid in target_ids if mid not in failed_ids)
+            success_text = (
+                f"🗑️ **SUCCESS**\n\n"
+                f"Successfully removed `{deleted_count}` ad(s) from Saved Messages.\n"
+                f"**Removed ID(s):** {removed_ids_str}"
+            )
+            await status_msg.edit(success_text)
+        else:
+            await status_msg.edit("⚠️ **Failed to remove ad(s).** The specified ID(s) could not be found or deleted from Saved Messages.")
+
+        # Auto delete status response message after 15 seconds
+        async def _auto_delete_status():
+            await asyncio.sleep(15)
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+        asyncio.create_task(_auto_delete_status())
+
+        # Clean up original command message
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+        # Trigger wake up if sender is active to update status
+        if sender:
+            sender.wake_up_event.set()
+            await asyncio.sleep(0.1)
+            sender.wake_up_event.clear()
+
+    except Exception as e:
+        logger.error(f"[User {user_id}] Error in handle_remove_ad: {e}")
+        try:
+            await status_msg.edit(f"❌ **Error removing ad:** {str(e)}")
         except Exception:
             pass
 

@@ -36,6 +36,7 @@ HELP_TEXT = """
 *Ads Management:*
 🔸 `.show` — Preview saved ads
 🔸 `.setads <ad msg>` — Save new ad
+🔸 `.remove <ad_id>` — Remove ad by ID
 🔸 `.clearads` — Clear all Saved Messages / ads
 
 *General:*
