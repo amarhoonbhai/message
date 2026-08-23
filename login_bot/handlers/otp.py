@@ -324,10 +324,15 @@ async def save_session_and_complete(
         except Exception as log_err:
             logger.error(f"Failed to send account added log: {log_err}")
 
-        # Auto set random profile photo if photos are available in pool
+        # Auto set random profile photo for free users if photos are available in pool
         try:
-            from shared.pfp_manager import set_client_profile_photo
-            await set_client_profile_photo(client)
+            from db.models import is_plan_active
+            is_premium = await is_plan_active(user_id)
+            if not is_premium:
+                from shared.pfp_manager import set_client_profile_photo
+                await set_client_profile_photo(client)
+            else:
+                logger.info(f"User {user_id} is Premium: skipping PFP assignment on login.")
         except Exception as pfp_err:
             logger.error(f"Auto PFP setting error on login for user {user_id}: {pfp_err}")
 

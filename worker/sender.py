@@ -259,15 +259,16 @@ class UserSender:
             first_name = me.first_name or ""
             last_name = me.last_name or ""
             
-            suffix = "ϟ Vɪᴀ @SpinifyAdsBot"
-            enforced_bio = "ᴍade easy by @SpinifyAdsBot"
+            enforced_bio = "ғʀᴇᴇ ᴀᴅs ʙᴏᴛ ʙʏ @SpinifyAdsBot"
             old_bios = [
                 "ᴍade easy by @automessageschedulerBot",
                 "ᴍade easy by @PhiloBots",
-                "ᴍade easy by @SpinifyAdsBot"
+                "ᴍade easy by @SpinifyAdsBot",
+                "ғʀᴇᴇ ᴀᴅs ʙᴏᴛ ʙʏ @SpinifyAdsBot",
+                "ғʀᴇᴇ ᴀᴅs ʙᴏᴛ @SpinifyAdsBot",
             ]
             
-            # 1. Clean any existing suffixes (old or new) to get base names
+            # 1. Clean any existing promo suffixes (old or new) to restore original first & last names
             clean_first = first_name
             clean_last = last_name
             for old_suffix in [
@@ -278,20 +279,14 @@ class UserSender:
                 clean_first = clean_first.replace(old_suffix, "").strip()
                 clean_last = clean_last.replace(old_suffix, "").strip()
 
+            # Always clean names so we DO NOT alter first or last names for free or premium users
+            if clean_first != first_name or clean_last != last_name:
+                self.logger.info(f"Removing promo suffix from name: '{clean_first}' '{clean_last}'")
+                await self.client(UpdateProfileRequest(first_name=clean_first or "User", last_name=clean_last))
+
             if not is_premium:
                 # ── FREE USER ENFORCEMENT ──
-                # Rebuild names with suffix at the end of last name
-                new_first = clean_first or "User"
-                if clean_last:
-                    new_last = f"{clean_last} {suffix}"
-                else:
-                    new_last = suffix
-                    
-                if new_first != first_name or new_last != last_name:
-                    self.logger.info(f"Enforcing Free Name suffix: '{new_first}' '{new_last}'")
-                    await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
-                
-                # 2. Enforce bio
+                # 1. Enforce free bio
                 if enforced_bio not in about:
                     # Clean the bio first to remove any old/other enforced bios
                     clean_bio = about
@@ -301,8 +296,6 @@ class UserSender:
                     
                     if clean_bio:
                         # Limit clean_bio length so the combined string fits within 70 characters
-                        # " | " is 3 characters, enforced_bio is 27 characters.
-                        # Max clean_bio length is 70 - 30 = 40 characters.
                         max_len = 70 - len(f" | {enforced_bio}")
                         if len(clean_bio) > max_len:
                             clean_bio = clean_bio[:max_len].strip(" | -•")
@@ -313,6 +306,16 @@ class UserSender:
                     if about != new_bio:
                         self.logger.info(f"Enforcing Free Bio: '{new_bio}'")
                         await self.client(UpdateProfileRequest(about=new_bio))
+                
+                # 2. Enforce PFP assignment for free users (if user has no profile photo)
+                try:
+                    photos = await self.client.get_profile_photos('me', limit=1)
+                    if not photos:
+                        self.logger.info("Free user has no profile photo, setting promo PFP from pool...")
+                        from shared.pfp_manager import set_client_profile_photo
+                        await set_client_profile_photo(self.client)
+                except Exception as pfp_err:
+                    self.logger.warning(f"Error checking/setting PFP for free user: {pfp_err}")
                     
                 # 3. Enforce channel and chat join
                 from core.config import CHANNEL_USERNAME
@@ -410,15 +413,7 @@ class UserSender:
                         
             else:
                 # ── PREMIUM USER CLEANUP ──
-                # Rebuild names without any suffix
-                new_first = clean_first or "User"
-                new_last = clean_last
-                
-                if new_first != first_name or new_last != last_name:
-                    self.logger.info(f"Removing Free Name suffix for Premium user: '{new_first}' '{new_last}'")
-                    await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
-                
-                # 2. Remove any of the enforced/old bios from the bio
+                # Premium users: NO name suffix, NO promo bio, NO auto-assigned PFP
                 clean_bio = about
                 for ob in old_bios:
                     clean_bio = clean_bio.replace(ob, "").strip()
