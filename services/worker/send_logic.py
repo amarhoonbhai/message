@@ -32,6 +32,7 @@ from telethon.errors import (
 
 from models.group import remove_group, toggle_group, mark_group_failing, clear_group_fail
 from models.job import log_job_event
+from models.ad_sequence import get_next_ad_sequence_number
 from shared.telegram_error_mapper import map_telegram_error
 from core.database import get_database
 
@@ -158,28 +159,23 @@ async def send_message_to_group(
                                 "failed", "Message not found in Saved Messages")
             return ("failed", 0)
 
-        if copy_mode:
-            if not saved_msg.text and not saved_msg.media:
-                await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                    "skipped", "Empty message")
-                return ("failed", 0)
+        if not saved_msg.text and not saved_msg.media:
+            await log_job_event(job_id, user_id, phone, group_id, message_id,
+                                "skipped", "Empty message")
+            return ("failed", 0)
 
-        if copy_mode or topic_id:
-            # Use send_message as it reliably supports reply_to (for forums) and media
-            await client.send_message(
-                entity=entity,
-                message=saved_msg.text or None,
-                file=saved_msg.media,
-                formatting_entities=saved_msg.entities if saved_msg.text else None,
-                reply_to=topic_id
-            )
-        else:
-            # Standard forward (shows "Forwarded from")
-            await client.forward_messages(
-                entity=entity,
-                messages=message_id,
-                from_peer='me'
-            )
+        # Get daily sequence number for ad
+        seq_num = await get_next_ad_sequence_number(user_id, phone)
+        orig_text = saved_msg.text or ""
+        ad_text = (orig_text + f"\n\nID = #{seq_num}") if orig_text else f"ID = #{seq_num}"
+
+        await client.send_message(
+            entity=entity,
+            message=ad_text,
+            file=saved_msg.media,
+            formatting_entities=saved_msg.entities if orig_text else None,
+            reply_to=topic_id
+        )
 
         await log_job_event(job_id, user_id, phone, group_id, message_id, "sent")
         # Clear any previous failing status on success

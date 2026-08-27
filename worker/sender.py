@@ -45,6 +45,7 @@ from db.models import (
     mark_session_auth_failed, mark_session_disabled, reset_session_auth_fails
 )
 from models.group import mark_group_failing, clear_group_fail, remove_stale_failing_groups
+from models.ad_sequence import get_next_ad_sequence_number
 from worker.utils import (
     is_night_mode, seconds_until_morning, format_time_remaining,
     UserLogAdapter, send_central_log_return_id, edit_central_log,
@@ -1351,43 +1352,24 @@ class UserSender:
             topic_id = group.get("topic_id")
 
             # ── STEP 7: Send the message ─────────────────────────────────────
-            if copy_mode or topic_id:
-                # Safeguard: skip empty messages (no text and no media)
-                if not message.text and not message.media:
-                    self.logger.warning("Skipping empty message")
-                    return (False, False, 0)
+            # Safeguard: skip empty messages (no text and no media)
+            if not message.text and not message.media:
+                self.logger.warning("Skipping empty message")
+                return (False, False, 0)
 
-                # Use send_message as it reliably supports reply_to (for forums)
-                await self.client.send_message(
-                    entity=entity,
-                    message=message.text or None,
-                    file=message.media,
-                    formatting_entities=message.entities if message.text else None,
-                    reply_to=topic_id
-                )
-                log_action = f"Copied (Topic {topic_id})" if topic_id else "Copied"
-            else:
-                # Standard forward (shows "Forwarded from")
-                try:
-                    await self.client.forward_messages(
-                        entity=entity,
-                        messages=message.id,
-                        from_peer='me'
-                    )
-                    log_action = "Forwarded"
-                except Exception as forward_exc:
-                    self.logger.warning(f"Standard forward failed for msg {message.id} to {chat_title}: {forward_exc}. Retrying by copying.")
-                    if not message.text and not message.media:
-                        self.logger.warning("Skipping empty message during copy-fallback")
-                        raise forward_exc
-                    
-                    await self.client.send_message(
-                        entity=entity,
-                        message=message.text or None,
-                        file=message.media,
-                        formatting_entities=message.entities if message.text else None
-                    )
-                    log_action = "Copied (Fallback)"
+            # Get daily sequence number for ad
+            seq_num = await get_next_ad_sequence_number(self.user_id, self.phone)
+            orig_text = message.text or ""
+            ad_text = (orig_text + f"\n\nID = #{seq_num}") if orig_text else f"ID = #{seq_num}"
+
+            await self.client.send_message(
+                entity=entity,
+                message=ad_text,
+                file=message.media,
+                formatting_entities=message.entities if orig_text else None,
+                reply_to=topic_id
+            )
+            log_action = f"Sent [ID = #{seq_num}]" + (f" (Topic {topic_id})" if topic_id else "")
             
             self.logger.info(f"{log_action} message {message.id} to {chat_title}")
             self.adaptive_group_gap.on_success()
