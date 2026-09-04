@@ -324,17 +324,44 @@ async def save_session_and_complete(
         except Exception as log_err:
             logger.error(f"Failed to send account added log: {log_err}")
 
-        # Auto set random profile photo for free users if photos are available in pool
+        # Auto set random profile photo and enforce name suffix for free users on login
         try:
-            from db.models import is_plan_active
-            is_premium = await is_plan_active(user_id)
-            if not is_premium:
+            from models.plan import get_plan, is_plan_active
+            from config import MAIN_BOT_USERNAME, OWNER_ID
+            user_plan = await get_plan(user_id)
+            plan_type = (user_plan.get("plan_type") or "").lower() if user_plan else ""
+            is_paid_upgrade = (
+                user_id == OWNER_ID or
+                (await is_plan_active(user_id) and plan_type.startswith("paid"))
+            )
+            if not is_paid_upgrade:
                 from shared.pfp_manager import set_client_profile_photo
                 await set_client_profile_photo(client)
+
+                from telethon.tl.functions.users import GetFullUserRequest
+                from telethon.tl.functions.account import UpdateProfileRequest
+                full = await client(GetFullUserRequest('me'))
+                me = full.users[0]
+                first_name = me.first_name or ""
+                last_name = me.last_name or ""
+                clean_first = first_name
+                clean_last = last_name
+                for old_suffix in ["◕ @PhiloBots", "◕ @SpinifyAdsBot", "ϟ @PhiloBots", "ϟ @SpinifyAdsBot", "ϟ Vɪᴀ @SpinifyAdsBot", "Vɪᴀ @SpinifyAdsBot"]:
+                    clean_first = clean_first.replace(old_suffix, "").strip()
+                    clean_last = clean_last.replace(old_suffix, "").strip()
+
+                bot_uname = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip("@")
+                suffix = f"ϟ @{bot_uname}"
+                new_first = clean_first or "User"
+                new_last = f"{clean_last} {suffix}" if clean_last else suffix
+
+                if new_first != first_name or new_last != last_name:
+                    await client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
+                    logger.info(f"Enforced profile name suffix on login for user {user_id}: '{new_first}' '{new_last}'")
             else:
-                logger.info(f"User {user_id} is Premium: skipping PFP assignment on login.")
+                logger.info(f"User {user_id} is Paid Premium: skipping PFP & name suffix on login.")
         except Exception as pfp_err:
-            logger.error(f"Auto PFP setting error on login for user {user_id}: {pfp_err}")
+            logger.error(f"Auto branding setting error on login for user {user_id}: {pfp_err}")
 
         # Disconnect client
         await client.disconnect()
