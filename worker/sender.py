@@ -1304,8 +1304,9 @@ class UserSender:
 
     async def get_user_label(self) -> str:
         """
-        Get a label for the user displaying only Full Name with bot username using stylish symbol separator.
-        Example: John Doe ϟ @SpinifyAdsBot (ID: 123456789)
+        Get a label for the user:
+        - Paid Upgraded Premium users: Clean Full Name (@username) [💎 PREMIUM] (ID: user_id)
+        - Free users & .free grants: Full Name ϟ @bot_username (ID: user_id)
         """
         if not getattr(self, "first_name", "") and not getattr(self, "username", "") and self.client:
             try:
@@ -1320,9 +1321,27 @@ class UserSender:
         first_name = getattr(self, "first_name", "")
         last_name = getattr(self, "last_name", "")
         full_name = f"{first_name} {last_name}".strip() or "User"
-        bot_uname = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip("@")
+        username = getattr(self, "username", "")
         
-        return f"{full_name} ϟ @{bot_uname} (ID: {self.user_id})"
+        is_paid_upgrade = False
+        try:
+            from models.plan import get_plan
+            user_plan = await get_plan(self.user_id)
+            plan_type = (user_plan.get("plan_type") or "").lower() if user_plan else ""
+            is_paid_upgrade = (
+                self.user_id == OWNER_ID or
+                (await self._cached_is_plan_active() and plan_type.startswith("paid"))
+            )
+        except Exception:
+            pass
+        
+        if is_paid_upgrade:
+            if username:
+                return f"{full_name} (@{username}) [💎 PREMIUM] (ID: {self.user_id})"
+            return f"{full_name} [💎 PREMIUM] (ID: {self.user_id})"
+        else:
+            bot_uname = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip("@")
+            return f"{full_name} ϟ @{bot_uname} (ID: {self.user_id})"
 
     async def log_send(self, chat_id: int, saved_msg_id: int, status: str = "success", error: Optional[str] = None):
         """Log sending attempt in DB and notify central log channel."""
