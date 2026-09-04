@@ -14,7 +14,7 @@ MAIN_BOT_TOKEN = os.getenv("MAIN_BOT_TOKEN", "")
 LOGIN_BOT_TOKEN = os.getenv("LOGIN_BOT_TOKEN", "")
 
 # ============== Bot Usernames ==============
-MAIN_BOT_USERNAME = os.getenv("MAIN_BOT_USERNAME", "")
+MAIN_BOT_USERNAME = os.getenv("MAIN_BOT_USERNAME", "SpinifyAdsBot")
 LOGIN_BOT_USERNAME = os.getenv("LOGIN_BOT_USERNAME", "spinifyLoginbot")
 
 def _safe_int(value: str, default: int = 0) -> int:
