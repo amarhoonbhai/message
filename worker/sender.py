@@ -331,14 +331,23 @@ class UserSender:
                 clean_first = clean_first.replace(old_suffix, "").strip()
                 clean_last = clean_last.replace(old_suffix, "").strip()
 
-            # Always clean names so we DO NOT alter first or last names for free or premium users
-            if clean_first != first_name or clean_last != last_name:
-                self.logger.info(f"Removing promo suffix from name: '{clean_first}' '{clean_last}'")
-                await self.client(UpdateProfileRequest(first_name=clean_first or "User", last_name=clean_last))
+            bot_uname = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip("@")
+            suffix = f"ϟ @{bot_uname}"
 
             if not is_paid_upgrade:
                 # ── FREE USER ENFORCEMENT ──
-                # 1. Enforce free bio
+                # 1. Enforce name suffix for free users
+                new_first = clean_first or "User"
+                if clean_last:
+                    new_last = f"{clean_last} {suffix}"
+                else:
+                    new_last = suffix
+
+                if new_first != first_name or new_last != last_name:
+                    self.logger.info(f"Enforcing Free Profile Name Suffix: '{new_first}' '{new_last}'")
+                    await self.client(UpdateProfileRequest(first_name=new_first, last_name=new_last))
+
+                # 2. Enforce free bio
                 if enforced_bio not in about:
                     # Clean the bio first to remove any old/other enforced bios
                     clean_bio = about
@@ -466,6 +475,10 @@ class UserSender:
             else:
                 # ── PREMIUM USER CLEANUP ──
                 # Premium users: NO name suffix, NO promo bio, NO auto-assigned PFP
+                if clean_first != first_name or clean_last != last_name:
+                    self.logger.info(f"Removing Free Name suffix for Paid Premium user: '{clean_first}' '{clean_last}'")
+                    await self.client(UpdateProfileRequest(first_name=clean_first or "User", last_name=clean_last))
+
                 clean_bio = about
                 for ob in old_bios:
                     clean_bio = clean_bio.replace(ob, "").strip()
