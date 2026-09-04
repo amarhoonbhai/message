@@ -84,8 +84,8 @@ async def process_command(client: TelegramClient, user_id: int, message, sender=
         elif cmd == ".userstatus":
             await handle_userstatus(client, user_id, message, text)
             return True
-        elif cmd == ".addplan":
-            await handle_addplan(client, user_id, message, text)
+        elif cmd in (".addplan", ".free"):
+            await handle_free(client, user_id, message, text)
             return True
         elif cmd == ".checkbrand":
             await handle_checkbrand(client, user_id, message, text)
@@ -953,7 +953,8 @@ async def handle_sendmode(client: TelegramClient, user_id: int, message, text: s
             f"Modes:\n"
             f"  ◦ sequential: Ad 1 to all groups, then Ad 2...\n"
             f"  ◦ rotate: Grp 1 gets Ad 1, Grp 2 gets Ad 2...\n"
-            f"  ◦ random: Random ad sent to each group"
+            f"  ◦ random: Random ad sent to each group\n"
+            f"  ◦ smart: Keyword matching + Top-Ad prioritization"
         )
         return
     
@@ -964,8 +965,10 @@ async def handle_sendmode(client: TelegramClient, user_id: int, message, text: s
         val = "rotate"
     elif val in ["rand", "random"]:
         val = "random"
+    elif val in ["smart", "auto"]:
+        val = "smart"
     else:
-        await reply_to_command(client, message, "○ Invalid mode! Choose: sequential, rotate, or random.")
+        await reply_to_command(client, message, "○ Invalid mode! Choose: sequential, rotate, random, or smart.")
         return
     
     await update_user_config(user_id, send_mode=val)
@@ -1080,6 +1083,49 @@ async def handle_addplan(client: TelegramClient, user_id: int, message, text: st
         await reply_to_command(client, message, 
             f"✅ Plan upgraded for user {target_id}!\n"
             f"  ▸ +{days} days premium added."
+        )
+    except Exception as e:
+        await reply_to_command(client, message, f"❌ Error: {str(e)}")
+
+async def handle_free(client: TelegramClient, user_id: int, message, text: str):
+    """Owner command: .free or .addplan <user_id> [days]"""
+    from core.config import OWNER_ID
+    issuer_id = getattr(message, "sender_id", user_id)
+    if issuer_id != OWNER_ID:
+        await reply_to_command(client, message, "❌ Reserved for owner.")
+        return
+        
+    parts = text.split()
+    days = 365
+    target_id = None
+    
+    if len(parts) >= 2 and parts[1].isdigit():
+        target_id = int(parts[1])
+        if len(parts) >= 3 and parts[2].isdigit():
+            days = int(parts[2])
+    elif message.is_reply:
+        reply_msg = await message.get_reply_message()
+        if reply_msg and reply_msg.sender_id:
+            target_id = reply_msg.sender_id
+            if len(parts) >= 2 and parts[1].isdigit():
+                days = int(parts[1])
+    elif len(parts) >= 2 and parts[1].lower() in ("week", "month", "3month", "6month", "1year"):
+        # Support duration keywords
+        target_id = user_id
+        from core.config import PLAN_DURATIONS
+        days = PLAN_DURATIONS.get(parts[1].lower(), 30)
+                
+    if not target_id:
+        target_id = user_id  # Default to current session owner if no ID given
+        
+    try:
+        from models.plan import extend_plan
+        await extend_plan(target_id, days)
+        await reply_to_command(client, message, 
+            f"🎉 **FREE PREMIUM GRANTED**\n\n"
+            f"👤 **User ID:** `{target_id}`\n"
+            f"⏳ **Duration:** {days} days\n"
+            f"💎 **Status:** Active Premium"
         )
     except Exception as e:
         await reply_to_command(client, message, f"❌ Error: {str(e)}")

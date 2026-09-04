@@ -267,7 +267,8 @@ async def toggle_send_mode_callback(update: Update, context: ContextTypes.DEFAUL
     mode_rotation = {
         "sequential": "rotate",
         "rotate": "random",
-        "random": "sequential"
+        "random": "smart",
+        "smart": "sequential"
     }
     
     next_mode = mode_rotation.get(current_mode, "sequential")

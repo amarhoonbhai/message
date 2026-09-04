@@ -203,17 +203,18 @@ async def admin_health_callback(update: Update, context: ContextTypes.DEFAULT_TY
             phone = s.get("phone", "Unknown")
             status = s.get("worker_status", "Off")
             streak = s.get("error_streak", 0)
+            score = s.get("health_score", max(0, 100 - (streak * 10)))
             
             icon = "🟢"
-            if streak > 5: icon = "🔴"
-            elif streak > 0: icon = "🟡"
+            if score < 50 or streak > 5: icon = "🔴"
+            elif score < 80 or streak > 0: icon = "🟡"
             
-            text += f"{icon} `{phone}` | {status} | Errors: {streak}\n"
+            text += f"{icon} `{phone}` | Health: *{score}%* | {status} | Errors: {streak}\n"
             
     if active_sessions_count == 0:
         text += "_No active sessions found._"
     
-    text += "\n*Status Legend:*\n🟢 Healthy | 🟡 Unstable | 🔴 Critical"
+    text += "\n*Status Legend:*\n🟢 Healthy (80-100%) | 🟡 Unstable (50-79%) | 🔴 Critical (<50%)"
     
     await query.edit_message_text(
         text,
@@ -813,5 +814,68 @@ async def setallpfp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔴 *Failed:* {res['failed']}\n",
         parse_mode="Markdown"
     )
+
+
+async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Owner command: /free <user_id> [days]
+    Grants free premium access to specified user ID for given days (default: 365).
+    Can also reply to a user message with /free [days].
+    """
+    user_id = update.effective_user.id
+    if not is_owner(user_id):
+        await update.message.reply_text("⛔ Access denied")
+        return
+        
+    args = context.args
+    target_user_id = None
+    days = 365
+    
+    # Check if replying to a user message
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+        target_user_id = update.message.reply_to_message.from_user.id
+        if args and args[0].isdigit():
+            days = int(args[0])
+    elif args:
+        if args[0].isdigit():
+            target_user_id = int(args[0])
+            if len(args) > 1 and args[1].isdigit():
+                days = int(args[1])
+                
+    if not target_user_id:
+        await update.message.reply_text(
+            "⚠️ *Usage:* `/free <user_id> [days]`\n"
+            "Or reply to a user's message with `/free [days]`.\n\n"
+            "Example: `/free 123456789 365`",
+            parse_mode="Markdown"
+        )
+        return
+
+    from models.plan import extend_plan
+    await extend_plan(target_user_id, days)
+    
+    await update.message.reply_text(
+        f"🎉 *FREE PREMIUM GRANTED*\n"
+        f"══════════════════════════════\n"
+        f"👤 *Target User ID:* `{target_user_id}`\n"
+        f"⏳ *Duration:* {days} days\n"
+        f"💎 *Status:* Active Premium",
+        parse_mode="Markdown"
+    )
+    
+    # Notify target user via Main Bot directly
+    try:
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=(
+                f"🎉 *CONGRATULATIONS!*\n\n"
+                f"You have been granted *Full Premium Access* by the Administrator for *{days} days*!\n\n"
+                f"🚀 Enjoy all premium features, custom intervals, copy mode, multi-ads, and full sending control!"
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Premium activated, but failed to notify user directly: {e}")
+
 
 

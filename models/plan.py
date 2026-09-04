@@ -122,7 +122,7 @@ async def is_plan_active(user_id: int) -> bool:
 
 
 
-async def extend_plan(user_id: int, days: int):
+async def extend_plan(user_id: int, days: int, plan_type: str = "free_premium"):
     """Extend user's plan by days."""
     from core.cache import invalidate_plan_cache
     db = get_database()
@@ -138,7 +138,7 @@ async def extend_plan(user_id: int, days: int):
         update = {
             "expires_at": new_expiry,
             "status": "active",
-            "plan_type": "premium",
+            "plan_type": plan_type,
             "notified_expired": False,
             "expiration_warnings_sent": 0
         }
@@ -147,7 +147,7 @@ async def extend_plan(user_id: int, days: int):
     else:
         await db.plans.insert_one({
             "user_id": user_id,
-            "plan_type": "premium",
+            "plan_type": plan_type,
             "status": "active",
             "started_at": now,
             "expires_at": now + timedelta(days=days),
@@ -161,7 +161,7 @@ async def extend_plan(user_id: int, days: int):
 async def activate_plan(user_id: int, plan_type: str):
     """Activate a paid plan for user."""
     days = PLAN_DURATIONS.get(plan_type, 30)
-    await extend_plan(user_id, days)
+    await extend_plan(user_id, days, plan_type=f"paid_{plan_type}")
 
 
 async def check_and_expire_all_plans():

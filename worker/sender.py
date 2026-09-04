@@ -6,6 +6,7 @@ Uses per-user API credentials stored in session.
 import logging
 import asyncio
 import random
+import re
 from datetime import datetime, timedelta
 from typing import Optional, List, Any, Dict
 
@@ -35,7 +36,7 @@ from telethon.tl.functions.account import UpdateProfileRequest
 
 from config import (
     GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES,
-    MIN_INTERVAL_MINUTES, OWNER_ID, MAX_GROUPS_PER_USER
+    MIN_INTERVAL_MINUTES, OWNER_ID, MAX_GROUPS_PER_USER, MAIN_BOT_USERNAME
 )
 from db.models import (
     get_session, get_user_groups, get_user_config,
@@ -172,6 +173,17 @@ class UserSender:
         self.last_global_branding_check_at = None
         self.last_pause_warning_sent_at = None
     
+    def calculate_health_score(self) -> int:
+        """Calculate account health score from 0 (Critical) to 100 (Optimal)."""
+        score = 100
+        score -= min(self.error_streak * 10, 60)
+        last_flood = self.adaptive_group_gap.last_flood_at
+        if last_flood and (datetime.utcnow() - last_flood).total_seconds() < 3600:
+            score -= 25
+        if getattr(self, "_peer_flood_count", 0) > 0:
+            score -= min(self._peer_flood_count * 30, 50)
+        return max(0, min(100, score))
+
     async def update_status(self, status: str):
         """Update worker status in database with throttling for smoothness."""
         if status == self.last_status:
@@ -189,6 +201,7 @@ class UserSender:
                     "worker_status": status, 
                     "status_updated_at": datetime.utcnow(),
                     "error_streak": self.error_streak,
+                    "health_score": self.calculate_health_score(),
                     "last_flood_at": self.adaptive_group_gap.last_flood_at
                 }}
             )
@@ -239,6 +252,38 @@ class UserSender:
                 
         return False, ""
 
+    def select_smart_ad(self, group: dict, messages: list):
+        """
+        Select best ad message for a group using keyword search & top-ad prioritization.
+        Matches group title/topic keywords with ad text; falls back to top primary ad.
+        """
+        if not messages:
+            return None
+        if len(messages) == 1:
+            return messages[0]
+            
+        chat_title = (group.get("chat_title") or "").lower()
+        title_words = set(re.findall(r'\b[a-zA-Z0-9]{3,}\b', chat_title))
+        
+        best_msg = None
+        best_score = 0
+        
+        for msg in messages:
+            text = (getattr(msg, "text", "") or "").lower()
+            if not text:
+                continue
+            msg_words = set(re.findall(r'\b[a-zA-Z0-9]{3,}\b', text))
+            common = title_words.intersection(msg_words)
+            score = len(common)
+            if score > best_score:
+                best_score = score
+                best_msg = msg
+                
+        if best_msg:
+            return best_msg
+        else:
+            return messages[0]
+
     async def _enforce_profile_branding(self):
         """Enforce name and bio rules based on plan status (Free vs Premium)."""
         try:
@@ -250,7 +295,13 @@ class UserSender:
             if force_check_at:
                 self.last_global_branding_check_at = force_check_at
 
-            is_premium = await is_plan_active(self.user_id)
+            from models.plan import get_plan
+            user_plan = await get_plan(self.user_id)
+            plan_type = (user_plan.get("plan_type") or "").lower() if user_plan else ""
+            is_paid_upgrade = (
+                self.user_id == OWNER_ID or
+                (await is_plan_active(self.user_id) and plan_type.startswith("paid"))
+            )
             
             # Fetch current profile info
             full = await self.client(GetFullUserRequest('me'))
@@ -285,7 +336,7 @@ class UserSender:
                 self.logger.info(f"Removing promo suffix from name: '{clean_first}' '{clean_last}'")
                 await self.client(UpdateProfileRequest(first_name=clean_first or "User", last_name=clean_last))
 
-            if not is_premium:
+            if not is_paid_upgrade:
                 # ── FREE USER ENFORCEMENT ──
                 # 1. Enforce free bio
                 if enforced_bio not in about:
@@ -540,11 +591,12 @@ class UserSender:
         await reset_session_auth_fails(self.user_id, self.phone)
         self.logger.info("✅ Authorized successfully")
         
-        # Populate first_name and username
+        # Populate first_name, last_name, and username
         try:
             me = await self.client.get_me()
             if me:
                 self.first_name = me.first_name or ""
+                self.last_name = me.last_name or ""
                 self.username = me.username or ""
         except Exception as me_e:
             self.logger.warning(f"Failed to fetch profile details in get_me(): {me_e}")
@@ -874,6 +926,11 @@ class UserSender:
                     for group in groups:
                         msg = random.choice(messages)
                         tasks.append((msg, group))
+                elif send_mode == "smart":
+                    for group in groups:
+                        msg = self.select_smart_ad(group, messages)
+                        if msg:
+                            tasks.append((msg, group))
                 
                 self.logger.info(f"📋 {len(tasks)} tasks ({send_mode}) | {len(groups)} groups × {len(messages)} ads")
 
@@ -1247,31 +1304,25 @@ class UserSender:
 
     async def get_user_label(self) -> str:
         """
-        Get a label for the user: Name (@username) (ID: user_id)
-        Ensures phone number is NOT shown in logs.
+        Get a label for the user displaying only Full Name with bot username using stylish symbol separator.
+        Example: John Doe ϟ @SpinifyAdsBot (ID: 123456789)
         """
         if not getattr(self, "first_name", "") and not getattr(self, "username", "") and self.client:
             try:
                 me = await self.client.get_me()
                 if me:
                     self.first_name = me.first_name or ""
+                    self.last_name = me.last_name or ""
                     self.username = me.username or ""
             except Exception as e:
                 self.logger.warning(f"Error fetching profile details: {e}")
         
-        parts = []
         first_name = getattr(self, "first_name", "")
-        username = getattr(self, "username", "")
-        if first_name:
-            parts.append(first_name)
-        if username:
-            parts.append(f"@{username}")
+        last_name = getattr(self, "last_name", "")
+        full_name = f"{first_name} {last_name}".strip() or "User"
+        bot_uname = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip("@")
         
-        label = " ".join(parts)
-        if label:
-            return f"{label} (ID: {self.user_id})"
-        else:
-            return f"User (ID: {self.user_id})"
+        return f"{full_name} ϟ @{bot_uname} (ID: {self.user_id})"
 
     async def log_send(self, chat_id: int, saved_msg_id: int, status: str = "success", error: Optional[str] = None):
         """Log sending attempt in DB and notify central log channel."""

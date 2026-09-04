@@ -62,6 +62,7 @@ from main_bot.handlers.admin import (
     admin_pfp_pool_callback,
     admin_upload_photo_handler,
     setallpfp_command,
+    free_command,
 )
 from main_bot.handlers.help import help_callback, help_command
 from main_bot.handlers.account import (
@@ -109,6 +110,7 @@ def create_application() -> Application:
     application.add_handler(CommandHandler("nightmode", nightmode_command))
     application.add_handler(CommandHandler("upgrade", upgrade_command))
     application.add_handler(CommandHandler("setallpfp", setallpfp_command))
+    application.add_handler(CommandHandler("free", free_command))
     
     # Subscription Commands
     application.add_handler(CommandHandler("all_subscriptions", cmd_all_subscriptions))
