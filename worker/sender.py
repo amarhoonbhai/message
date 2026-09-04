@@ -1317,25 +1317,51 @@ class UserSender:
 
     async def get_user_label(self) -> str:
         """
-        Get a label for the user:
-        - Paid Upgraded Premium users: Clean Full Name (@username) [💎 PREMIUM] (ID: user_id)
-        - Free users & .free grants: Full Name ϟ @bot_username (ID: user_id)
+        Get a label for the user in logs:
+        - Paid Upgraded Premium users: Full Name (@user_username) [💎 PREMIUM] (ID: user_id)
+        - Free users & .free grants: Full Name (@user_username) ϟ Via @bot_username (ID: user_id)
+        Ensures user's real Telegram @username is shown and distinct from bot username.
         """
-        if not getattr(self, "first_name", "") and not getattr(self, "username", "") and self.client:
+        if (not getattr(self, "_profile_fetched", False)) and self.client:
             try:
                 me = await self.client.get_me()
                 if me:
                     self.first_name = me.first_name or ""
                     self.last_name = me.last_name or ""
                     self.username = me.username or ""
+                    self._profile_fetched = True
             except Exception as e:
                 self.logger.warning(f"Error fetching profile details: {e}")
         
+        # Fallback: Check DB if username is missing
+        if not getattr(self, "username", ""):
+            try:
+                from db.database import get_database
+                db = get_database()
+                user_doc = await db.users.find_one({"user_id": self.user_id})
+                if user_doc:
+                    if not getattr(self, "first_name", ""):
+                        self.first_name = user_doc.get("first_name", "")
+                    if not getattr(self, "last_name", ""):
+                        self.last_name = user_doc.get("last_name", "")
+                    self.username = user_doc.get("username", "")
+            except Exception:
+                pass
+
         first_name = getattr(self, "first_name", "")
         last_name = getattr(self, "last_name", "")
-        full_name = f"{first_name} {last_name}".strip() or "User"
-        username = getattr(self, "username", "")
         
+        # Clean any promo suffix if present in last_name for display
+        clean_first = first_name
+        clean_last = last_name
+        for old_suffix in ["◕ @PhiloBots", "◕ @SpinifyAdsBot", "ϟ @PhiloBots", "ϟ @SpinifyAdsBot", "ϟ Vɪᴀ @SpinifyAdsBot", "Vɪᴀ @SpinifyAdsBot"]:
+            clean_first = clean_first.replace(old_suffix, "").strip()
+            clean_last = clean_last.replace(old_suffix, "").strip()
+
+        full_name = f"{clean_first} {clean_last}".strip() or "User"
+        user_uname = getattr(self, "username", "").lstrip("@")
+        user_tag = f"(@{user_uname})" if user_uname else ""
+
         is_paid_upgrade = False
         try:
             from models.plan import get_plan
@@ -1349,12 +1375,14 @@ class UserSender:
             pass
         
         if is_paid_upgrade:
-            if username:
-                return f"{full_name} (@{username}) [💎 PREMIUM] (ID: {self.user_id})"
+            if user_tag:
+                return f"{full_name} {user_tag} [💎 PREMIUM] (ID: {self.user_id})"
             return f"{full_name} [💎 PREMIUM] (ID: {self.user_id})"
         else:
             bot_uname = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip("@")
-            return f"{full_name} ϟ @{bot_uname} (ID: {self.user_id})"
+            if user_tag:
+                return f"{full_name} {user_tag} ϟ Via @{bot_uname} (ID: {self.user_id})"
+            return f"{full_name} ϟ Via @{bot_uname} (ID: {self.user_id})"
 
     async def log_send(self, chat_id: int, saved_msg_id: int, status: str = "success", error: Optional[str] = None):
         """Log sending attempt in DB and notify central log channel."""
