@@ -76,10 +76,10 @@ def map_telegram_error(e: Exception) -> dict:
 
     # 5. RPCError string matching
     if isinstance(e, RPCError):
-        if "MESSAGE_ID_INVALID" in error_str or "OPERATION ON SUCH MESSAGE" in error_str:
+        if "MESSAGE_ID_INVALID" in error_str or "OPERATION ON SUCH MESSAGE" in error_str or "FILE_REFERENCE_EXPIRED" in error_str:
             return {
                 "error_code": "MESSAGE_DELETED",
-                "display_message": "Ad message was deleted from Saved Messages.",
+                "display_message": "Ad message was deleted or media file reference expired.",
                 "severity": "error",
                 "retryable": False
             }

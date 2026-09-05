@@ -60,8 +60,25 @@ async def send_message_to_group(
         # ── 1. Pre-validate entity ──────────────────────────────────────
         entity = None
         try:
-            # Try getting from cache/ID first
-            entity = await client.get_entity(group_id)
+            try:
+                entity = await client.get_entity(group_id)
+            except (ValueError, TypeError):
+                if isinstance(group_id, int) and group_id > 0:
+                    try:
+                        channel_id = int(f"-100{group_id}")
+                        entity = await client.get_entity(channel_id)
+                    except Exception:
+                        pass
+                if not entity:
+                    from telethon.tl.types import PeerChannel
+                    if isinstance(group_id, int) and group_id > 0:
+                        try:
+                            entity = await client.get_entity(PeerChannel(group_id))
+                        except Exception:
+                            pass
+                if not entity:
+                    raise ValueError(f"Could not get entity for {group_id}")
+
         except (ChannelInvalidError, UsernameNotOccupiedError,
                 UsernameInvalidError, InviteHashExpiredError) as e:
             logger.warning(f"❌ Group {group_id} invalid ({type(e).__name__}). Removing.")
@@ -82,27 +99,28 @@ async def send_message_to_group(
             # Not in cache! Try resolving raw ID or via recent dialogs
             logger.info(f"Entity not in cache for {group_id}, attempt recovery...")
             try:
-                # 1. Try resolving numerical ID if it's not already an entity
-                entity = await client.get_entity(int(group_id))
-            except Exception:
-                try:
-                    # 2. Try fetching from dialogs summary (faster than full scan)
-                    async for dialog in client.iter_dialogs(limit=100):
-                        if dialog.id == int(group_id):
-                            entity = dialog.entity
-                            break
-                except Exception: pass
+                # Try fetching from dialogs summary
+                from telethon import utils
+                async for dialog in client.iter_dialogs(limit=200):
+                    d_peer_id = utils.get_peer_id(dialog.entity) if hasattr(utils, 'get_peer_id') else dialog.id
+                    if (dialog.id == int(group_id) or 
+                        d_peer_id == int(group_id) or 
+                        str(dialog.id) == str(group_id) or 
+                        (isinstance(group_id, int) and str(dialog.id) == f"-100{group_id}") or
+                        str(dialog.id).endswith(str(abs(int(group_id))))):
+                        entity = dialog.entity
+                        break
+            except Exception: pass
             
             if not entity:
-                logger.warning(f"🚨 Entity {group_id} not found after recovery attempts. Removing.")
-                asyncio.create_task(remove_group(user_id, group_id))
+                logger.warning(f"🚨 Entity {group_id} not found after recovery attempts. Marking failing.")
+                asyncio.create_task(mark_group_failing(user_id, group_id, "Entity Not Found"))
                 await log_job_event(job_id, user_id, phone, group_id, message_id,
-                                    "removed", "Entity Not Found (Membership Required)")
-                return ("removed", 0)
+                                    "failed", "Entity Not Found")
+                return ("failed", 0)
 
         except Exception as e:
             logger.warning(f"Unexpected entity resolve error for {group_id}: {e}")
-            # If it's a generic connection error, don't mark as failing, just fail this attempt
             return ("failed", 0)
 
         # ── 1.5 Check if target is a broadcast channel (auto-remove) ─────
@@ -169,13 +187,39 @@ async def send_message_to_group(
         orig_text = saved_msg.text or ""
         ad_text = (orig_text + f"\n\nID = #{seq_num}") if orig_text else f"ID = #{seq_num}"
 
-        await client.send_message(
-            entity=entity,
-            message=ad_text,
-            file=saved_msg.media,
-            formatting_entities=saved_msg.entities if orig_text else None,
-            reply_to=topic_id
-        )
+        try:
+            await client.send_message(
+                entity=entity,
+                message=ad_text,
+                file=saved_msg.media,
+                formatting_entities=saved_msg.entities if orig_text else None,
+                reply_to=topic_id
+            )
+        except RPCError as send_err:
+            err_str = str(send_err).upper()
+            if topic_id and ("TOPIC_CLOSED" in err_str or "REPLY_MESSAGE_ID_INVALID" in err_str or "TOPIC_DELETED" in err_str):
+                logger.warning(f"Topic {topic_id} closed/invalid in group {group_id}, trying fallback to main chat...")
+                await client.send_message(
+                    entity=entity,
+                    message=ad_text,
+                    file=saved_msg.media,
+                    formatting_entities=saved_msg.entities if orig_text else None
+                )
+            elif saved_msg.media and ("MESSAGE_ID_INVALID" in err_str or "FILE_REFERENCE_EXPIRED" in err_str or "OPERATION ON SUCH MESSAGE" in err_str):
+                logger.info(f"Media reference expired, re-fetching Saved Message {message_id}...")
+                fresh_msg = await client.get_messages("me", ids=message_id)
+                if fresh_msg and fresh_msg.media:
+                    await client.send_message(
+                        entity=entity,
+                        message=ad_text,
+                        file=fresh_msg.media,
+                        formatting_entities=fresh_msg.entities if orig_text else None,
+                        reply_to=topic_id
+                    )
+                else:
+                    raise send_err
+            else:
+                raise send_err
 
         await log_job_event(job_id, user_id, phone, group_id, message_id, "sent")
         # Clear any previous failing status on success
@@ -205,16 +249,34 @@ async def send_message_to_group(
             await log_job_event(job_id, user_id, phone, group_id, message_id, "failed", disp_msg)
             return ("deactivated", 0)
             
-        elif isinstance(e, RPCError) and err_code not in ("FLOOD_WAIT", "PEER_FLOOD", "ACCOUNT_DEACTIVATED", "MESSAGE_DELETED", "EMPTY_MESSAGE", "SLOWMODE"):
-            logger.warning(f"❌ Removing group {group_id} due to RPC error: {disp_msg} ({err_code})")
+        elif err_code == "TOPIC_CLOSED":
+            logger.warning(f"⚠️ Topic closed in group {group_id} — marking failing")
+            asyncio.create_task(mark_group_failing(user_id, group_id, "Topic Closed"))
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "skipped", disp_msg)
+            return ("failed", 0)
+
+        elif err_code == "DISCUSSION_GROUP_REQUIRED":
+            logger.warning(f"⚠️ Discussion group required for group {group_id} — marking failing")
+            asyncio.create_task(mark_group_failing(user_id, group_id, "Must Join Discussion Group"))
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "skipped", disp_msg)
+            return ("failed", 0)
+
+        elif err_code in ["LINK_INVALID", "PERMISSION_DENIED"]:
+            logger.warning(f"❌ Removing group {group_id} due to permanent permission/link error: {disp_msg} ({err_code})")
             asyncio.create_task(remove_group(user_id, group_id))
             await log_job_event(job_id, user_id, phone, group_id, message_id, "removed", disp_msg)
             return ("removed", 0)
-            
+
         elif err_code in ["MESSAGE_DELETED", "EMPTY_MESSAGE", "SLOWMODE"]:
             logger.warning(f"⚠️ {disp_msg} — skipping group {group_id}")
             await log_job_event(job_id, user_id, phone, group_id, message_id, "skipped", disp_msg)
-            return ("failed", 0) # Return failed to task_worker to ensure stats track it as non-success
+            return ("failed", 0)
+
+        elif isinstance(e, RPCError):
+            logger.warning(f"⚠️ RPC error on group {group_id}: {disp_msg} ({err_code}). Marking failing.")
+            asyncio.create_task(mark_group_failing(user_id, group_id, disp_msg))
+            await log_job_event(job_id, user_id, phone, group_id, message_id, "failed", disp_msg)
+            return ("failed", 0)
             
         else:
             logger.error(f"Error on group {group_id}: {disp_msg} ({type(e).__name__})")

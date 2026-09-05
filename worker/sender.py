@@ -1257,7 +1257,29 @@ class UserSender:
         
         # 3. Resolve entity
         try:
-            entity = await self.client.get_entity(chat_id)
+            entity = None
+            try:
+                entity = await self.client.get_entity(chat_id)
+            except (ValueError, TypeError):
+                # If chat_id is positive integer or missing -100 prefix, try converting to supergroup ID (-100...)
+                if isinstance(chat_id, int) and chat_id > 0:
+                    try:
+                        channel_id = int(f"-100{chat_id}")
+                        entity = await self.client.get_entity(channel_id)
+                    except Exception:
+                        pass
+                
+                if not entity:
+                    from telethon.tl.types import PeerChannel
+                    if isinstance(chat_id, int) and chat_id > 0:
+                        try:
+                            entity = await self.client.get_entity(PeerChannel(chat_id))
+                        except Exception:
+                            pass
+                
+                if not entity:
+                    raise ValueError(f"Could not resolve entity for {chat_id}")
+
             self._entity_cache[chat_id] = entity
             return entity
         except (ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError) as e:
@@ -1280,7 +1302,12 @@ class UserSender:
             try:
                 entity = None
                 async for dialog in self.client.iter_dialogs(limit=300):
-                    if dialog.id == chat_id:
+                    d_peer_id = utils.get_peer_id(dialog.entity) if hasattr(utils, 'get_peer_id') else dialog.id
+                    if (dialog.id == chat_id or 
+                        d_peer_id == chat_id or 
+                        str(dialog.id) == str(chat_id) or 
+                        (isinstance(chat_id, int) and str(dialog.id) == f"-100{chat_id}") or
+                        str(dialog.id).endswith(str(abs(chat_id)))):
                         entity = dialog.entity
                         break
                 if entity:
@@ -1289,10 +1316,10 @@ class UserSender:
                 else:
                     raise ValueError("Not found in dialogs either")
             except Exception as dial_e:
-                self.logger.warning(f"Could not resolve entity for {chat_id} via dialog scan: {dial_e}. Removing.")
+                self.logger.warning(f"Could not resolve entity for {chat_title} ({chat_id}): {dial_e}. Marking failing.")
                 self._failed_entities[chat_id] = (now, f"Value/Dialog error: {dial_e}")
-                asyncio.create_task(remove_group(self.user_id, chat_id))
-                asyncio.create_task(self.log_send(chat_id, message_id, "removed", f"Entity error: {dial_e}"))
+                asyncio.create_task(mark_group_failing(self.user_id, chat_id, f"Entity error: {dial_e}"))
+                asyncio.create_task(self.log_send(chat_id, message_id, "failed", f"Entity error: {dial_e}"))
                 return None
         except Exception as e:
             self.logger.warning(f"Could not resolve entity for {chat_id}: {e}")
@@ -1489,13 +1516,43 @@ class UserSender:
             orig_text = message.text or ""
             ad_text = (orig_text + f"\n\nID = #{seq_num}") if orig_text else f"ID = #{seq_num}"
 
-            await self.client.send_message(
-                entity=entity,
-                message=ad_text,
-                file=message.media,
-                formatting_entities=message.entities if orig_text else None,
-                reply_to=topic_id
-            )
+            # Try sending message (with topic support & fallback)
+            try:
+                await self.client.send_message(
+                    entity=entity,
+                    message=ad_text,
+                    file=message.media,
+                    formatting_entities=message.entities if orig_text else None,
+                    reply_to=topic_id
+                )
+            except RPCError as send_err:
+                err_str = str(send_err).upper()
+                # 1. Topic closed or invalid reply_to fallback
+                if topic_id and ("TOPIC_CLOSED" in err_str or "REPLY_MESSAGE_ID_INVALID" in err_str or "TOPIC_DELETED" in err_str):
+                    self.logger.warning(f"Topic {topic_id} closed/invalid in {chat_title}, trying fallback to main chat...")
+                    await self.client.send_message(
+                        entity=entity,
+                        message=ad_text,
+                        file=message.media,
+                        formatting_entities=message.entities if orig_text else None
+                    )
+                # 2. Expired media / file reference invalid retry
+                elif message.media and ("MESSAGE_ID_INVALID" in err_str or "FILE_REFERENCE_EXPIRED" in err_str or "OPERATION ON SUCH MESSAGE" in err_str):
+                    self.logger.info(f"Media reference expired, re-fetching Saved Message {message.id}...")
+                    fresh_msg = await self.client.get_messages("me", ids=message.id)
+                    if fresh_msg and fresh_msg.media:
+                        await self.client.send_message(
+                            entity=entity,
+                            message=ad_text,
+                            file=fresh_msg.media,
+                            formatting_entities=fresh_msg.entities if orig_text else None,
+                            reply_to=topic_id
+                        )
+                    else:
+                        raise send_err
+                else:
+                    raise send_err
+
             log_action = f"Sent [ID = #{seq_num}]" + (f" (Topic {topic_id})" if topic_id else "")
             
             self.logger.info(f"{log_action} message {message.id} to {chat_title}")
@@ -1574,27 +1631,45 @@ class UserSender:
                 self.running = False
                 return (False, False, 0)
                 
-            elif isinstance(e, RPCError) and err_code not in ("FLOOD_WAIT", "PEER_FLOOD", "ACCOUNT_DEACTIVATED", "MESSAGE_DELETED", "EMPTY_MESSAGE", "SLOWMODE"):
-                self.logger.warning(f"❌ Removing group {chat_title} due to RPC error: {disp_msg} ({err_code})")
+            elif err_code == "TOPIC_CLOSED":
+                self.logger.warning(f"⚠️ Topic closed in {chat_title} — marking failing")
+                asyncio.create_task(mark_group_failing(self.user_id, chat_id, "Topic Closed"))
+                asyncio.create_task(self.log_send(chat_id, message.id, "skipped", disp_msg))
+                return (False, False, 0)
+
+            elif err_code == "DISCUSSION_GROUP_REQUIRED":
+                self.logger.warning(f"⚠️ Discussion group required for {chat_title} — marking failing")
+                asyncio.create_task(mark_group_failing(self.user_id, chat_id, "Must Join Discussion Group"))
+                asyncio.create_task(self.log_send(chat_id, message.id, "skipped", disp_msg))
+                return (False, False, 0)
+
+            elif err_code in ["LINK_INVALID", "PERMISSION_DENIED"]:
+                self.logger.warning(f"❌ Removing group {chat_title}: {disp_msg} ({err_code})")
                 asyncio.create_task(remove_group(self.user_id, chat_id))
                 asyncio.create_task(self.log_send(chat_id, message.id, "removed", disp_msg))
                 return (False, False, 0)
-                
+
             elif err_code in ["MESSAGE_DELETED", "EMPTY_MESSAGE"]:
                 self.logger.warning(f"⚠️ {disp_msg} — skipping {chat_title}")
                 asyncio.create_task(self.log_send(chat_id, message.id, "skipped", disp_msg))
                 return (False, False, 0)
-                
+
             elif err_code == "SLOWMODE":
                 self.logger.warning(f"⏳ Slow mode in {chat_title} — skipping for now")
                 asyncio.create_task(self.log_send(chat_id, message.id, "skipped", disp_msg))
                 return (False, False, 0)
-                
+
             elif getattr(e, 'message', '') == "FROZEN_PARTICIPANT_MISSING":
                 self.logger.error(f"🛑 Account {self.phone} is FROZEN by Telegram!")
                 asyncio.create_task(mark_group_failing(self.user_id, chat_id, "Account Frozen"))
                 return (False, False, 0)
-                
+
+            elif isinstance(e, RPCError):
+                self.logger.warning(f"⚠️ RPC error in {chat_title}: {disp_msg} ({err_code}). Marking failing.")
+                asyncio.create_task(mark_group_failing(self.user_id, chat_id, disp_msg))
+                asyncio.create_task(self.log_send(chat_id, message.id, "failed", disp_msg))
+                return (False, False, 0)
+
             else:
                 self.error_streak += 1
                 self.logger.error(f"Error forwarding to {chat_title}: {disp_msg} ({type(e).__name__})")

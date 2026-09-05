@@ -545,17 +545,29 @@ async def handle_addgroup(client: TelegramClient, user_id: int, message, text: s
             if not entity:
                 try:
                     # Get the entity (group/channel)
-                    entity = await asyncio.wait_for(client.get_entity(group_identifier), timeout=10.0)
+                    try:
+                        entity = await asyncio.wait_for(client.get_entity(group_identifier), timeout=10.0)
+                    except (ValueError, TypeError):
+                        if isinstance(group_identifier, int) and group_identifier > 0:
+                            try:
+                                channel_id = int(f"-100{group_identifier}")
+                                entity = await asyncio.wait_for(client.get_entity(channel_id), timeout=10.0)
+                            except Exception:
+                                pass
+                        if not entity:
+                            raise ValueError("Direct get_entity failed")
                 except ValueError:
                     # Not in cache, try scanning dialogs
                     found = False
-                    # Optimize: Only scan dialogs for numeric/integer IDs, not usernames
                     if isinstance(group_identifier, int):
                         try:
-                            # Use get_dialogs(limit=100) instead of iter_dialogs to prevent hanging in async loops
-                            dialogs = await asyncio.wait_for(client.get_dialogs(limit=100), timeout=15.0)
+                            dialogs = await asyncio.wait_for(client.get_dialogs(limit=150), timeout=15.0)
                             for dialog in dialogs:
-                                if str(dialog.id) == str(group_identifier) or (dialog.entity and dialog.entity.username and dialog.entity.username.lower() == str(group_identifier).lstrip('@').lower()):
+                                d_peer_id = utils.get_peer_id(dialog.entity) if hasattr(utils, 'get_peer_id') else dialog.id
+                                if (str(dialog.id) == str(group_identifier) or 
+                                    str(d_peer_id) == str(group_identifier) or
+                                    str(dialog.id) == f"-100{group_identifier}" or
+                                    str(dialog.id).endswith(str(abs(group_identifier)))):
                                     entity = dialog.entity
                                     found = True
                                     break
@@ -1309,10 +1321,12 @@ def parse_group_input(input_str: str) -> tuple[Optional[str], Optional[int]]:
     # 8. Raw Numeric ID
     if re.match(r"^-?\d+$", input_str):
         val = int(input_str)
-        # If it's a positive ID and doesn't look like a standard chat (usually 8+ digits), add -100 prefix
-        if val > 0 and len(input_str) >= 8 and not input_str.startswith("100"):
-            val = int(f"-100{val}")
-        elif val < 0 and not input_str.startswith("-100"):
+        if val > 0:
+            if input_str.startswith("100") and len(input_str) >= 10:
+                val = int(f"-{input_str}")
+            elif len(input_str) >= 8:
+                val = int(f"-100{input_str}")
+        elif val < 0 and not input_str.startswith("-100") and len(str(abs(val))) >= 8:
             val = int(f"-100{abs(val)}")
         return val, None
 
@@ -1707,20 +1721,44 @@ async def handle_health(client: TelegramClient, user_id: int, message, text: str
         should_disable = False
         
         try:
-            # Try to resolve entity (like _resolve_entity does)
+            # Try to resolve entity (robust fallback)
             entity = None
             try:
                 entity = await client.get_entity(chat_id)
-            except ValueError:
-                # Scan dialogs
-                async for dialog in client.iter_dialogs(limit=300):
-                    if dialog.id == chat_id:
-                        entity = dialog.entity
-                        break
+            except (ValueError, TypeError):
+                if isinstance(chat_id, int) and chat_id > 0:
+                    try:
+                        channel_id = int(f"-100{chat_id}")
+                        entity = await client.get_entity(channel_id)
+                    except Exception:
+                        pass
                 if not entity:
-                    reason = "Entity Not Found (Membership Required)"
-                    should_disable = True
-                    is_writable = False
+                    from telethon.tl.types import PeerChannel
+                    if isinstance(chat_id, int) and chat_id > 0:
+                        try:
+                            entity = await client.get_entity(PeerChannel(chat_id))
+                        except Exception:
+                            pass
+            
+            if not entity:
+                # Scan dialogs with peer ID and suffix matching
+                try:
+                    async for dialog in client.iter_dialogs(limit=300):
+                        d_peer_id = utils.get_peer_id(dialog.entity) if hasattr(utils, 'get_peer_id') else dialog.id
+                        if (dialog.id == chat_id or 
+                            d_peer_id == chat_id or 
+                            str(dialog.id) == str(chat_id) or 
+                            (isinstance(chat_id, int) and str(dialog.id) == f"-100{chat_id}") or
+                            str(dialog.id).endswith(str(abs(chat_id)))):
+                            entity = dialog.entity
+                            break
+                except Exception:
+                    pass
+
+            if not entity:
+                reason = "Entity Not Found (Membership Required)"
+                should_disable = True
+                is_writable = False
             
             if entity:
                 # Check permissions
@@ -1735,23 +1773,12 @@ async def handle_health(client: TelegramClient, user_id: int, message, text: str
                     should_disable = True
                 else:
                     is_writable = True
+                    
         except Exception as e:
-            from telethon.errors import (
-                ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError,
-                ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError
-            )
             is_writable = False
             reason = type(e).__name__
+            should_disable = False
             
-            permanent_errors = (
-                ChatWriteForbiddenError, ChannelPrivateError, ChatAdminRequiredError, UserBannedInChannelError,
-                ChannelInvalidError, UsernameNotOccupiedError, UsernameInvalidError, InviteHashExpiredError
-            )
-            if isinstance(e, permanent_errors):
-                should_disable = True
-            else:
-                should_disable = False
-
         if is_writable:
             passed += 1
             await clear_group_fail(user_id, chat_id)
@@ -1771,14 +1798,14 @@ async def handle_health(client: TelegramClient, user_id: int, message, text: str
                 failures.append(f"• `{chat_title}`: Temporary check fail ({reason})")
                 
         # Delay slightly to avoid spamming / flood waits
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.2)
 
     # Prepare final report
     final_report = (
-        f"📊 *DIAGNOSTIC REPORT — {phone}*\n"
+        f"📊 *HEALTH CHECK REPORT — {phone}*\n"
         f"══════════════════════════\n"
-        f"🟢 **Passed (Healthy):** {passed}\n"
-        f"🔴 **Failed (Issues):** {failed}\n"
+        f"🟢 **Healthy & Writable:** {passed}\n"
+        f"🔴 **Errors / Restricted:** {failed}\n"
         f"══════════════════════════\n"
     )
     if failures:
@@ -1830,6 +1857,7 @@ async def handle_check(client: TelegramClient, user_id: int, message, text: str,
     )
 
     import asyncio
+    from telethon.errors import RPCError
     success_count = 0
     fail_count = 0
     failures = []
@@ -1861,22 +1889,54 @@ async def handle_check(client: TelegramClient, user_id: int, message, text: str,
             entity = None
             try:
                 entity = await client.get_entity(chat_id)
-            except ValueError:
-                # Scan dialogs
-                async for dialog in client.iter_dialogs(limit=300):
-                    if dialog.id == chat_id:
-                        entity = dialog.entity
-                        break
+            except (ValueError, TypeError):
+                if isinstance(chat_id, int) and chat_id > 0:
+                    try:
+                        channel_id = int(f"-100{chat_id}")
+                        entity = await client.get_entity(channel_id)
+                    except Exception:
+                        pass
                 if not entity:
-                    raise ValueError("Not found in dialog list")
+                    from telethon.tl.types import PeerChannel
+                    if isinstance(chat_id, int) and chat_id > 0:
+                        try:
+                            entity = await client.get_entity(PeerChannel(chat_id))
+                        except Exception:
+                            pass
+            
+            if not entity:
+                try:
+                    async for dialog in client.iter_dialogs(limit=300):
+                        d_peer_id = utils.get_peer_id(dialog.entity) if hasattr(utils, 'get_peer_id') else dialog.id
+                        if (dialog.id == chat_id or 
+                            d_peer_id == chat_id or 
+                            str(dialog.id) == str(chat_id) or 
+                            (isinstance(chat_id, int) and str(dialog.id) == f"-100{chat_id}") or
+                            str(dialog.id).endswith(str(abs(chat_id)))):
+                            entity = dialog.entity
+                            break
+                except Exception:
+                    pass
+
+            if not entity:
+                raise ValueError("Not found in dialog list")
 
             # 2. Try sending test message
             test_text = "🔍 **System Diagnostic Check**\nVerifying write capabilities. This message will be deleted."
-            test_msg = await client.send_message(
-                entity=entity,
-                message=test_text,
-                reply_to=topic_id
-            )
+            try:
+                test_msg = await client.send_message(
+                    entity=entity,
+                    message=test_text,
+                    reply_to=topic_id
+                )
+            except RPCError as topic_err:
+                if topic_id and ("TOPIC_CLOSED" in str(topic_err).upper() or "REPLY_MESSAGE_ID_INVALID" in str(topic_err).upper()):
+                    test_msg = await client.send_message(
+                        entity=entity,
+                        message=test_text
+                    )
+                else:
+                    raise topic_err
             success = True
 
             # 3. Immediately delete test message
