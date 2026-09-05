@@ -344,9 +344,16 @@ async def save_session_and_complete(
                 me = full.users[0]
                 first_name = me.first_name or ""
                 last_name = me.last_name or ""
-                clean_first = first_name
-                clean_last = last_name
-                for old_suffix in ["◕ @PhiloBots", "◕ @SpinifyAdsBot", "ϟ @PhiloBots", "ϟ @SpinifyAdsBot", "ϟ Vɪᴀ @SpinifyAdsBot", "Vɪᴀ @SpinifyAdsBot"]:
+                import re
+                clean_first = re.sub(r'(?:◕|ϟ|⚡|\bVɪᴀ\b|\bVia\b)\s*@[A-Za-z0-9_]+', '', first_name, flags=re.IGNORECASE).strip()
+                clean_last = re.sub(r'(?:◕|ϟ|⚡|\bVɪᴀ\b|\bVia\b)\s*@[A-Za-z0-9_]+', '', last_name, flags=re.IGNORECASE).strip()
+                for old_suffix in [
+                    "◕ @PhiloBots", "◕ @SpinifyAdsBot", "◕ @automessageschedulerBot",
+                    "ϟ @PhiloBots", "ϟ @SpinifyAdsBot", "ϟ @automessageschedulerBot",
+                    "ϟ Vɪᴀ @SpinifyAdsBot", "ϟ Vɪᴀ @PhiloBots", "ϟ Vɪᴀ @automessageschedulerBot",
+                    "Vɪᴀ @SpinifyAdsBot", "Vɪᴀ @PhiloBots", "Vɪᴀ @automessageschedulerBot",
+                    "Via @SpinifyAdsBot", "Via @PhiloBots", "Via @automessageschedulerBot",
+                ]:
                     clean_first = clean_first.replace(old_suffix, "").strip()
                     clean_last = clean_last.replace(old_suffix, "").strip()
 

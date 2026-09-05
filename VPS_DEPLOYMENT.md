@@ -308,4 +308,4 @@ chmod +x /opt/message-scheduler/start.sh
 
 ## Support
 
-For issues, join [@PHilobots](https://t.me/PHilobots) on Telegram.
+For issues, join [@spinify](https://t.me/spinify) on Telegram.
