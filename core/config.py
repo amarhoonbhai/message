@@ -36,7 +36,7 @@ LOGIN_BOT_TOKEN: str = os.getenv("LOGIN_BOT_TOKEN", "")
 
 # ── Bot Usernames ───────────────────────────────────────────────────────────
 
-MAIN_BOT_USERNAME: str = os.getenv("MAIN_BOT_USERNAME", "")
+MAIN_BOT_USERNAME: str = os.getenv("MAIN_BOT_USERNAME", "SpinifyAdsBot")
 LOGIN_BOT_USERNAME: str = os.getenv("LOGIN_BOT_USERNAME", "spinifyLoginbot")
 
 # ── Owner / Admin ───────────────────────────────────────────────────────────

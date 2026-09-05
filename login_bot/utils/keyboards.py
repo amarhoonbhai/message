@@ -8,6 +8,7 @@ from config import MAIN_BOT_USERNAME, CHANNEL_USERNAME
 
 def get_login_welcome_keyboard() -> InlineKeyboardMarkup:
     """Build login welcome screen keyboard."""
+    main_bot_clean = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip('@')
     keyboard = [
         [
             InlineKeyboardButton("➕ Add Account / Connect", callback_data="add_account"),
@@ -16,7 +17,7 @@ def get_login_welcome_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📱 Manage Connected Accounts", callback_data="manage_accounts"),
         ],
         [
-            InlineKeyboardButton("🔙 Back to Main Bot", url=f"https://t.me/{MAIN_BOT_USERNAME}"),
+            InlineKeyboardButton("🔙 Back to Main Bot", url=f"https://t.me/{main_bot_clean}"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -131,9 +132,10 @@ def get_2fa_keyboard() -> InlineKeyboardMarkup:
 
 def get_success_keyboard() -> InlineKeyboardMarkup:
     """Success screen keyboard."""
+    main_bot_clean = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip('@')
     keyboard = [
         [
-            InlineKeyboardButton("🚀 Go to Main Dashboard", url=f"https://t.me/{MAIN_BOT_USERNAME}?start=connected"),
+            InlineKeyboardButton("🚀 Go to Main Dashboard", url=f"https://t.me/{main_bot_clean}?start=connected"),
         ],
         [
             InlineKeyboardButton("📌 Join Community", url=f"https://t.me/{CHANNEL_USERNAME}"),
@@ -187,12 +189,13 @@ def get_disconnect_confirm_keyboard(phone: str) -> InlineKeyboardMarkup:
 
 def get_cancel_keyboard() -> InlineKeyboardMarkup:
     """Keyboard after cancellation."""
+    main_bot_clean = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip('@')
     keyboard = [
         [
             InlineKeyboardButton("🔄 Try Again", callback_data="add_account"),
         ],
         [
-            InlineKeyboardButton("🔙 Back to Main Bot", url=f"https://t.me/{MAIN_BOT_USERNAME}"),
+            InlineKeyboardButton("🔙 Back to Main Bot", url=f"https://t.me/{main_bot_clean}"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
