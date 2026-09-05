@@ -14,7 +14,12 @@ MAIN_BOT_TOKEN = os.getenv("MAIN_BOT_TOKEN", "")
 LOGIN_BOT_TOKEN = os.getenv("LOGIN_BOT_TOKEN", "")
 
 # ============== Bot Usernames ==============
-MAIN_BOT_USERNAME = os.getenv("MAIN_BOT_USERNAME", "SpinifyAdsBot")
+_raw_main_bot = os.getenv("MAIN_BOT_USERNAME", "SpinifyAdsBot").strip()
+if not _raw_main_bot or _raw_main_bot.lstrip("@").lower() in ["automessageschedulerbot", "philobots"]:
+    MAIN_BOT_USERNAME = "SpinifyAdsBot"
+else:
+    MAIN_BOT_USERNAME = _raw_main_bot
+
 LOGIN_BOT_USERNAME = os.getenv("LOGIN_BOT_USERNAME", "spinifyLoginbot")
 
 def _safe_int(value: str, default: int = 0) -> int:
@@ -60,7 +65,12 @@ def validate_config():
 validate_config()
 
 # ============== Channel ==============
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "SpinifyAdsBot")
+_raw_channel = os.getenv("CHANNEL_USERNAME", "SpinifyAdsBot").strip()
+if not _raw_channel or _raw_channel.lstrip("@").lower() in ["automessageschedulerbot", "philobots"]:
+    CHANNEL_USERNAME = "SpinifyAdsBot"
+else:
+    CHANNEL_USERNAME = _raw_channel
+
 PAYMENT_UPI_ID = os.getenv("PAYMENT_UPI_ID", "rain@slc")
 SUPPORT_HANDLE = os.getenv("SUPPORT_HANDLE", "@spinify")
 SUPPORT_URL = os.getenv("SUPPORT_URL", "https://t.me/spinify")

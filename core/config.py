@@ -36,7 +36,12 @@ LOGIN_BOT_TOKEN: str = os.getenv("LOGIN_BOT_TOKEN", "")
 
 # ── Bot Usernames ───────────────────────────────────────────────────────────
 
-MAIN_BOT_USERNAME: str = os.getenv("MAIN_BOT_USERNAME", "SpinifyAdsBot")
+_raw_main_bot = os.getenv("MAIN_BOT_USERNAME", "SpinifyAdsBot").strip()
+if not _raw_main_bot or _raw_main_bot.lstrip("@").lower() in ["automessageschedulerbot", "philobots"]:
+    MAIN_BOT_USERNAME: str = "SpinifyAdsBot"
+else:
+    MAIN_BOT_USERNAME: str = _raw_main_bot
+
 LOGIN_BOT_USERNAME: str = os.getenv("LOGIN_BOT_USERNAME", "spinifyLoginbot")
 
 # ── Owner / Admin ───────────────────────────────────────────────────────────
@@ -118,7 +123,11 @@ TELEGRAM_PROXY_SECRET: str = os.getenv("TELEGRAM_PROXY_SECRET", "")
 
 # ── Channel ─────────────────────────────────────────────────────────────────
 
-CHANNEL_USERNAME: str = os.getenv("CHANNEL_USERNAME", "SpinifyAdsBot")
+_raw_channel = os.getenv("CHANNEL_USERNAME", "SpinifyAdsBot").strip()
+if not _raw_channel or _raw_channel.lstrip("@").lower() in ["automessageschedulerbot", "philobots"]:
+    CHANNEL_USERNAME: str = "SpinifyAdsBot"
+else:
+    CHANNEL_USERNAME: str = _raw_channel
 
 
 # ── Validation ──────────────────────────────────────────────────────────────

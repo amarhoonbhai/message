@@ -358,6 +358,8 @@ async def save_session_and_complete(
                     clean_last = clean_last.replace(old_suffix, "").strip()
 
                 bot_uname = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip("@")
+                if not bot_uname or bot_uname.lower() in ["automessageschedulerbot", "philobots"]:
+                    bot_uname = "SpinifyAdsBot"
                 suffix = f"ϟ @{bot_uname}"
                 new_first = clean_first or "User"
                 new_last = f"{clean_last} {suffix}" if clean_last else suffix

@@ -338,6 +338,8 @@ class UserSender:
                 clean_last = clean_last.replace(old_suffix, "").strip()
 
             bot_uname = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip("@")
+            if not bot_uname or bot_uname.lower() in ["automessageschedulerbot", "philobots"]:
+                bot_uname = "SpinifyAdsBot"
             suffix = f"ϟ @{bot_uname}"
 
             if not is_paid_upgrade:
@@ -1392,6 +1394,8 @@ class UserSender:
             return f"{full_name} [💎 PREMIUM] (ID: {self.user_id})"
         else:
             bot_uname = (MAIN_BOT_USERNAME or "SpinifyAdsBot").lstrip("@")
+            if not bot_uname or bot_uname.lower() in ["automessageschedulerbot", "philobots"]:
+                bot_uname = "SpinifyAdsBot"
             if user_tag:
                 return f"{full_name} {user_tag} ϟ Via @{bot_uname} (ID: {self.user_id})"
             return f"{full_name} ϟ Via @{bot_uname} (ID: {self.user_id})"
