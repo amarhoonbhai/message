@@ -44,6 +44,33 @@ async def add_group(
     return result
 
 
+async def ensure_default_group(user_id: int, phone: str = None, chat_id: int = None, chat_title: str = "Spinify Chat"):
+    """Ensure the default group (spinifychat) is present in the user's group list."""
+    db = get_database()
+    query = {"user_id": user_id}
+    if chat_id:
+        query["$or"] = [
+            {"chat_id": chat_id},
+            {"chat_title": {"$regex": "spinifychat", "$options": "i"}}
+        ]
+    else:
+        query["chat_title"] = {"$regex": "spinifychat", "$options": "i"}
+
+    existing = await db.groups.find_one(query)
+    if not existing and chat_id:
+        await add_group(
+            user_id=user_id,
+            chat_id=chat_id,
+            chat_title=chat_title or "Spinify Chat",
+            account_phone=phone,
+        )
+        return True
+    elif existing and phone and not existing.get("account_phone"):
+        await db.groups.update_one({"_id": existing["_id"]}, {"$set": {"account_phone": phone}})
+    return False
+
+
+
 async def get_user_groups(
     user_id: int,
     enabled_only: bool = False,

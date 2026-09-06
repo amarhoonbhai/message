@@ -114,7 +114,9 @@ async def get_user_config(user_id: int) -> dict:
             "copy_mode": False,
             "send_mode": "sequential",
             "auto_reply_enabled": False,
-            "auto_reply_text": "This is an automated advertising bot. \n\nBy Using @SpinifyAdsBot and contact @spinify to get the access",
+            "auto_reply_text": "I am Free Message Bot \n\nBy Using @SpinifyAdsBot",
+
+
         }
     
     await set_cached_user_config(user_id, doc)

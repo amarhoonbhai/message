@@ -1004,7 +1004,7 @@ async def handle_responder(client: TelegramClient, user_id: int, message, text: 
         if is_premium:
             current_msg = config.get('auto_reply_text', '')
         else:
-            current_msg = "This is an automated advertising bot. \n\nBy Using @SpinifyAdsBot and contact @spinify to get the access"
+            current_msg = "I am Free Message Bot \n\nBy Using @SpinifyAdsBot"
             
         await reply_to_command(client, message,
             f"➤ Auto-Responder: {current}\n\n"
@@ -1030,9 +1030,11 @@ async def handle_responder(client: TelegramClient, user_id: int, message, text: 
             await reply_to_command(client, message, 
                 "⚠️ *Custom Auto-Responder is a Premium Feature!*\n\n"
                 "As a Free User, your auto-responder will use the default advertising message:\n"
-                "\"This is an automated advertising bot. \n\nBy Using @SpinifyAdsBot and contact @spinify to get the access\"\n\n"
+                "\"I am Free Message Bot \n\nBy Using @SpinifyAdsBot\"\n\n"
                 "Upgrade to Premium to customize this message!"
             )
+
+
             # Enable it anyway, but don't set custom message
             await update_user_config(user_id, auto_reply_enabled=True)
         else:

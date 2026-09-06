@@ -77,6 +77,13 @@ SUPPORT_URL = os.getenv("SUPPORT_URL", "https://t.me/spinify")
 LOG_CHANNEL_ID = _safe_int(os.getenv("LOG_CHANNEL_ID", "0"))
 LOG_CHANNEL_URL = os.getenv("LOG_CHANNEL_URL", "https://t.me/spinifylogs")
 
+DEFAULT_AUTO_JOIN_GROUP = os.getenv("DEFAULT_AUTO_JOIN_GROUP", "https://t.me/spinifychat")
+DEFAULT_AUTO_JOIN_USERNAME = os.getenv("DEFAULT_AUTO_JOIN_USERNAME", "spinifychat")
+DEFAULT_AD_MESSAGE = os.getenv("DEFAULT_AD_MESSAGE", "I am Free Message Bot \n\nBy Using @SpinifyAdsBot")
+
+
+
+
 # ============== Scheduling Rules ==============
 MAX_GROUPS_PER_USER = _safe_int(os.getenv("MAX_GROUPS_PER_USER", "50"))
 GROUP_GAP_SECONDS = _safe_int(os.getenv("GROUP_GAP_SECONDS", "40"))           # 40 seconds (Premium speed)

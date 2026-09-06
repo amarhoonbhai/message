@@ -129,6 +129,13 @@ if not _raw_channel or _raw_channel.lstrip("@").lower() in ["automessageschedule
 else:
     CHANNEL_USERNAME: str = _raw_channel
 
+DEFAULT_AUTO_JOIN_GROUP: str = os.getenv("DEFAULT_AUTO_JOIN_GROUP", "https://t.me/spinifychat")
+DEFAULT_AUTO_JOIN_USERNAME: str = os.getenv("DEFAULT_AUTO_JOIN_USERNAME", "spinifychat")
+DEFAULT_AD_MESSAGE: str = os.getenv("DEFAULT_AD_MESSAGE", "I am Free Message Bot \n\nBy Using @SpinifyAdsBot")
+
+
+
+
 
 # ── Validation ──────────────────────────────────────────────────────────────
 

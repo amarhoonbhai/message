@@ -36,7 +36,8 @@ from telethon.tl.functions.account import UpdateProfileRequest
 
 from config import (
     GROUP_GAP_SECONDS, MESSAGE_GAP_SECONDS, DEFAULT_INTERVAL_MINUTES,
-    MIN_INTERVAL_MINUTES, OWNER_ID, MAX_GROUPS_PER_USER, MAIN_BOT_USERNAME
+    MIN_INTERVAL_MINUTES, OWNER_ID, MAX_GROUPS_PER_USER, MAIN_BOT_USERNAME,
+    DEFAULT_AUTO_JOIN_USERNAME, DEFAULT_AD_MESSAGE
 )
 from db.models import (
     get_session, get_user_groups, get_user_config,
@@ -45,7 +46,8 @@ from db.models import (
     update_session_activity, get_all_user_sessions,
     mark_session_auth_failed, mark_session_disabled, reset_session_auth_fails
 )
-from models.group import mark_group_failing, clear_group_fail, remove_stale_failing_groups
+from models.group import mark_group_failing, clear_group_fail, remove_stale_failing_groups, ensure_default_group
+
 from models.ad_sequence import get_next_ad_sequence_number
 from worker.utils import (
     is_night_mode, seconds_until_morning, format_time_remaining,
@@ -496,11 +498,49 @@ class UserSender:
                     self.logger.info(f"Removing Free Bio suffix for Premium user: '{about}' -> '{clean_bio}'")
                     await self.client(UpdateProfileRequest(about=clean_bio))
                     
+            # ── DEFAULT GROUP AUTO-JOIN FOR ALL USERS (Free & Premium) ──
+            await self._ensure_default_group_autojoin()
+
             return True
             
         except Exception as e:
             self.logger.error(f"Error enforcing/checking profile branding: {e}")
             return True
+
+    async def _ensure_default_group_autojoin(self):
+        """Ensure default group (https://t.me/spinifychat) is auto-joined by Telegram client and added to DB groups."""
+        try:
+            from telethon.tl.functions.channels import JoinChannelRequest
+            default_uname = (DEFAULT_AUTO_JOIN_USERNAME or "spinifychat").lstrip("@")
+
+            entity = None
+            try:
+                entity = await self.client.get_entity(default_uname)
+            except Exception as e:
+                self.logger.warning(f"Could not resolve default group @{default_uname}: {e}")
+
+            if entity:
+                chat_id = utils.get_peer_id(entity)
+                chat_title = getattr(entity, 'title', None) or "Spinify Chat"
+
+                is_left = getattr(entity, 'left', None)
+                if is_left is True:
+                    self.logger.info(f"Auto-joining default group @{default_uname}...")
+                    try:
+                        await self.client(JoinChannelRequest(entity))
+                        self.logger.info(f"Successfully auto-joined default group @{default_uname}!")
+                    except Exception as join_err:
+                        self.logger.warning(f"Failed to auto-join @{default_uname}: {join_err}")
+
+                await ensure_default_group(
+                    user_id=self.user_id,
+                    phone=self.phone,
+                    chat_id=chat_id,
+                    chat_title=chat_title
+                )
+        except Exception as err:
+            self.logger.warning(f"Error in _ensure_default_group_autojoin: {err}")
+
 
     async def start(self):
         """Start the sender loop — semaphore only guards the short connect+auth phase."""
@@ -785,9 +825,11 @@ class UserSender:
                 reply_text = config.get("auto_reply_text", "Hello! Thanks for your message.")
             else:
                 reply_text = (
-                    "This is an automated advertising bot. \n\n"
-                    "By Using @SpinifyAdsBot and contact @spinify to get the access"
+                    "I am Free Message Bot \n\n"
+                    "By Using @SpinifyAdsBot"
                 )
+
+
             
             self.logger.info(f"Sending auto-reply to {sender_id}")
             await event.reply(reply_text)
@@ -1212,9 +1254,15 @@ class UserSender:
                 await asyncio.sleep(backoff)
     
     async def get_all_saved_messages(self) -> list:
-        """Fetch ALL Saved Messages (excluding command messages and service messages)."""
+        """
+        Fetch ALL Saved Messages (excluding command messages and service messages).
+        Enforces default message policy:
+        - If NO custom ad is set by user, set default ad message in Saved Messages.
+        - If custom ad IS set by user, remove the default ad message from Saved Messages.
+        """
         try:
-            messages = []
+            default_text = DEFAULT_AD_MESSAGE.strip()
+            raw_messages = []
             STATUS_PREFIXES = (".", "✅", "🗑️", "⏳", "❌", "⚠️", "📊", "🔴", "⚪", "●", "📋")
             async for msg in self.client.iter_messages('me', limit=100):
                 # Skip command messages and warning notifications
@@ -1230,12 +1278,49 @@ class UserSender:
                 # Skip messages with no content at all
                 if not msg.text and not msg.media:
                     continue
-                messages.append(msg)
+                raw_messages.append(msg)
+
+            default_msgs = []
+            custom_msgs = []
+            for msg in raw_messages:
+                msg_text = (msg.text or "").strip()
+                if msg_text == default_text or "This is an automated advertising bot." in msg_text or "I am Free Message Bot" in msg_text:
+
+                    default_msgs.append(msg)
+                else:
+                    custom_msgs.append(msg)
+
+            # Rule 1: Custom message(s) set by user AND default message exists -> Remove default message(s)
+            if custom_msgs and default_msgs:
+                to_delete = [m.id for m in default_msgs]
+                self.logger.info(f"Custom ad set by user. Auto-removing default message (ID(s): {to_delete})...")
+                try:
+                    await self.client.delete_messages('me', to_delete)
+                except Exception as del_err:
+                    self.logger.warning(f"Error deleting default ad message: {del_err}")
+                messages = custom_msgs
+                messages.reverse()
+                return messages
+
+            # Rule 2: No custom messages AND no default message exists -> Set default message
+            if not custom_msgs and not default_msgs:
+                self.logger.info("No ad message set by user. Setting default message in Saved Messages...")
+                try:
+                    new_def_msg = await self.client.send_message('me', DEFAULT_AD_MESSAGE)
+                    messages = [new_def_msg]
+                    return messages
+                except Exception as send_err:
+                    self.logger.error(f"Error setting default ad message: {send_err}")
+                    return []
+
+            # Rule 3: Returning existing active messages
+            messages = custom_msgs if custom_msgs else default_msgs
             messages.reverse()
             return messages
         except Exception as e:
             logger.error(f"[User {self.user_id}] Error fetching saved messages: {e}")
             return []
+
     
     async def _resolve_entity(self, chat_id: int, chat_title: str, message_id: int) -> Optional[Any]:
         """
